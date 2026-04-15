@@ -1,0 +1,4 @@
+interface:
+  display_name: "Master-Managed Plan Delivery"
+  short_description: "按最小上下文分发与串行收敛模式推进子代理实施和测试"
+  default_prompt: "Use $implement-plan-with-subagents to run the main agent as master controller, send only the minimum sufficient context to each sub-agent, keep all sub-agents on gpt-5.3-codex, and keep testing serial with no parallel e2e."
