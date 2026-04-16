@@ -1,0 +1,10 @@
+{
+  "replenishment_days_threshold": 5,
+  "cart_gap_trigger_amount": 30,
+  "threshold_amount": 1000,
+  "prefer_frequent_items": true,
+  "prefer_pair_items": true,
+  "box_adjust_if_close": true,
+  "box_adjust_distance_limit": 2,
+  "allow_new_product_recommendation": true
+}

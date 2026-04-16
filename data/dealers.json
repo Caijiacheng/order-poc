@@ -1,0 +1,74 @@
+[
+  {
+    "customer_id": "dealer_xm_sm",
+    "customer_name": "厦门思明经销商",
+    "city": "厦门",
+    "customer_type": "城区核心客户",
+    "channel_type": "餐饮+流通",
+    "store_count_hint": "120+",
+    "last_order_days_ago": 6,
+    "order_frequency": "5-7天",
+    "price_sensitivity": "中",
+    "new_product_acceptance": "高",
+    "frequent_items": [
+      "cb_weijixian_500",
+      "cb_jinbiao_shengchou_500",
+      "cb_oyster_700",
+      "cb_chicken_essence_200"
+    ],
+    "forbidden_items": ["cb_oyster_big_2270"],
+    "preferred_categories": ["生抽", "蚝油", "鸡精"],
+    "business_traits": ["动销快", "有新品试销能力", "接受活动引导"],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "customer_id": "dealer_dg_sm",
+    "customer_name": "东莞商超配送经销商",
+    "city": "东莞",
+    "customer_type": "商超配送客户",
+    "channel_type": "KA 商超",
+    "store_count_hint": "60+",
+    "last_order_days_ago": 4,
+    "order_frequency": "3-5天",
+    "price_sensitivity": "高",
+    "new_product_acceptance": "中",
+    "frequent_items": [
+      "cb_small_shengchou_250",
+      "cb_vinegar_450",
+      "cb_chicken_powder_combo",
+      "cb_cooking_wine_500"
+    ],
+    "forbidden_items": ["cb_oyster_big_2270"],
+    "preferred_categories": ["小规格", "组合装", "醋"],
+    "business_traits": ["重视促销", "重视周转", "偏好多规格组合"],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "customer_id": "dealer_cd_pf",
+    "customer_name": "成都餐饮批发经销商",
+    "city": "成都",
+    "customer_type": "餐饮批发客户",
+    "channel_type": "餐饮批发",
+    "store_count_hint": "80+",
+    "last_order_days_ago": 8,
+    "order_frequency": "7-10天",
+    "price_sensitivity": "中低",
+    "new_product_acceptance": "低",
+    "frequent_items": [
+      "cb_oyster_700",
+      "cb_steamed_fish_450",
+      "cb_oyster_big_2270",
+      "cb_chicken_restaurant_1kg"
+    ],
+    "forbidden_items": ["cb_small_shengchou_250"],
+    "preferred_categories": ["餐饮大包装", "蚝油", "豉油"],
+    "business_traits": ["偏重大包装", "重视整箱配送", "喜欢固定搭配采购"],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  }
+]

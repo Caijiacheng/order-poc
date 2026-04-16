@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI 建议单 + 智能凑单 Demo
 
-## Getting Started
+美味鲜 / 厨邦 经销商下单 POC。
 
-First, run the development server:
+## 启动
+
+1. 安装依赖
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm exec playwright install chromium
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. 准备环境变量
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. 选择运行模式
 
-## Learn More
+- Mock 手工测试：把 `.env.local` 里的 `LLM_MOCK_MODE` 设为 `true`
+- Live 手工测试：把 `LLM_MOCK_MODE` 设为 `false`，并补齐 `LLM_*`、`LANGFUSE_*`、`NEXT_PUBLIC_LANGFUSE_BASE_URL`
 
-To learn more about Next.js, take a look at the following resources:
+4. 启动开发服务器
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+打开 [http://localhost:3000](http://localhost:3000)。
 
-## Deploy on Vercel
+## 常用命令
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:e2e:mock
+pnpm test:e2e:live
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 手工测试说明
+
+完整手工测试路径见：
+
+- [docs/manual-testing.md](/Users/caijiacheng/AIProject/order-poc/docs/manual-testing.md)
+
+## 说明
+
+- 所有业务数据都在内存中，重启应用后会回到 seed 初始状态。
+- 后台 CRUD、购物车、推荐记录、报表都不是持久化数据。

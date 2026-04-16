@@ -217,6 +217,32 @@ Before claiming work complete, verify as applicable:
 
 If something cannot be verified locally, state that explicitly.
 
+## Local Run And Verify Commands
+
+Install and run:
+
+- `pnpm install`
+- `pnpm dev` (default: [http://localhost:3000](http://localhost:3000))
+
+Primary checks for this scaffold stage:
+
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+
+Manual route smoke check targets:
+
+- `/`, `/order`, `/cart`, `/confirm`
+- `/admin/dashboard`
+- `/admin/products`
+- `/admin/dealers`
+- `/admin/suggestion-templates`
+- `/admin/campaigns`
+- `/admin/rules`
+- `/admin/prompts`
+- `/admin/reports`
+- `/admin/reports/recommendations`
+
 ## Change Management
 
 When making significant implementation decisions, keep them aligned with the product design doc.

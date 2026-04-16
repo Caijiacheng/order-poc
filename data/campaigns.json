@@ -1,0 +1,41 @@
+[
+  {
+    "campaign_id": "camp_2026w16_focus",
+    "week_id": "2026-W16",
+    "campaign_name": "零添加试销冲刺周",
+    "weekly_focus_items": ["cb_zeroadd_shengchou_500", "cb_zeroadd_head_500"],
+    "promo_threshold": 1000,
+    "promo_type": "threshold_rebate",
+    "activity_notes": ["主推零添加系列", "高新品接受客户优先"],
+    "target_customer_types": ["城区核心客户", "商超配送客户"],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "campaign_id": "camp_2026w16_combo",
+    "week_id": "2026-W16",
+    "campaign_name": "鸡精组合搭售活动",
+    "weekly_focus_items": ["cb_chicken_powder_combo", "cb_chicken_essence_200"],
+    "promo_threshold": 800,
+    "promo_type": "combo_discount",
+    "activity_notes": ["蚝油 + 鸡精品类联动", "适合门槛补齐"],
+    "target_customer_types": ["城区核心客户", "餐饮批发客户"],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "campaign_id": "camp_2026w16_smallpack",
+    "week_id": "2026-W16",
+    "campaign_name": "小规格补货便利装",
+    "weekly_focus_items": ["cb_small_shengchou_250", "cb_small_oyster_230"],
+    "promo_threshold": 500,
+    "promo_type": "small_pack_push",
+    "activity_notes": ["适配商超配送", "提升门店补货频次"],
+    "target_customer_types": ["商超配送客户"],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  }
+]
