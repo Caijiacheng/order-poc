@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -18,61 +19,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  fetchReportEvents,
-  fetchReportsSummary,
-  type ReportsSummaryResponse,
-} from "@/lib/frontstage/api";
-import type { MetricEvent } from "@/lib/memory/types";
+import { requestJson } from "@/lib/admin/client";
+import type { ListResult } from "@/lib/admin/types";
+import type { RecommendationBatchRecord, RecommendationRunRecord } from "@/lib/memory/types";
 
-const EMPTY_SUMMARY: ReportsSummaryResponse = {
-  entities: {
-    products: { total: 0, active: 0 },
-    dealers: { total: 0, active: 0 },
-    suggestionTemplates: { total: 0, active: 0 },
-    campaigns: { total: 0, active: 0 },
-  },
-  metrics: {
-    sessionCount: 0,
-    recommendationRequests: 0,
-    weeklyFocusRequests: 0,
-    cartOptimizationRequests: 0,
-    explanationRequests: 0,
-    addToCartFromSuggestion: 0,
-    applyOptimizationCount: 0,
-    thresholdReachedCount: 0,
-    boxAdjustmentCount: 0,
-    pairSuggestionAppliedCount: 0,
-    totalCartAmountBefore: 0,
-    totalCartAmountAfter: 0,
-    totalRevenueLift: 0,
-    averageModelLatencyMs: 0,
-    totalModelCalls: 0,
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    structuredOutputFailureCount: 0,
-    customerSceneBreakdown: {},
-    latestEvents: [],
-  },
-  recommendationRuns: {
-    total: 0,
-    generated: 0,
-    partiallyApplied: 0,
-    fullyApplied: 0,
-    ignored: 0,
-  },
+type QueryState = {
+  dateFrom: string;
+  dateTo: string;
+  customerId: string;
 };
 
-const EVENT_LABELS: Record<string, string> = {
-  recommendation_generated: "生成推荐",
-  weekly_focus_generated: "生成周活动推荐",
-  recommendation_applied: "采纳推荐",
-  cart_optimized: "应用凑单优化",
-  threshold_reached: "达到门槛",
-  box_adjusted: "箱规调整",
-  pair_item_added: "加购搭配品",
-  explanation_viewed: "查看解释",
-  config_updated: "更新配置",
+type AnalyticsData = {
+  batches: RecommendationBatchRecord[];
+  records: RecommendationRunRecord[];
 };
 
 const SCENE_LABELS: Record<string, string> = {
@@ -80,54 +39,87 @@ const SCENE_LABELS: Record<string, string> = {
   weekly_focus: "周活动备货",
   threshold_topup: "门槛补差",
   box_pair_optimization: "箱规与搭配优化",
-  admin_config: "后台配置",
 };
 
+const EMPTY_DATA: AnalyticsData = {
+  batches: [],
+  records: [],
+};
+
+function getDefaultRange() {
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(now.getDate() - 6);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  return {
+    dateFrom: start.toISOString().slice(0, 16),
+    dateTo: end.toISOString().slice(0, 16),
+  };
+}
+
+function toIso(value: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? "" : date.toISOString();
+}
+
 export default function AnalyticsOverviewPage() {
-  const [summary, setSummary] = useState<ReportsSummaryResponse>(EMPTY_SUMMARY);
-  const [events, setEvents] = useState<MetricEvent[]>([]);
-  const [eventsTotal, setEventsTotal] = useState(0);
-  const [eventPage, setEventPage] = useState(1);
-  const [eventQ, setEventQ] = useState("");
-  const [selectedEvent, setSelectedEvent] = useState<MetricEvent | null>(null);
+  const defaultRange = getDefaultRange();
+  const [query, setQuery] = useState<QueryState>({
+    dateFrom: defaultRange.dateFrom,
+    dateTo: defaultRange.dateTo,
+    customerId: "",
+  });
+  const [data, setData] = useState<AnalyticsData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
-  const [loadingEvents, setLoadingEvents] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const loadSummary = async () => {
-    const nextSummary = await fetchReportsSummary();
-    setSummary(nextSummary);
-  };
-
-  const loadEvents = async (input: { page: number; q: string }) => {
-    setLoadingEvents(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(input.page),
-        pageSize: "8",
-        sortBy: "timestamp",
-        sortOrder: "desc",
-      });
-      if (input.q.trim()) {
-        params.set("q", input.q.trim());
-      }
-      const data = await fetchReportEvents(params);
-      setEvents(data.items);
-      setEventsTotal(data.total);
-      setSelectedEvent((prev) =>
-        data.items.some((item) => item.id === prev?.id) ? prev : data.items[0] ?? null,
-      );
-    } finally {
-      setLoadingEvents(false);
-    }
-  };
-
-  const loadOverview = async () => {
+  const loadData = async (nextQuery = query) => {
     setLoading(true);
     setErrorMessage("");
     try {
-      await Promise.all([loadSummary(), loadEvents({ page: 1, q: eventQ })]);
-      setEventPage(1);
+      const batchParams = new URLSearchParams({
+        page: "1",
+        pageSize: "500",
+        sortBy: "created_at",
+        sortOrder: "desc",
+      });
+      const recordParams = new URLSearchParams({
+        page: "1",
+        pageSize: "500",
+        sortBy: "created_at",
+        sortOrder: "desc",
+      });
+      const dateFromIso = toIso(nextQuery.dateFrom);
+      const dateToIso = toIso(nextQuery.dateTo);
+      if (dateFromIso) {
+        batchParams.set("dateFrom", dateFromIso);
+        recordParams.set("dateFrom", dateFromIso);
+      }
+      if (dateToIso) {
+        batchParams.set("dateTo", dateToIso);
+        recordParams.set("dateTo", dateToIso);
+      }
+      if (nextQuery.customerId.trim()) {
+        batchParams.set("customerId", nextQuery.customerId.trim());
+        recordParams.set("customerId", nextQuery.customerId.trim());
+      }
+
+      const [batchData, recordData] = await Promise.all([
+        requestJson<ListResult<RecommendationBatchRecord>>(
+          `/api/admin/recommendation-batches?${batchParams.toString()}`,
+        ),
+        requestJson<ListResult<RecommendationRunRecord>>(
+          `/api/admin/recommendation-records?${recordParams.toString()}`,
+        ),
+      ]);
+
+      setData({
+        batches: batchData.items,
+        records: recordData.items,
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载经营总览失败");
     } finally {
@@ -136,40 +128,65 @@ export default function AnalyticsOverviewPage() {
   };
 
   useEffect(() => {
-    void loadOverview();
+    void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!loading) {
-      void loadEvents({ page: eventPage, q: eventQ });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventPage]);
+  const successBatches = data.batches.filter((item) => item.status === "success").length;
+  const failedBatches = data.batches.filter((item) =>
+    ["failed", "partial_failed", "fallback_served"].includes(item.status),
+  ).length;
+  const publishedBatches = data.batches.filter(
+    (item) => item.publication_status === "published",
+  ).length;
 
-  const sceneBreakdown = Object.entries(summary.metrics.customerSceneBreakdown).sort(
-    (a, b) => b[1] - a[1],
+  const adoptedRuns = data.records.filter((item) =>
+    ["partially_applied", "fully_applied"].includes(item.status),
+  ).length;
+  const adoptionRate =
+    data.records.length === 0 ? 0 : (adoptedRuns / data.records.length) * 100;
+  const avgLatency =
+    data.records.length === 0
+      ? 0
+      : Math.round(
+          data.records.reduce((sum, item) => sum + item.model_latency_ms, 0) /
+            data.records.length,
+        );
+
+  const sceneBreakdown = Object.entries(
+    data.records.reduce<Record<string, number>>((acc, run) => {
+      acc[run.scene] = (acc[run.scene] ?? 0) + 1;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1]);
+
+  const strategyContribution = Object.entries(
+    data.records.reduce<Record<string, number>>((acc, run) => {
+      const key = run.strategy_id || "未绑定策略";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {}),
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  const abnormalBatches = data.batches.filter((item) =>
+    ["failed", "partial_failed", "fallback_served"].includes(item.status),
   );
 
   return (
     <AdminPageFrame
       title="经营总览"
-      description="聚合经营 KPI 与运行分析，帮助识别推荐效果和运行稳定性。"
+      description="基于 canonical 批次与建议记录数据源的运行与效果复盘。"
       action={
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={loadOverview} disabled={loading}>
+          <Button variant="outline" onClick={() => void loadData()} disabled={loading}>
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             刷新
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/observability/audit-logs" className="gap-2">
-              查看审计日志
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
-          <Button asChild className="rounded-full">
-            <Link href="/admin/analytics/recommendations" className="gap-2">
-              查看推荐记录
+            <Link href="/admin/analytics/recommendation-records" className="gap-2">
+              查看建议单记录
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -178,37 +195,78 @@ export default function AnalyticsOverviewPage() {
     >
       <FeedbackBanner kind="error" message={errorMessage} />
 
+      <Card>
+        <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="space-y-1">
+            <Label>开始时间</Label>
+            <Input
+              type="datetime-local"
+              value={query.dateFrom}
+              onChange={(event) =>
+                setQuery((prev) => ({ ...prev, dateFrom: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>结束时间</Label>
+            <Input
+              type="datetime-local"
+              value={query.dateTo}
+              onChange={(event) =>
+                setQuery((prev) => ({ ...prev, dateTo: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>经销商（可选）</Label>
+            <Input
+              value={query.customerId}
+              onChange={(event) =>
+                setQuery((prev) => ({ ...prev, customerId: event.target.value }))
+              }
+              placeholder="customer_xxx"
+            />
+          </div>
+          <div className="flex items-end">
+            <Button className="w-full" variant="outline" onClick={() => void loadData(query)}>
+              <Filter className="h-4 w-4" />
+              查询
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-600">推荐请求数</CardTitle>
+            <CardTitle className="text-sm text-slate-600">批次总数</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="kpi-value text-2xl">{summary.metrics.recommendationRequests}</p>
+            <p className="kpi-value text-2xl">{data.batches.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-600">优化请求数</CardTitle>
+            <CardTitle className="text-sm text-slate-600">成功批次</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="kpi-value text-2xl">{summary.metrics.cartOptimizationRequests}</p>
+            <p className="kpi-value text-2xl">{successBatches}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-600">结构化失败数</CardTitle>
+            <CardTitle className="text-sm text-slate-600">异常批次</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="kpi-value text-2xl">{summary.metrics.structuredOutputFailureCount}</p>
+            <p className="kpi-value text-2xl">{failedBatches}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-600">累计提升金额</CardTitle>
+            <CardTitle className="text-sm text-slate-600">已发布批次</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="kpi-value text-2xl">¥{summary.metrics.totalRevenueLift}</p>
+            <p className="kpi-value text-2xl">{publishedBatches}</p>
           </CardContent>
         </Card>
       </section>
@@ -216,187 +274,134 @@ export default function AnalyticsOverviewPage() {
       <section className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">运行分析</CardTitle>
+            <CardTitle className="text-lg">推荐效果摘要</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3 text-sm md:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">平均模型耗时</p>
-              <p className="kpi-value text-xl">{summary.metrics.averageModelLatencyMs}ms</p>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 text-sm md:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">建议记录数</p>
+                <p className="kpi-value text-xl">{data.records.length}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">已采纳记录</p>
+                <p className="kpi-value text-xl">{adoptedRuns}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">采纳率</p>
+                <p className="kpi-value text-xl">{adoptionRate.toFixed(1)}%</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">平均模型耗时</p>
+                <p className="kpi-value text-xl">{avgLatency}ms</p>
+              </div>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">模型调用总数</p>
-              <p className="kpi-value text-xl">{summary.metrics.totalModelCalls}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">输入 Token 总量</p>
-              <p className="kpi-value text-xl">{summary.metrics.totalInputTokens}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">输出 Token 总量</p>
-              <p className="kpi-value text-xl">{summary.metrics.totalOutputTokens}</p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">建议记录 {data.records.length}</Badge>
+              <Badge variant="outline">批次异常 {abnormalBatches.length}</Badge>
+              <Badge variant="outline">已发布批次 {publishedBatches}</Badge>
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">推荐效果分布</CardTitle>
+            <CardTitle className="text-lg">场景分布 & 策略贡献</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">总批次 {summary.recommendationRuns.total}</Badge>
-              <Badge variant="outline">已生成 {summary.recommendationRuns.generated}</Badge>
-              <Badge variant="outline">
-                部分采纳 {summary.recommendationRuns.partiallyApplied}
-              </Badge>
-              <Badge variant="outline">完全采纳 {summary.recommendationRuns.fullyApplied}</Badge>
-              <Badge variant="outline">未采纳 {summary.recommendationRuns.ignored}</Badge>
-            </div>
-            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <CardContent className="space-y-4">
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
               <p className="text-xs text-slate-500">场景分布</p>
               {sceneBreakdown.length === 0 ? (
-                <p className="text-sm text-slate-500">暂无场景统计。</p>
+                <p className="text-sm text-slate-500">暂无场景数据</p>
               ) : (
                 sceneBreakdown.map(([scene, count]) => (
-                  <div key={scene} className="flex items-center justify-between text-sm">
+                  <div key={scene} className="flex items-center justify-between">
                     <span>{SCENE_LABELS[scene] ?? scene}</span>
                     <span className="kpi-value">{count}</span>
                   </div>
                 ))
               )}
             </div>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/admin/observability/traces" className="gap-2">
-                前往链路观察
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="text-xs text-slate-500">策略贡献（按记录数）</p>
+              {strategyContribution.length === 0 ? (
+                <p className="text-sm text-slate-500">暂无策略贡献数据</p>
+              ) : (
+                strategyContribution.map(([strategyId, count]) => (
+                  <div key={strategyId} className="flex items-center justify-between">
+                    <span className="font-mono text-xs">{strategyId}</span>
+                    <span className="kpi-value">{count}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </CardContent>
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">运行事件</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-              <Input
-                placeholder="按事件类型/客户/场景搜索"
-                value={eventQ}
-                onChange={(event) => setEventQ(event.target.value)}
-              />
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEventPage(1);
-                  void loadEvents({ page: 1, q: eventQ });
-                }}
-                disabled={loadingEvents}
-              >
-                <Filter className="h-4 w-4" />
-                查询事件
-              </Button>
-              <div className="flex items-center text-xs text-slate-500">总数 {eventsTotal}</div>
-            </div>
-            <div className="rounded-xl border border-slate-200">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>时间</TableHead>
-                    <TableHead>事件</TableHead>
-                    <TableHead>客户</TableHead>
-                    <TableHead>场景</TableHead>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">异常批次列表</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>批次 ID</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>任务 / 经销商</TableHead>
+                <TableHead>错误摘要</TableHead>
+                <TableHead className="text-right">下钻</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {abnormalBatches.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-slate-500">
+                    当前筛选范围内无异常批次
+                  </TableCell>
+                </TableRow>
+              ) : (
+                abnormalBatches.slice(0, 12).map((batch) => (
+                  <TableRow key={batch.batch_id}>
+                    <TableCell className="font-mono text-xs">{batch.batch_id}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{batch.status}</Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {batch.job_id ?? "-"} / {batch.customer_id ?? "-"}
+                    </TableCell>
+                    <TableCell className="max-w-[420px] truncate text-xs">
+                      {batch.error_summary || "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button asChild size="sm" variant="outline">
+                          <Link
+                            href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
+                              batch.batch_id,
+                            )}`}
+                          >
+                            记录
+                          </Link>
+                        </Button>
+                        <Button asChild size="sm" variant="outline">
+                          <Link
+                            href={`/admin/observability/traces?batchId=${encodeURIComponent(
+                              batch.batch_id,
+                            )}`}
+                          >
+                            链路
+                          </Link>
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loadingEvents ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-slate-500">
-                        加载中...
-                      </TableCell>
-                    </TableRow>
-                  ) : events.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-slate-500">
-                        暂无事件
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    events.map((event) => (
-                      <TableRow
-                        key={event.id}
-                        className="cursor-pointer"
-                        onClick={() => setSelectedEvent(event)}
-                      >
-                        <TableCell className="font-mono text-xs">
-                          {new Date(event.timestamp).toLocaleString("zh-CN")}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {EVENT_LABELS[event.eventType] ?? event.eventType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{event.customerName}</TableCell>
-                        <TableCell>{SCENE_LABELS[event.scene] ?? event.scene}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setEventPage((prev) => Math.max(1, prev - 1))}
-                disabled={eventPage <= 1 || loadingEvents}
-              >
-                上一页
-              </Button>
-              <span>第 {eventPage} 页</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setEventPage((prev) => prev + 1)}
-                disabled={eventPage * 8 >= eventsTotal || loadingEvents}
-              >
-                下一页
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">事件详情</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!selectedEvent ? (
-              <p className="text-sm text-slate-500">点击左侧事件查看明细。</p>
-            ) : (
-              <>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-sm font-medium text-slate-800">
-                    {EVENT_LABELS[selectedEvent.eventType] ?? selectedEvent.eventType}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {selectedEvent.customerName} ·{" "}
-                    {SCENE_LABELS[selectedEvent.scene] ?? selectedEvent.scene}
-                  </p>
-                  <p className="font-mono text-xs text-slate-500">
-                    {new Date(selectedEvent.timestamp).toLocaleString("zh-CN")}
-                  </p>
-                </div>
-                <pre className="max-h-80 overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                  {JSON.stringify(selectedEvent.payload, null, 2)}
-                </pre>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </AdminPageFrame>
   );
 }

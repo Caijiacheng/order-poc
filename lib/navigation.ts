@@ -31,38 +31,53 @@ export const ADMIN_NAV_TREE: readonly AdminNavGroup[] = [
     items: [
       { href: "/admin/master-data/products", label: "商品档案" },
       { href: "/admin/master-data/dealers", label: "经销商档案" },
+      { href: "/admin/master-data/segments", label: "经销商分群" },
+      { href: "/admin/master-data/product-pools", label: "商品池与搭配" },
     ],
   },
   {
     key: "strategy",
-    label: "推荐与策略",
-    defaultHref: "/admin/strategy/recommendation-templates",
+    label: "策略与活动",
+    defaultHref: "/admin/strategy/campaigns",
     items: [
-      {
-        href: "/admin/strategy/recommendation-templates",
-        label: "推荐模板",
-      },
       { href: "/admin/strategy/campaigns", label: "活动策略" },
-      { href: "/admin/strategy/rules", label: "推荐规则" },
-      { href: "/admin/strategy/ai-expression", label: "AI 表达配置" },
+      { href: "/admin/strategy/recommendation-strategies", label: "推荐策略" },
+      { href: "/admin/strategy/expression-templates", label: "表达模板" },
+      { href: "/admin/strategy/global-rules", label: "全局规则" },
+    ],
+  },
+  {
+    key: "operations",
+    label: "生成与发布",
+    defaultHref: "/admin/operations/generation-jobs",
+    items: [
+      { href: "/admin/operations/generation-jobs", label: "批量生成任务" },
+      {
+        href: "/admin/operations/recommendation-batches",
+        label: "建议单批次",
+      },
     ],
   },
   {
     key: "analytics",
-    label: "数据与分析",
+    label: "数据复盘",
     defaultHref: "/admin/analytics/overview",
     items: [
       { href: "/admin/analytics/overview", label: "经营总览" },
-      { href: "/admin/analytics/recommendations", label: "推荐记录" },
+      {
+        href: "/admin/analytics/recommendation-records",
+        label: "建议单记录",
+      },
     ],
   },
   {
     key: "observability",
-    label: "审计与演示观察",
+    label: "观测与回滚",
     defaultHref: "/admin/observability/audit-logs",
     items: [
       { href: "/admin/observability/audit-logs", label: "审计日志" },
       { href: "/admin/observability/traces", label: "链路观察" },
+      { href: "/admin/observability/recovery", label: "回滚中心" },
     ],
   },
 ] as const;

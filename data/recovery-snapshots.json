@@ -1,0 +1,22 @@
+[
+  {
+    "snapshot_id": "snapshot_seed_default",
+    "snapshot_name": "Seed Baseline",
+    "source": "seed",
+    "description": "应用启动默认基线快照",
+    "config_snapshot_id": "cfg_seed_default",
+    "related_entity_types": [
+      "products",
+      "dealers",
+      "dealer_segments",
+      "product_pools",
+      "recommendation_strategies",
+      "expression_templates",
+      "global_rules"
+    ],
+    "status": "available",
+    "created_by": "system",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  }
+]

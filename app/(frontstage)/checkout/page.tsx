@@ -167,7 +167,7 @@ export default function CheckoutPage() {
         <Badge className="rounded-full px-3 py-1">下单确认</Badge>
         <h1 className="text-3xl font-semibold tracking-tight text-slate-950">交易确认页</h1>
         <p className="text-sm text-slate-600">
-          确认订单明细、配送与结算信息后提交订单。
+          确认订单明细、配送与结算信息后提交订单；本单优化说明由系统自动汇总。
         </p>
       </section>
 

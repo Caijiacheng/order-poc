@@ -1,17 +1,25 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 import type {
   AppMemoryStore,
   CampaignEntity,
   DealerEntity,
+  DealerSegmentEntity,
   DealerSuggestionTemplateEntity,
+  ExpressionTemplateEntity,
+  GenerationJobEntity,
+  GlobalRuleEntity,
   MetricEvent,
   ProductEntity,
+  ProductPoolEntity,
   PromptConfigEntity,
+  RecommendationBatchRecord,
   RecommendationItemRecord,
   RecommendationRunRecord,
+  RecommendationStrategyEntity,
+  RecoverySnapshotRecord,
   RuleConfigEntity,
   UIConfigEntity,
 } from "@/lib/memory/types";
@@ -22,27 +30,269 @@ function loadJsonFile<T>(filename: string): T {
   return JSON.parse(raw) as T;
 }
 
-function createSeedEvents(): MetricEvent[] {
+function loadJsonFileOptional<T>(filename: string): T | null {
+  const fullPath = path.join(process.cwd(), "data", filename);
+  if (!existsSync(fullPath)) {
+    return null;
+  }
+  const raw = readFileSync(fullPath, "utf-8");
+  return JSON.parse(raw) as T;
+}
+
+function toRuleConfig(globalRules: GlobalRuleEntity): RuleConfigEntity {
+  return {
+    replenishment_days_threshold: globalRules.replenishment_days_threshold,
+    cart_gap_trigger_amount: globalRules.cart_gap_trigger_amount,
+    threshold_amount: globalRules.threshold_amount,
+    prefer_frequent_items: globalRules.prefer_frequent_items,
+    prefer_pair_items: globalRules.prefer_pair_items,
+    box_adjust_if_close: globalRules.box_adjust_if_close,
+    box_adjust_distance_limit: globalRules.box_adjust_distance_limit,
+    allow_new_product_recommendation: globalRules.allow_new_product_recommendation,
+  };
+}
+
+function toPromptConfig(templates: ExpressionTemplateEntity[]): PromptConfigEntity {
+  const pickTemplate = (type: ExpressionTemplateEntity["template_type"]) =>
+    templates.find((item) => item.template_type === type && item.status === "active");
+
+  const recommendation = pickTemplate("recommendation");
+  const cart = pickTemplate("cart_optimization");
+  const explain = pickTemplate("explanation");
+  const shared = recommendation ?? cart ?? explain;
+
+  return {
+    global_style: {
+      tone: shared?.tone ?? "专业、简洁、面向执行",
+      avoid: shared?.avoid ?? [],
+      reason_limit: shared?.reason_limit ?? 3,
+    },
+    recommendation_prompt: {
+      system_role: recommendation?.system_role ?? "",
+      instruction: recommendation?.instruction ?? "",
+    },
+    cart_opt_prompt: {
+      system_role: cart?.system_role ?? "",
+      instruction: cart?.instruction ?? "",
+    },
+    explain_prompt: {
+      system_role: explain?.system_role ?? "",
+      instruction: explain?.instruction ?? "",
+    },
+  };
+}
+
+function deriveSegments(dealers: DealerEntity[]): DealerSegmentEntity[] {
+  const map = new Map<string, DealerSegmentEntity>();
+  const now = "2026-04-01T08:00:00.000Z";
+
+  for (const dealer of dealers) {
+    const key = `${dealer.customer_type}::${dealer.channel_type}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.city_list = Array.from(new Set([...existing.city_list, dealer.city]));
+      existing.dealer_ids = Array.from(
+        new Set([...existing.dealer_ids, dealer.customer_id]),
+      );
+      continue;
+    }
+
+    map.set(key, {
+      segment_id: `seg_${dealer.customer_type
+        .replace(/\s+/g, "_")
+        .replace(/[^\w\u4e00-\u9fa5]/g, "")
+        .toLowerCase()}_${dealer.channel_type
+        .replace(/\s+/g, "_")
+        .replace(/[^\w\u4e00-\u9fa5]/g, "")
+        .toLowerCase()}`,
+      segment_name: `${dealer.customer_type}·${dealer.channel_type}`,
+      description: `按客户类型 ${dealer.customer_type} 和渠道 ${dealer.channel_type} 归类`,
+      city_list: [dealer.city],
+      customer_types: [dealer.customer_type],
+      channel_types: [dealer.channel_type],
+      dealer_ids: [dealer.customer_id],
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    });
+  }
+
+  return Array.from(map.values());
+}
+
+function deriveProductPools(products: ProductEntity[]): ProductPoolEntity[] {
+  const now = "2026-04-01T08:00:00.000Z";
+  const activeProducts = products.filter((item) => item.status === "active");
+  const byTag = (tag: string) =>
+    activeProducts
+      .filter((item) => item.tags.includes(tag))
+      .map((item) => item.sku_id);
+
   return [
     {
-      id: randomUUID(),
-      timestamp: "2026-04-15T01:10:00.000Z",
-      customerId: "dealer_xm_sm",
-      customerName: "厦门思明经销商",
-      eventType: "recommendation_generated",
-      scene: "daily_recommendation",
-      payload: { recommendation_run_id: "reco_run_seed_001" },
+      pool_id: "pool_regular_replenishment",
+      pool_name: "常规补货池",
+      pool_type: "regular",
+      description: "日常补货高频 SKU",
+      sku_ids: activeProducts
+        .filter((item) => item.tags.includes("常购"))
+        .map((item) => item.sku_id),
+      pair_sku_ids: [],
+      status: "active",
+      created_at: now,
+      updated_at: now,
     },
     {
-      id: randomUUID(),
-      timestamp: "2026-04-15T01:20:00.000Z",
-      customerId: "dealer_cd_pf",
-      customerName: "成都餐饮批发经销商",
-      eventType: "cart_optimized",
-      scene: "box_pair_optimization",
-      payload: { recommendation_run_id: "reco_run_seed_002" },
+      pool_id: "pool_hot_sale",
+      pool_name: "热销商品池",
+      pool_type: "hot_sale",
+      description: "动销快、优先保障供货的商品池",
+      sku_ids: byTag("高频动销"),
+      pair_sku_ids: [],
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      pool_id: "pool_new_product",
+      pool_name: "新品商品池",
+      pool_type: "new_product",
+      description: "用于新品试销场景",
+      sku_ids: activeProducts
+        .filter((item) => item.is_new_product)
+        .map((item) => item.sku_id),
+      pair_sku_ids: [],
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      pool_id: "pool_pairing",
+      pool_name: "搭配关系池",
+      pool_type: "pairing",
+      description: "用于凑单搭配补充场景",
+      sku_ids: activeProducts.map((item) => item.sku_id),
+      pair_sku_ids: activeProducts.flatMap((item) => item.pair_items),
+      status: "active",
+      created_at: now,
+      updated_at: now,
     },
   ];
+}
+
+function deriveStrategiesFromLegacyTemplates(
+  templates: DealerSuggestionTemplateEntity[],
+  dealers: DealerEntity[],
+  segments: DealerSegmentEntity[],
+): RecommendationStrategyEntity[] {
+  return templates.map((template) => {
+    const linkedSegments = segments
+      .filter((segment) => segment.dealer_ids.includes(template.customer_id))
+      .map((segment) => segment.segment_id);
+    return {
+      strategy_id: template.template_id,
+      strategy_name: template.template_name,
+      scene: template.scene,
+      target_dealer_ids: [template.customer_id],
+      dealer_segment_ids: linkedSegments,
+      product_pool_ids: ["pool_regular_replenishment", "pool_pairing"],
+      campaign_ids: [],
+      candidate_sku_ids: template.reference_items.map((item) => item.sku_id),
+      reference_items: template.reference_items,
+      business_notes: template.business_notes,
+      expression_template_id:
+        template.scene === "box_pair_optimization"
+          ? "expr_cart_opt_default"
+          : "expr_recommendation_default",
+      priority: template.priority,
+      status: template.enabled ? "active" : "inactive",
+      created_at: template.created_at,
+      updated_at: template.updated_at,
+    };
+  });
+}
+
+function deriveLegacyTemplatesFromStrategies(
+  strategies: RecommendationStrategyEntity[],
+): DealerSuggestionTemplateEntity[] {
+  return strategies.map((strategy) => ({
+    template_id: strategy.strategy_id,
+    customer_id: strategy.target_dealer_ids[0] ?? "",
+    template_name: strategy.strategy_name,
+    scene: strategy.scene,
+    reference_items: strategy.reference_items,
+    business_notes: strategy.business_notes,
+    style_hint: "沿用策略表达模板",
+    priority: strategy.priority,
+    enabled: strategy.status === "active",
+    created_at: strategy.created_at,
+    updated_at: strategy.updated_at,
+  }));
+}
+
+function deriveExpressionTemplatesFromPromptConfig(
+  promptConfig: PromptConfigEntity,
+): ExpressionTemplateEntity[] {
+  const now = "2026-04-01T08:00:00.000Z";
+  return [
+    {
+      expression_template_id: "expr_recommendation_default",
+      expression_template_name: "推荐表达模板",
+      template_type: "recommendation",
+      scene: "all",
+      tone: promptConfig.global_style.tone,
+      avoid: promptConfig.global_style.avoid,
+      reason_limit: promptConfig.global_style.reason_limit,
+      system_role: promptConfig.recommendation_prompt.system_role,
+      instruction: promptConfig.recommendation_prompt.instruction,
+      style_hint: "推荐建议输出模板",
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      expression_template_id: "expr_cart_opt_default",
+      expression_template_name: "凑单优化表达模板",
+      template_type: "cart_optimization",
+      scene: "all",
+      tone: promptConfig.global_style.tone,
+      avoid: promptConfig.global_style.avoid,
+      reason_limit: promptConfig.global_style.reason_limit,
+      system_role: promptConfig.cart_opt_prompt.system_role,
+      instruction: promptConfig.cart_opt_prompt.instruction,
+      style_hint: "凑单建议输出模板",
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      expression_template_id: "expr_explain_default",
+      expression_template_name: "解释表达模板",
+      template_type: "explanation",
+      scene: "all",
+      tone: promptConfig.global_style.tone,
+      avoid: promptConfig.global_style.avoid,
+      reason_limit: promptConfig.global_style.reason_limit,
+      system_role: promptConfig.explain_prompt.system_role,
+      instruction: promptConfig.explain_prompt.instruction,
+      style_hint: "解释文案输出模板",
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+}
+
+function toGlobalRules(input: RuleConfigEntity): GlobalRuleEntity {
+  const now = "2026-04-01T08:00:00.000Z";
+  return {
+    global_rule_id: "global_rules_default",
+    rule_version: "2026.04.seed",
+    ...input,
+    status: "active",
+    created_at: now,
+    updated_at: now,
+  };
 }
 
 function createSeedRecommendationRuns(): RecommendationRunRecord[] {
@@ -50,12 +300,15 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
     {
       recommendation_run_id: "reco_run_seed_001",
       session_id: "session_seed_001",
+      batch_id: "batch_seed_001",
       trace_id: "trace_seed_001",
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
       scene: "daily_recommendation",
       page_name: "/procurement",
       trigger_source: "manual",
+      strategy_id: "tpl_xm_daily",
+      expression_template_id: "expr_recommendation_default",
       template_id: "tpl_xm_daily",
       template_name: "厦门日常补货建议",
       prompt_version: "2026.04.15.a",
@@ -79,12 +332,15 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
     {
       recommendation_run_id: "reco_run_seed_002",
       session_id: "session_seed_002",
+      batch_id: "batch_seed_002",
       trace_id: "trace_seed_002",
       customer_id: "dealer_cd_pf",
       customer_name: "成都餐饮批发经销商",
       scene: "box_pair_optimization",
       page_name: "/basket",
       trigger_source: "assistant",
+      strategy_id: "tpl_cd_boxpair",
+      expression_template_id: "expr_cart_opt_default",
       template_id: "tpl_cd_boxpair",
       template_name: "成都箱规与搭配优化",
       prompt_version: "2026.04.15.a",
@@ -202,21 +458,201 @@ function createSeedRecommendationItems(): RecommendationItemRecord[] {
   ];
 }
 
+function createSeedRecommendationBatches(): RecommendationBatchRecord[] {
+  return [
+    {
+      batch_id: "batch_seed_001",
+      batch_type: "scheduled_generation",
+      trigger_source: "admin",
+      job_id: "job_seed_2026-04-15",
+      customer_id: "dealer_xm_sm",
+      scene: "daily_recommendation",
+      trace_id: "trace_seed_001",
+      related_run_ids: ["reco_run_seed_001"],
+      config_snapshot_id: "snapshot_seed_default",
+      started_at: "2026-04-15T01:08:00.000Z",
+      finished_at: "2026-04-15T01:18:00.000Z",
+      status: "success",
+      publication_status: "published",
+      fallback_used: false,
+      created_at: "2026-04-15T01:08:00.000Z",
+      updated_at: "2026-04-15T01:18:00.000Z",
+    },
+    {
+      batch_id: "batch_seed_002",
+      batch_type: "frontstage_realtime",
+      trigger_source: "frontstage",
+      session_id: "session_seed_002",
+      customer_id: "dealer_cd_pf",
+      scene: "box_pair_optimization",
+      trace_id: "trace_seed_002",
+      related_run_ids: ["reco_run_seed_002"],
+      config_snapshot_id: "snapshot_seed_default",
+      started_at: "2026-04-15T01:20:00.000Z",
+      finished_at: "2026-04-15T01:23:00.000Z",
+      status: "success",
+      publication_status: "unpublished",
+      fallback_used: false,
+      created_at: "2026-04-15T01:20:00.000Z",
+      updated_at: "2026-04-15T01:23:00.000Z",
+    },
+  ];
+}
+
+function createSeedEvents(): MetricEvent[] {
+  return [
+    {
+      id: randomUUID(),
+      timestamp: "2026-04-15T01:10:00.000Z",
+      customerId: "dealer_xm_sm",
+      customerName: "厦门思明经销商",
+      eventType: "recommendation_generated",
+      scene: "daily_recommendation",
+      payload: {
+        recommendation_run_id: "reco_run_seed_001",
+        batch_id: "batch_seed_001",
+      },
+    },
+    {
+      id: randomUUID(),
+      timestamp: "2026-04-15T01:20:00.000Z",
+      customerId: "dealer_cd_pf",
+      customerName: "成都餐饮批发经销商",
+      eventType: "recommendation_batch_created",
+      scene: "box_pair_optimization",
+      payload: {
+        recommendation_run_id: "reco_run_seed_002",
+        batch_id: "batch_seed_002",
+      },
+    },
+  ];
+}
+
+function createSeedGenerationJobs(): GenerationJobEntity[] {
+  return [
+    {
+      job_id: "job_seed_2026-04-15",
+      job_name: "2026-04-15 每日建议单生成",
+      business_date: "2026-04-15",
+      target_dealer_ids: ["dealer_xm_sm", "dealer_dg_sm", "dealer_cd_pf"],
+      target_segment_ids: [],
+      strategy_ids: ["tpl_xm_daily", "tpl_dg_daily", "tpl_cd_boxpair"],
+      publish_mode: "manual",
+      status: "completed",
+      publication_status: "published",
+      precheck_summary: "seed 预检通过",
+      last_precheck_at: "2026-04-15T01:00:00.000Z",
+      last_sample_batch_id: "batch_seed_001",
+      last_batch_id: "batch_seed_001",
+      published_batch_id: "batch_seed_001",
+      published_at: "2026-04-15T01:18:00.000Z",
+      created_at: "2026-04-15T00:58:00.000Z",
+      updated_at: "2026-04-15T01:18:00.000Z",
+    },
+  ];
+}
+
+function normalizeGenerationJob(input: GenerationJobEntity): GenerationJobEntity {
+  return {
+    ...input,
+    publication_status:
+      input.publication_status ??
+      (input.published_batch_id ? "published" : input.last_batch_id ? "ready" : "unpublished"),
+    last_precheck_at: input.last_precheck_at,
+    last_sample_batch_id: input.last_sample_batch_id,
+    published_batch_id: input.published_batch_id,
+    published_at: input.published_at,
+  };
+}
+
+function normalizeRecommendationBatch(
+  input: RecommendationBatchRecord,
+): RecommendationBatchRecord {
+  return {
+    ...input,
+    job_id: input.job_id,
+    publication_status: input.publication_status ?? "unpublished",
+  };
+}
+
+function createSeedRecoverySnapshots(): RecoverySnapshotRecord[] {
+  return [
+    {
+      snapshot_id: "snapshot_seed_default",
+      snapshot_name: "Seed Baseline",
+      source: "seed",
+      description: "应用启动默认基线快照",
+      config_snapshot_id: "cfg_seed_default",
+      related_entity_types: [
+        "products",
+        "dealers",
+        "dealer_segments",
+        "product_pools",
+        "recommendation_strategies",
+        "expression_templates",
+        "global_rules",
+      ],
+      status: "available",
+      created_by: "system",
+      created_at: "2026-04-01T08:00:00.000Z",
+      updated_at: "2026-04-01T08:00:00.000Z",
+    },
+  ];
+}
+
 export function loadSeedStore(): AppMemoryStore {
   const products = loadJsonFile<ProductEntity[]>("products.json");
   const dealers = loadJsonFile<DealerEntity[]>("dealers.json");
   const campaigns = loadJsonFile<CampaignEntity[]>("campaigns.json");
-  const suggestionTemplates = loadJsonFile<DealerSuggestionTemplateEntity[]>(
+  const uiConfig = loadJsonFile<UIConfigEntity>("ui-config.json");
+
+  const rulesFromFile = loadJsonFile<RuleConfigEntity>("rules.json");
+  const promptConfigFromFile = loadJsonFile<PromptConfigEntity>("prompt-config.json");
+  const legacyTemplatesFromFile = loadJsonFile<DealerSuggestionTemplateEntity[]>(
     "suggestion-templates.json",
   );
-  const rules = loadJsonFile<RuleConfigEntity>("rules.json");
-  const promptConfig = loadJsonFile<PromptConfigEntity>("prompt-config.json");
-  const uiConfig = loadJsonFile<UIConfigEntity>("ui-config.json");
+
+  const dealerSegments =
+    loadJsonFileOptional<DealerSegmentEntity[]>("dealer-segments.json") ??
+    deriveSegments(dealers);
+  const productPools =
+    loadJsonFileOptional<ProductPoolEntity[]>("product-pools.json") ??
+    deriveProductPools(products);
+  const recommendationStrategies =
+    loadJsonFileOptional<RecommendationStrategyEntity[]>(
+      "recommendation-strategies.json",
+    ) ??
+    deriveStrategiesFromLegacyTemplates(
+      legacyTemplatesFromFile,
+      dealers,
+      dealerSegments,
+    );
+  const expressionTemplates =
+    loadJsonFileOptional<ExpressionTemplateEntity[]>("expression-templates.json") ??
+    deriveExpressionTemplatesFromPromptConfig(promptConfigFromFile);
+  const globalRules =
+    loadJsonFileOptional<GlobalRuleEntity>("global-rules.json") ??
+    toGlobalRules(rulesFromFile);
 
   const recommendationRuns = createSeedRecommendationRuns();
   const recommendationItems = createSeedRecommendationItems();
-  const latestEvents = createSeedEvents();
+  const recommendationBatches =
+    loadJsonFileOptional<RecommendationBatchRecord[]>("recommendation-batches.json") ??
+    createSeedRecommendationBatches();
+  const generationJobs =
+    loadJsonFileOptional<GenerationJobEntity[]>("generation-jobs.json") ??
+    createSeedGenerationJobs();
+  const recoverySnapshots =
+    loadJsonFileOptional<RecoverySnapshotRecord[]>("recovery-snapshots.json") ??
+    createSeedRecoverySnapshots();
 
+  const suggestionTemplates = deriveLegacyTemplatesFromStrategies(
+    recommendationStrategies,
+  );
+  const promptConfig = toPromptConfig(expressionTemplates);
+  const rules = toRuleConfig(globalRules);
+
+  const latestEvents = createSeedEvents();
   const metrics = {
     sessionCount: 9,
     recommendationRequests: 28,
@@ -247,15 +683,23 @@ export function loadSeedStore(): AppMemoryStore {
   return {
     products,
     dealers,
-    suggestionTemplates,
+    dealerSegments,
+    productPools,
+    recommendationStrategies,
+    expressionTemplates,
     campaigns,
-    rules,
-    promptConfig,
+    globalRules,
+    generationJobs: generationJobs.map(normalizeGenerationJob),
+    recommendationBatches: recommendationBatches.map(normalizeRecommendationBatch),
+    recoverySnapshots,
     uiConfig,
     metrics,
     recommendationRuns,
     recommendationItems,
     cartSessions: {},
     auditLogs: [],
+    suggestionTemplates,
+    rules,
+    promptConfig,
   };
 }

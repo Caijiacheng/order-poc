@@ -4,3 +4,28 @@ export type ListResult<T> = {
   page: number;
   pageSize: number;
 };
+
+export type RecommendationRecordFilters = {
+  dateFrom?: string;
+  dateTo?: string;
+  customerId?: string;
+  scene?: string;
+  skuId?: string;
+  adoptionStatus?: string;
+  modelName?: string;
+  batchId?: string;
+  strategyId?: string;
+  expressionTemplateId?: string;
+};
+
+export type RecommendationBatchFilters = {
+  dateFrom?: string;
+  dateTo?: string;
+  jobId?: string;
+  customerId?: string;
+  scene?: string;
+  status?: string;
+  publicationStatus?: string;
+  triggerSource?: string;
+  batchType?: string;
+};

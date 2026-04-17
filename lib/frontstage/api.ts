@@ -34,6 +34,18 @@ export type RecommendationsResponse = {
   };
 };
 
+export type PublishedSuggestionsResponse = {
+  dailyRecommendations: RecommendationCardItem[];
+  weeklyFocusRecommendations: RecommendationCardItem[];
+  summary: {
+    published: boolean;
+    job_id?: string;
+    batch_id?: string;
+    published_at?: string;
+    trace_id?: string;
+  };
+};
+
 export type ExplainResponse = {
   title: string;
   content: string;
@@ -209,6 +221,16 @@ export async function createRecommendations(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+  return {
+    ...result.data,
+    ...normalizeLangfuseMeta(result.meta),
+  };
+}
+
+export async function fetchPublishedSuggestions(customerId: string) {
+  const result = await requestJsonWithMeta<PublishedSuggestionsResponse>(
+    `/api/frontstage/published-suggestions?customerId=${encodeURIComponent(customerId)}`,
+  );
   return {
     ...result.data,
     ...normalizeLangfuseMeta(result.meta),

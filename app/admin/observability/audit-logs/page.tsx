@@ -18,16 +18,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fetchAuditLogs } from "@/lib/frontstage/api";
+import { requestJson } from "@/lib/admin/client";
+import type { ListResult } from "@/lib/admin/types";
 import type { AuditLogEvent } from "@/lib/memory/types";
 
 const ENTITY_LABELS: Record<AuditLogEvent["entity_type"], string> = {
   product: "商品档案",
   dealer: "经销商档案",
-  suggestion_template: "推荐模板",
+  dealer_segment: "经销商分群",
+  product_pool: "商品池",
+  recommendation_strategy: "推荐策略",
+  expression_template: "表达模板",
+  suggestion_template: "推荐策略",
   campaign: "活动策略",
-  rule: "推荐规则",
-  prompt: "AI 表达配置",
+  global_rule: "全局规则",
+  generation_job: "生成任务",
+  recommendation_batch: "建议单批次",
+  recovery_snapshot: "恢复快照",
+  rule: "全局规则",
+  prompt: "表达模板",
 };
 
 const ACTION_LABELS: Record<AuditLogEvent["action"], string> = {
@@ -35,6 +44,7 @@ const ACTION_LABELS: Record<AuditLogEvent["action"], string> = {
   update: "更新",
   delete: "删除",
   toggle: "启停",
+  apply: "应用",
 };
 
 type QueryState = {
@@ -70,7 +80,9 @@ export default function AuditLogsPage() {
       if (nextQuery.q.trim()) {
         params.set("q", nextQuery.q.trim());
       }
-      const data = await fetchAuditLogs(params);
+      const data = await requestJson<ListResult<AuditLogEvent>>(
+        `/api/admin/audit-logs?${params.toString()}`,
+      );
       setLogs(data.items);
       setTotal(data.total);
       setSelected((prev) =>
@@ -103,6 +115,9 @@ export default function AuditLogsPage() {
               前往链路观察
               <ArrowRight className="h-4 w-4" />
             </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/observability/recovery">前往回滚中心</Link>
           </Button>
         </div>
       }

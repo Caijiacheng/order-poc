@@ -1,6 +1,10 @@
-# 手工测试说明
+# 手工测试说明（按角色）
 
-本文档用于本地手工验收这个 POC。
+本文档按最终产品三角色组织手工验收路径：
+
+- 经销商（前台采购）
+- 运营（后台配置与生成发布）
+- IT 运维（观测、审计、恢复）
 
 ## 1. 前置准备
 
@@ -17,26 +21,16 @@ pnpm exec playwright install chromium
 cp .env.example .env.local
 ```
 
-推荐分成两种模式：
+### 1.3 运行模式
 
-### 1.3 Mock 模式
-
-适合页面联调、讲流程、看前后台数据流。
-
-`.env.local` 至少设置：
+Mock 模式（页面联调/流程演示）：
 
 ```bash
 LLM_MOCK_MODE=true
 LLM_MODEL=mock-manual
 ```
 
-这一模式下可以不填真实 `LLM_API_KEY` 和 `LANGFUSE_*`。
-
-### 1.4 Live 模式
-
-适合完整验收真实模型和 Langfuse 链路。
-
-`.env.local` 需要补齐：
+Live 模式（模型 + Langfuse 链路）：
 
 ```bash
 LLM_MOCK_MODE=false
@@ -51,250 +45,155 @@ NEXT_PUBLIC_LANGFUSE_BASE_URL=...
 
 说明：
 
-- `NEXT_PUBLIC_LANGFUSE_BASE_URL` 建议与 `LANGFUSE_BASE_URL` 保持一致
-- 缺少 `LANGFUSE_*` 时，页面仍可运行，但 Trace 链路不会完整上报
+- `NEXT_PUBLIC_LANGFUSE_BASE_URL` 建议与 `LANGFUSE_BASE_URL` 一致。
+- 缺少 `LANGFUSE_*` 时，业务页面可运行，但链路上报不完整。
 
-## 2. 启动方式
+## 2. 启动与入口
 
-启动开发服务器：
+启动：
 
 ```bash
 pnpm dev
 ```
 
-打开：
+入口地址：
 
-- 前台：http://localhost:3000
-- 后台：http://localhost:3000/admin/dashboard
+- 前台入口：`http://localhost:3000`（进入后走 `/procurement` 主流程）
+- 后台入口：`http://localhost:3000/admin`（进入后走 `/admin/workbench/overview`）
 
-## 3. 推荐的手工验收路径
+## 3. 角色一：经销商验收（消费建议并下单）
 
-建议按下面顺序走，基本对应客户 demo 脚本。
+目标：验证经销商只消费已发布建议，不承担“生成建议”操作。
 
-### 3.1 后台配置台预检查
-
-先打开这些页面，确认 seed 已经正常加载：
-
-- `/admin/products`
-- `/admin/dealers`
-- `/admin/suggestion-templates`
-- `/admin/campaigns`
-- `/admin/prompts`
-- `/admin/rules`
-- `/admin/reports`
-- `/admin/reports/recommendations`
+### 3.1 采购首页 `/procurement`
 
 检查点：
 
-- 商品数能正常展示
-- 有 3 个经销商画像
-- 模板列表不为空
-- Prompt 与规则页能打开
-- 报表页初始可查询
+- 可切换经销商画像。
+- 可看到“今日建议单 / 周活动备货 / 常购快捷补货 / 上次订单再来一单”。
+- 建议项支持“采纳、改量、忽略、查看原因”。
+- 页面提示语为“加载已发布建议单”语义，不出现“手动生成建议”入口。
 
-### 3.2 首页建议单
-
-打开 `/`，先选择经销商，再点 `生成建议`。
-
-建议分别测这 3 个经销商：
-
-- 厦门思明经销商
-- 东莞商超配送经销商
-- 成都餐饮批发经销商
+### 3.2 商品选购 `/catalog`
 
 检查点：
 
-- 页面出现 `今日建议补货` 和 `本周重点推荐`
-- `Daily Run`、`Weekly Run` 已生成
-- 不同经销商的 SKU 候选明显不同
-- 点 `查看解释` 后能看到 explanation 卡片
-- 点 `加入购物车` 或 `全部加入购物车` 后有成功提示
+- 搜索、分类筛选、视图筛选（全部/常购/待补货/活动/新品）可用。
+- 右侧“系统提示”可直接采纳或批量采纳。
+- 商品加购成功后，采购清单摘要刷新。
 
-重点观察的画像差异：
-
-- 厦门：偏味极鲜、蚝油、金标生抽
-- 东莞：偏小规格、活动组合、小包装生抽
-- 成都：偏餐饮大包装、整箱采购相关 SKU
-
-### 3.3 下单页
-
-打开 `/order`。
+### 3.3 采购清单 `/basket`
 
 检查点：
 
-- 能切换经销商
-- 能按名称 / SKU / 标签搜索
-- 能按分类筛选
-- 单个商品可以直接 `加入购物车`
-- 点 `生成快速建议` 后，能出现快速建议
-- 点 `应用快速建议` 后，购物车摘要会变化
+- 进入页面后可自动看到门槛补差、箱规修正、搭配补充建议（购物车非空时）。
+- 应用单条建议或“应用全部优化”后，数量/金额/门槛差额变化正确。
+- 仅做“应用优化”动作，不存在“手动生成优化建议”业务要求。
 
-建议人工验证一次：
-
-1. 切到厦门经销商
-2. 生成快速建议
-3. 记下推荐 SKU
-4. 切到东莞或成都再生成一次
-5. 确认推荐结构发生变化
-
-### 3.4 购物车页
-
-打开 `/cart`，点击 `重新优化`。
+### 3.4 下单确认 `/checkout`
 
 检查点：
 
-- 出现 `门槛补齐`
-- 出现 `箱规修正`
-- 出现 `搭配加购`
-- 生成 `Optimization Run`
-- 如果配置了 Langfuse，可点 `打开 Langfuse Trace`
+- 订单明细、收货、配送、结算、发票与备注信息完整。
+- “本单优化说明”自动汇总可见。
+- 提交后返回 `order_id`，并显示订单摘要。
 
-建议至少覆盖这 3 种动作：
+## 4. 角色二：运营验收（配置 -> 预检 -> 生成 -> 发布 -> 复盘）
 
-1. 点门槛补齐的 `应用`
-2. 点箱规修正的 `应用`
-3. 点搭配加购的 `应用`
+目标：验证运营侧可控生成链路和结果复盘能力。
 
-也可以直接点 `应用全部优化`。
+### 4.1 配置基线
 
-应用后检查：
+依次检查以下页面可读可写：
 
-- 购物车表格数量发生变化
-- 金额 / 门槛摘要变化
-- 成功提示出现
+- `/admin/master-data/products`
+- `/admin/master-data/dealers`
+- `/admin/master-data/segments`
+- `/admin/master-data/product-pools`
+- `/admin/strategy/campaigns`
+- `/admin/strategy/recommendation-strategies`
+- `/admin/strategy/expression-templates`
+- `/admin/strategy/global-rules`
 
-### 3.5 提交确认页
+建议至少完成一次变更并保存（如策略优先级、活动状态、表达模板文案）。
 
-打开 `/confirm`，点 `确认提交订单`。
+### 4.2 生成任务链路
+
+在 `/admin/operations/generation-jobs`：
+
+1. 创建或编辑任务（目标经销商/分群/策略）。
+2. 执行预检并确认状态进入可执行。
+3. 触发抽样试生成。
+4. 触发正式生成。
+5. 发布批次（或验证自动发布策略）。
 
 检查点：
 
-- 成功生成 `order_id`
-- 页面展示订单摘要
-- 能看到本单优化结果汇总
+- 任务状态与发布时间字段更新正确。
+- 任务可跳转到批次中心查看结果。
 
-## 4. 后台配置变更验证
+### 4.3 批次与记录复盘
 
-### 4.1 Prompt 变更
+在 `/admin/operations/recommendation-batches`：
 
-打开 `/admin/prompts`。
+- 按任务 ID、经销商、场景、状态筛选批次。
+- 选择异常批次可下钻到记录页或链路页。
 
-推荐测试方式：
+在 `/admin/analytics/recommendation-records`：
 
-1. 在 `recommendation_prompt.instruction` 末尾临时加一个唯一标记，例如 `MANUAL_TEST_MARKER_001`
-2. 点击 `保存 Prompt`
-3. 回到首页重新生成建议
-4. 打开 `/admin/reports/recommendations`
-5. 找到刚生成的 run，点开详情
-6. 检查 `prompt_snapshot` 里是否包含这个标记
+- 按时间、经销商、场景、SKU、状态、采纳状态筛选。
+- 详情可查看 run/item 级状态、trace_id、候选与返回结果字段。
 
-这样能验证：
+## 5. 角色三：IT 运维验收（观测 -> 审计 -> 恢复）
 
-- 后台配置保存成功
-- 推荐 run 确实使用了最新 Prompt
-- 不依赖模型最终自然语言措辞
+目标：验证“可观测、可追溯、可回滚”闭环。
 
-测试结束后建议把这个标记删掉，再保存一次。
+### 5.1 工作台总览
 
-### 4.2 商品 / 经销商 / 模板变更
+打开 `/admin/workbench/overview`，检查：
 
-可选做法：
+- 今日批次成功/失败/部分失败统计。
+- 配置健康度（商品、经销商、策略、活动、表达模板）可见。
+- 最近审计日志可见。
 
-1. 在 `/admin/products` 新增或停用一个商品
-2. 或在 `/admin/suggestion-templates` 修改某个模板优先级 / 启用状态
-3. 重新生成建议
-4. 去 `/admin/reports/recommendations` 查看：
-   - `template_id`
-   - `template_name`
-   - `candidate_sku_ids`
-   - `returned_sku_ids`
+### 5.2 链路观察
 
-这是比只看页面文案更稳定的验证方法。
+打开 `/admin/observability/traces`，检查：
 
-## 5. 报表核查
+- 可按时间、经销商、场景、采纳状态、批次筛选。
+- run 详情可跳转 Langfuse（Live 模式下）。
+- 记录中的 trace_id 与 Langfuse 对应可对齐。
 
-打开 `/admin/reports/recommendations`。
+### 5.3 审计与恢复
 
-建议检查：
+打开 `/admin/observability/audit-logs`：
 
-- 能按 `customerId` 查询
-- 能按 `scene` 查询
-- 能按 `skuId` 查询
-- 能按 `adoptionStatus` 查询
-- 点开某个 run 后能看到：
-  - `trace_id`
-  - `template_id`
-  - `prompt_snapshot`
-  - 推荐条目的最终状态
+- 可查询近期配置变更与关键操作轨迹。
 
-如果你刚刚做过解释、加购、优化、提交订单，这里应该能看到状态变化。
+打开 `/admin/observability/recovery`：
 
-## 6. Langfuse 核查
+- 可创建恢复快照。
+- 可对可用快照执行“应用恢复”。
+- 可归档历史快照。
 
-如果启用了 Live 模式并且 `LANGFUSE_*` 正确：
+## 6. 最小回归组合（推荐）
 
-### 6.1 页面入口
+1. 运营在 `/admin/operations/generation-jobs` 完成一次预检、生成、发布。
+2. 经销商按 `/procurement` -> `/catalog` -> `/basket` -> `/checkout` 完成一单。
+3. 运营在 `/admin/analytics/recommendation-records` 查询本单关联 run。
+4. IT 在 `/admin/observability/traces` 与 `/admin/observability/recovery` 完成链路核查与恢复演练。
 
-可以在这些地方直接点 Trace 链接：
+## 7. 常见问题
 
-- 首页推荐摘要
-- 购物车优化面板
-- 推荐记录详情页
+### 7.1 重启后数据变化
 
-### 6.2 预期的顶级 Trace
+预期行为。系统为内存态，重启会回到 seed 初始状态。
 
-重点看下面几类：
+### 7.2 页面可用但无 Trace
 
-- `homepage.generate-recommendations`
-- `recommendation.explain`
-- `cart.generate-optimization`
-- `confirm.submit-order`
+通常是 `LANGFUSE_*` 或 `NEXT_PUBLIC_LANGFUSE_BASE_URL` 配置不完整。
 
-### 6.3 预期核查项
-
-在 Langfuse 中建议核查：
-
-- trace 能打开
-- trace 名称正确
-- customer / session / scene 元数据存在
-- LLM 调用存在
-- 输入输出不是空值
-- 与后台推荐记录里的 `trace_id` 能对上
-
-## 7. 推荐的手工回归组合
-
-如果你只想做一轮最小手工回归，按这个走：
-
-1. `/` 生成建议，查看解释，全部加入购物车
-2. `/cart` 重新优化，应用全部优化
-3. `/confirm` 提交订单
-4. `/admin/reports/recommendations` 查这次 run
-5. 打开 Langfuse Trace 核对链路
-
-如果你要做一轮更完整的客户验收，再补：
-
-1. `/admin/prompts` 改一次 Prompt 标记
-2. `/order` 切换 3 个经销商，比较差异
-3. `/admin/reports/recommendations` 核对 `prompt_snapshot` 和 `template_id`
-
-## 8. 常见问题
-
-### 8.1 重启后数据变了
-
-这是预期行为。当前所有运行时状态都在内存里，重启会回到 seed 初始状态。
-
-### 8.2 页面能跑，但没有 Trace
-
-通常是 `LANGFUSE_*` 没配完整，或 `NEXT_PUBLIC_LANGFUSE_BASE_URL` 没设。
-
-### 8.3 推荐失败
-
-先看两件事：
-
-1. `LLM_MOCK_MODE` 是否和当前模式一致
-2. `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL` 是否配置完整
-
-### 8.4 想直接跑自动化
+### 7.3 想直接跑自动化
 
 ```bash
 pnpm test:e2e:mock

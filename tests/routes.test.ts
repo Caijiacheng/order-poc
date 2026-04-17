@@ -23,16 +23,21 @@ describe("required route coverage", () => {
       "/admin/workbench/overview",
       "/admin/master-data/products",
       "/admin/master-data/dealers",
-      "/admin/strategy/recommendation-templates",
+      "/admin/master-data/segments",
+      "/admin/master-data/product-pools",
       "/admin/strategy/campaigns",
-      "/admin/strategy/rules",
-      "/admin/strategy/ai-expression",
+      "/admin/strategy/recommendation-strategies",
+      "/admin/strategy/expression-templates",
+      "/admin/strategy/global-rules",
+      "/admin/operations/generation-jobs",
+      "/admin/operations/recommendation-batches",
       "/admin/analytics/overview",
-      "/admin/analytics/recommendations",
+      "/admin/analytics/recommendation-records",
       "/admin/observability/audit-logs",
       "/admin/observability/traces",
+      "/admin/observability/recovery",
     ]);
-    expect(ADMIN_ROUTES).toHaveLength(11);
+    expect(ADMIN_ROUTES).toHaveLength(16);
   });
 
   it("keeps redirect entry routes separate from canonical page routes", () => {
@@ -49,7 +54,7 @@ describe("required route coverage", () => {
       ...FRONTSTAGE_ROUTES,
       ...ADMIN_ROUTES,
     ]);
-    expect(REQUIRED_ROUTES).toHaveLength(17);
+    expect(REQUIRED_ROUTES).toHaveLength(22);
     expect(new Set(REQUIRED_ROUTES).size).toBe(REQUIRED_ROUTES.length);
   });
 });

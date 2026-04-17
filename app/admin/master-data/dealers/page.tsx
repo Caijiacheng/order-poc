@@ -3,37 +3,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
-import { AdminPageFrame } from "@/components/admin/page-frame";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
+import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
+import { AdminPageFrame } from "@/components/admin/page-frame";
+import { TokenEditor } from "@/components/admin/token-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  AdminClientError,
-  formatFieldErrors,
-  fromEditableText,
-  requestJson,
-  toEditableText,
-} from "@/lib/admin/client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AdminClientError, formatFieldErrors, requestJson } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
-import type { DealerEntity } from "@/lib/memory/types";
+import type { DealerEntity, ProductEntity } from "@/lib/memory/types";
 
 type DealerForm = {
   customer_id: string;
@@ -46,10 +29,10 @@ type DealerForm = {
   order_frequency: string;
   price_sensitivity: "高" | "中" | "中低" | "低";
   new_product_acceptance: "高" | "中" | "低";
-  frequent_items: string;
-  forbidden_items: string;
-  preferred_categories: string;
-  business_traits: string;
+  frequent_items: string[];
+  forbidden_items: string[];
+  preferred_categories: string[];
+  business_traits: string[];
   status: "active" | "inactive";
 };
 
@@ -64,15 +47,16 @@ const EMPTY_FORM: DealerForm = {
   order_frequency: "",
   price_sensitivity: "中",
   new_product_acceptance: "中",
-  frequent_items: "",
-  forbidden_items: "",
-  preferred_categories: "",
-  business_traits: "",
+  frequent_items: [],
+  forbidden_items: [],
+  preferred_categories: [],
+  business_traits: [],
   status: "active",
 };
 
 export default function DealersPage() {
   const [items, setItems] = useState<DealerEntity[]>([]);
+  const [products, setProducts] = useState<ProductEntity[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState({
     page: 1,
@@ -80,7 +64,7 @@ export default function DealersPage() {
     q: "",
     status: "",
     sortBy: "customer_name",
-    sortOrder: "asc",
+    sortOrder: "asc" as "asc" | "desc",
   });
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<DealerForm>(EMPTY_FORM);
@@ -92,16 +76,19 @@ export default function DealersPage() {
     const params = new URLSearchParams();
     params.set("page", String(query.page));
     params.set("pageSize", String(query.pageSize));
-    if (query.q) {
-      params.set("q", query.q);
-    }
-    if (query.status) {
-      params.set("status", query.status);
-    }
     params.set("sortBy", query.sortBy);
     params.set("sortOrder", query.sortOrder);
+    if (query.q) params.set("q", query.q);
+    if (query.status) params.set("status", query.status);
     return params.toString();
   }, [query]);
+
+  const loadProducts = useCallback(async () => {
+    const data = await requestJson<ListResult<ProductEntity>>(
+      "/api/admin/products?page=1&pageSize=500&sortBy=display_order&sortOrder=asc",
+    );
+    setProducts(data.items);
+  }, []);
 
   const loadDealers = useCallback(async () => {
     setLoading(true);
@@ -120,8 +107,38 @@ export default function DealersPage() {
   }, [queryString]);
 
   useEffect(() => {
+    void loadProducts();
+  }, [loadProducts]);
+
+  useEffect(() => {
     void loadDealers();
   }, [loadDealers]);
+
+  const productOptions = useMemo<ChecklistOption[]>(() => {
+    return products.map((item) => ({
+      value: item.sku_id,
+      label: item.sku_name,
+      description: `${item.sku_id} · ${item.category}`,
+    }));
+  }, [products]);
+
+  const categoryOptions = useMemo<ChecklistOption[]>(() => {
+    return Array.from(new Set(products.map((item) => item.category).filter(Boolean))).map(
+      (category) => ({ value: category, label: category }),
+    );
+  }, [products]);
+
+  const cityOptions = useMemo(() => {
+    return Array.from(new Set(items.map((item) => item.city).filter(Boolean))).sort();
+  }, [items]);
+
+  const customerTypeOptions = useMemo(() => {
+    return Array.from(new Set(items.map((item) => item.customer_type).filter(Boolean))).sort();
+  }, [items]);
+
+  const channelOptions = useMemo(() => {
+    return Array.from(new Set(items.map((item) => item.channel_type).filter(Boolean))).sort();
+  }, [items]);
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -141,21 +158,13 @@ export default function DealersPage() {
       order_frequency: item.order_frequency,
       price_sensitivity: item.price_sensitivity,
       new_product_acceptance: item.new_product_acceptance,
-      frequent_items: toEditableText(item.frequent_items),
-      forbidden_items: toEditableText(item.forbidden_items),
-      preferred_categories: toEditableText(item.preferred_categories),
-      business_traits: toEditableText(item.business_traits),
+      frequent_items: item.frequent_items,
+      forbidden_items: item.forbidden_items,
+      preferred_categories: item.preferred_categories,
+      business_traits: item.business_traits,
       status: item.status,
     });
   };
-
-  const payloadFromForm = () => ({
-    ...form,
-    frequent_items: fromEditableText(form.frequent_items),
-    forbidden_items: fromEditableText(form.forbidden_items),
-    preferred_categories: fromEditableText(form.preferred_categories),
-    business_traits: fromEditableText(form.business_traits),
-  });
 
   const submitCreate = async () => {
     setSuccessMessage("");
@@ -163,7 +172,7 @@ export default function DealersPage() {
     try {
       await requestJson<DealerEntity>("/api/admin/dealers", {
         method: "POST",
-        body: JSON.stringify(payloadFromForm()),
+        body: JSON.stringify(form),
       });
       setSuccessMessage("经销商创建成功");
       resetForm();
@@ -171,22 +180,20 @@ export default function DealersPage() {
     } catch (error) {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
-        return;
+      } else {
+        setErrorMessage("经销商创建失败");
       }
-      setErrorMessage("经销商创建失败");
     }
   };
 
   const submitUpdate = async () => {
-    if (!editingId) {
-      return;
-    }
+    if (!editingId) return;
     setSuccessMessage("");
     setErrorMessage("");
     try {
       await requestJson<DealerEntity>(`/api/admin/dealers/${editingId}`, {
         method: "PATCH",
-        body: JSON.stringify(payloadFromForm()),
+        body: JSON.stringify(form),
       });
       setSuccessMessage("经销商更新成功");
       resetForm();
@@ -194,9 +201,9 @@ export default function DealersPage() {
     } catch (error) {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
-        return;
+      } else {
+        setErrorMessage("经销商更新失败");
       }
-      setErrorMessage("经销商更新失败");
     }
   };
 
@@ -206,9 +213,7 @@ export default function DealersPage() {
     try {
       await requestJson<DealerEntity>(`/api/admin/dealers/${id}`, { method: "DELETE" });
       setSuccessMessage("经销商已停用");
-      if (editingId === id) {
-        resetForm();
-      }
+      if (editingId === id) resetForm();
       await loadDealers();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "停用失败");
@@ -218,7 +223,7 @@ export default function DealersPage() {
   return (
     <AdminPageFrame
       title="经销商档案"
-      description="维护经销商主数据与经营画像（内存态），支持查询筛选、编辑与软停用。"
+      description="按经营画像维护经销商结构化关系，常购/禁推/偏好将直接进入策略投放。"
       action={
         <Button className="rounded-full" onClick={resetForm}>
           <Plus className="h-4 w-4" />
@@ -315,49 +320,55 @@ export default function DealersPage() {
                   <TableHead>ID</TableHead>
                   <TableHead>名称</TableHead>
                   <TableHead>城市/渠道</TableHead>
+                  <TableHead>画像关系</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.customer_id}>
-                    <TableCell className="font-mono text-xs">{item.customer_id}</TableCell>
-                    <TableCell>{item.customer_name}</TableCell>
-                    <TableCell>
-                      <p>{item.city}</p>
-                      <p className="text-xs text-slate-500">{item.channel_type}</p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={item.status === "active" ? "secondary" : "outline"}>
-                        {item.status === "active" ? "启用" : "停用"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
-                          编辑
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => softDelete(item.customer_id)}
-                          disabled={item.status === "inactive"}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          停用
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
                 {items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-slate-500">
-                      无数据
+                    <TableCell colSpan={6} className="text-center text-slate-500">
+                      {loading ? "加载中..." : "无数据"}
                     </TableCell>
                   </TableRow>
-                ) : null}
+                ) : (
+                  items.map((item) => (
+                    <TableRow key={item.customer_id}>
+                      <TableCell className="font-mono text-xs">{item.customer_id}</TableCell>
+                      <TableCell>{item.customer_name}</TableCell>
+                      <TableCell>
+                        <p>{item.city}</p>
+                        <p className="text-xs text-slate-500">{item.channel_type}</p>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600">
+                        常购 {item.frequent_items.length} · 禁推 {item.forbidden_items.length} ·
+                        偏好品类 {item.preferred_categories.length}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={item.status === "active" ? "secondary" : "outline"}>
+                          {item.status === "active" ? "启用" : "停用"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
+                            编辑
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => softDelete(item.customer_id)}
+                            disabled={item.status === "inactive"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            停用
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -390,29 +401,89 @@ export default function DealersPage() {
               </div>
               <div className="space-y-1">
                 <Label>城市</Label>
+                <Select
+                  value={form.city || "__custom__"}
+                  onValueChange={(value) => {
+                    if (value === "__custom__") return;
+                    setForm((prev) => ({ ...prev, city: value }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择已有城市" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__custom__">手工输入</SelectItem>
+                    {cityOptions.map((city) => (
+                      <SelectItem key={city} value={city}>
+                        {city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   value={form.city}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, city: event.target.value }))
                   }
+                  placeholder="或手工输入城市"
                 />
               </div>
               <div className="space-y-1">
                 <Label>渠道类型</Label>
+                <Select
+                  value={form.channel_type || "__custom__"}
+                  onValueChange={(value) => {
+                    if (value === "__custom__") return;
+                    setForm((prev) => ({ ...prev, channel_type: value }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择已有渠道" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__custom__">手工输入</SelectItem>
+                    {channelOptions.map((channel) => (
+                      <SelectItem key={channel} value={channel}>
+                        {channel}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   value={form.channel_type}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, channel_type: event.target.value }))
                   }
+                  placeholder="或手工输入渠道"
                 />
               </div>
               <div className="space-y-1">
                 <Label>客户分层</Label>
+                <Select
+                  value={form.customer_type || "__custom__"}
+                  onValueChange={(value) => {
+                    if (value === "__custom__") return;
+                    setForm((prev) => ({ ...prev, customer_type: value }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择已有分层" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__custom__">手工输入</SelectItem>
+                    {customerTypeOptions.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   value={form.customer_type}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, customer_type: event.target.value }))
                   }
+                  placeholder="或手工输入客户分层"
                 />
               </div>
               <div className="space-y-1">
@@ -447,6 +518,7 @@ export default function DealersPage() {
                 />
               </div>
             </div>
+
             <div className="grid gap-2 md:grid-cols-2">
               <div className="space-y-1">
                 <Label>价格敏感度</Label>
@@ -492,42 +564,37 @@ export default function DealersPage() {
                 </Select>
               </div>
             </div>
-            <div className="space-y-1">
-              <Label>常购 SKU（逗号分隔）</Label>
-              <Input
-                value={form.frequent_items}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, frequent_items: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>禁配 SKU（逗号分隔）</Label>
-              <Input
-                value={form.forbidden_items}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, forbidden_items: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>偏好品类（逗号分隔）</Label>
-              <Input
-                value={form.preferred_categories}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, preferred_categories: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>经营特征（逗号分隔）</Label>
-              <Input
-                value={form.business_traits}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, business_traits: event.target.value }))
-                }
-              />
-            </div>
+
+            <MultiSelectChecklist
+              label="常购 SKU"
+              options={productOptions}
+              selected={form.frequent_items}
+              onChange={(frequent_items) => setForm((prev) => ({ ...prev, frequent_items }))}
+              searchPlaceholder="搜索常购商品"
+            />
+            <MultiSelectChecklist
+              label="禁推 SKU"
+              options={productOptions}
+              selected={form.forbidden_items}
+              onChange={(forbidden_items) => setForm((prev) => ({ ...prev, forbidden_items }))}
+              searchPlaceholder="搜索禁推商品"
+            />
+            <MultiSelectChecklist
+              label="偏好品类"
+              options={categoryOptions}
+              selected={form.preferred_categories}
+              onChange={(preferred_categories) =>
+                setForm((prev) => ({ ...prev, preferred_categories }))
+              }
+              searchPlaceholder="搜索品类"
+            />
+            <TokenEditor
+              label="经营特征"
+              value={form.business_traits}
+              onChange={(business_traits) => setForm((prev) => ({ ...prev, business_traits }))}
+              placeholder="输入经营特征，如：餐饮批发"
+              suggestions={["核心客户", "价格敏感", "新品试销能力", "周转稳定", "组合采购"]}
+            />
 
             <div className="flex items-center gap-2">
               <Select

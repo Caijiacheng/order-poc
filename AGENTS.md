@@ -7,7 +7,7 @@ This repository is for a POC named `AI 建议单 + 智能凑单 Demo`.
 The POC serves two goals:
 
 - Demo an AI-assisted dealer ordering flow for 美味鲜 / 厨邦 products
-- Provide an admin console to configure mock data, prompt references, rules, and reports
+- Provide an admin console to configure mock data, expression templates, global rules, and reports
 
 This is not a production system. The implementation should optimize for:
 
@@ -20,16 +20,18 @@ The main product specification lives in [docs/product-design.md](/Users/caijiach
 
 ## Current State
 
-The repository currently starts from an empty scaffold state.
+The repository is no longer in an empty scaffold state.
 
-Before adding business logic, agents should establish:
+The current baseline already includes:
 
-1. Next.js App Router project skeleton
-2. TypeScript and Tailwind setup
-3. Vercel AI SDK integration
-4. Langfuse + OpenTelemetry integration
-5. in-memory store and seed data loading
-6. frontstage routes and admin routes
+1. Next.js App Router + TypeScript + Tailwind project setup
+2. Frontstage canonical routes and admin canonical IA shell routes
+3. in-memory store, seed loading, and initial CRUD/report APIs
+4. Vercel AI SDK service integration seam
+5. Langfuse + OpenTelemetry instrumentation baseline
+6. test scaffolding for routes/domain flows
+
+Current work should focus on PRD-driven refactoring and contract alignment, not re-scaffolding.
 
 ## Required Stack
 
@@ -59,21 +61,30 @@ The implementation must cover three surfaces:
 ### Demo UI Routes
 
 - `/`
-- `/order`
-- `/cart`
-- `/confirm`
+- `/procurement`
+- `/catalog`
+- `/basket`
+- `/checkout`
 
 ### Admin Routes
 
-- `/admin/dashboard`
-- `/admin/products`
-- `/admin/dealers`
-- `/admin/suggestion-templates`
-- `/admin/campaigns`
-- `/admin/rules`
-- `/admin/prompts`
-- `/admin/reports`
-- `/admin/reports/recommendations`
+- `/admin` -> `/admin/workbench/overview`
+- `/admin/workbench/overview`
+- `/admin/master-data/products`
+- `/admin/master-data/dealers`
+- `/admin/master-data/segments`
+- `/admin/master-data/product-pools`
+- `/admin/strategy/campaigns`
+- `/admin/strategy/recommendation-strategies`
+- `/admin/strategy/expression-templates`
+- `/admin/strategy/global-rules`
+- `/admin/operations/generation-jobs`
+- `/admin/operations/recommendation-batches`
+- `/admin/analytics/overview`
+- `/admin/analytics/recommendation-records`
+- `/admin/observability/traces`
+- `/admin/observability/audit-logs`
+- `/admin/observability/recovery`
 
 ## Core Domain Rules
 
@@ -84,7 +95,7 @@ These rules are mandatory unless the product design doc is updated:
 - Restarting the app resets runtime CRUD changes back to seed defaults
 - AI is used for explanation, ranking, and structured recommendation generation
 - Deterministic calculations stay outside the model
-- Recommendation templates are references for prompt construction, not hardcoded final outputs
+- Recommendation strategies and expression templates are references for prompt construction, not hardcoded final outputs
 - Every recommendation run should be traceable and reportable
 
 ## Data Model Expectations
@@ -93,10 +104,11 @@ Seed data should exist for:
 
 - products
 - dealers
-- suggestion templates
+- recommendation strategies
+- expression templates
 - campaigns
-- rules
-- prompt config
+- global rules
+- expression config
 - UI config
 
 Runtime memory should also store:
@@ -155,10 +167,10 @@ At minimum they must support:
 
 - Product CRUD
 - Dealer CRUD
-- Suggestion template CRUD
+- Recommendation strategy CRUD
 - Campaign CRUD
-- Rule editing
-- Prompt editing
+- Global rule editing
+- Expression template editing
 - Report querying
 
 For destructive actions, prefer soft-disable or clear confirmation UI over silent hard delete.
@@ -194,15 +206,12 @@ When building UI:
 
 Agents should work in this order unless the user requests otherwise:
 
-1. scaffold app shell and dependencies
-2. create memory store and seed data files
-3. implement admin CRUD routes and pages
-4. implement shared domain rule layer
-5. implement AI service layer
-6. implement frontstage pages
-7. implement reports
-8. wire Langfuse tracing and recommendation records
-9. verify happy-path demo flow
+1. align canonical IA and route contracts with the PRD
+2. refactor runtime in-memory model and shared domain rules
+3. implement frontstage procurement behavior on canonical routes
+4. implement operations/admin workflows (config, generation, publish, review)
+5. complete observability, audit, and recovery flow integration
+6. update tests and run verification (lint, typecheck, unit/e2e smoke)
 
 ## Verification Expectations
 
@@ -232,16 +241,23 @@ Primary checks for this scaffold stage:
 
 Manual route smoke check targets:
 
-- `/`, `/order`, `/cart`, `/confirm`
-- `/admin/dashboard`
-- `/admin/products`
-- `/admin/dealers`
-- `/admin/suggestion-templates`
-- `/admin/campaigns`
-- `/admin/rules`
-- `/admin/prompts`
-- `/admin/reports`
-- `/admin/reports/recommendations`
+- `/`, `/procurement`, `/catalog`, `/basket`, `/checkout`
+- `/admin/workbench/overview`
+- `/admin/master-data/products`
+- `/admin/master-data/dealers`
+- `/admin/master-data/segments`
+- `/admin/master-data/product-pools`
+- `/admin/strategy/campaigns`
+- `/admin/strategy/recommendation-strategies`
+- `/admin/strategy/expression-templates`
+- `/admin/strategy/global-rules`
+- `/admin/operations/generation-jobs`
+- `/admin/operations/recommendation-batches`
+- `/admin/analytics/overview`
+- `/admin/analytics/recommendation-records`
+- `/admin/observability/traces`
+- `/admin/observability/audit-logs`
+- `/admin/observability/recovery`
 
 ## Change Management
 

@@ -1,0 +1,97 @@
+[
+  {
+    "pool_id": "pool_regular_replenishment",
+    "pool_name": "常规补货池",
+    "pool_type": "regular",
+    "description": "日常补货高频 SKU",
+    "sku_ids": [
+      "cb_weijixian_500",
+      "cb_jinbiao_shengchou_500",
+      "cb_jinbiao_laochou_500",
+      "cb_oyster_700",
+      "cb_chicken_essence_200",
+      "cb_cooking_wine_500",
+      "cb_vinegar_450"
+    ],
+    "pair_sku_ids": [],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "pool_id": "pool_hot_sale",
+    "pool_name": "热销商品池",
+    "pool_type": "hot_sale",
+    "description": "动销快、优先保障供货的商品池",
+    "sku_ids": [
+      "cb_weijixian_500"
+    ],
+    "pair_sku_ids": [],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "pool_id": "pool_new_product",
+    "pool_name": "新品商品池",
+    "pool_type": "new_product",
+    "description": "用于新品试销场景",
+    "sku_ids": [
+      "cb_zeroadd_shengchou_500",
+      "cb_zeroadd_head_500"
+    ],
+    "pair_sku_ids": [],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "pool_id": "pool_pairing",
+    "pool_name": "搭配关系池",
+    "pool_type": "pairing",
+    "description": "用于凑单搭配补充场景",
+    "sku_ids": [
+      "cb_weijixian_500",
+      "cb_jinbiao_shengchou_500",
+      "cb_jinbiao_laochou_500",
+      "cb_oyster_700",
+      "cb_chicken_essence_200",
+      "cb_chicken_powder_combo",
+      "cb_cooking_wine_500",
+      "cb_vinegar_450",
+      "cb_steamed_fish_450",
+      "cb_zeroadd_shengchou_500",
+      "cb_zeroadd_head_500",
+      "cb_banquet_soy_1750",
+      "cb_oyster_big_2270",
+      "cb_chicken_restaurant_1kg",
+      "cb_small_shengchou_250",
+      "cb_small_oyster_230",
+      "cb_mixed_noodle_soy",
+      "cb_cold_mix_soy",
+      "cb_braised_soy",
+      "cb_weekly_combo"
+    ],
+    "pair_sku_ids": [
+      "cb_oyster_700",
+      "cb_steamed_fish_450",
+      "cb_cooking_wine_500",
+      "cb_chicken_essence_200",
+      "cb_vinegar_450",
+      "cb_jinbiao_shengchou_500",
+      "cb_zeroadd_head_500",
+      "cb_zeroadd_shengchou_500",
+      "cb_oyster_big_2270",
+      "cb_banquet_soy_1750",
+      "cb_small_oyster_230",
+      "cb_small_shengchou_250",
+      "cb_cold_mix_soy",
+      "cb_mixed_noodle_soy",
+      "cb_jinbiao_laochou_500",
+      "cb_chicken_powder_combo"
+    ],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "segment_id": "seg_城区核心客户_餐饮流通",
+    "segment_name": "城区核心客户·餐饮+流通",
+    "description": "按客户类型 城区核心客户 和渠道 餐饮+流通 归类",
+    "city_list": [
+      "厦门"
+    ],
+    "customer_types": [
+      "城区核心客户"
+    ],
+    "channel_types": [
+      "餐饮+流通"
+    ],
+    "dealer_ids": [
+      "dealer_xm_sm"
+    ],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "segment_id": "seg_商超配送客户_ka_商超",
+    "segment_name": "商超配送客户·KA 商超",
+    "description": "按客户类型 商超配送客户 和渠道 KA 商超 归类",
+    "city_list": [
+      "东莞"
+    ],
+    "customer_types": [
+      "商超配送客户"
+    ],
+    "channel_types": [
+      "KA 商超"
+    ],
+    "dealer_ids": [
+      "dealer_dg_sm"
+    ],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "segment_id": "seg_餐饮批发客户_餐饮批发",
+    "segment_name": "餐饮批发客户·餐饮批发",
+    "description": "按客户类型 餐饮批发客户 和渠道 餐饮批发 归类",
+    "city_list": [
+      "成都"
+    ],
+    "customer_types": [
+      "餐饮批发客户"
+    ],
+    "channel_types": [
+      "餐饮批发"
+    ],
+    "dealer_ids": [
+      "dealer_cd_pf"
+    ],
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  }
+]

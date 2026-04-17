@@ -52,6 +52,174 @@ export type TemplateReferenceItem = {
   sort_order: number;
 };
 
+export type DealerSegmentEntity = {
+  segment_id: string;
+  segment_name: string;
+  description: string;
+  city_list: string[];
+  customer_types: string[];
+  channel_types: string[];
+  dealer_ids: string[];
+  status: EntityStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductPoolType =
+  | "regular"
+  | "hot_sale"
+  | "new_product"
+  | "campaign"
+  | "pairing";
+
+export type ProductPoolEntity = {
+  pool_id: string;
+  pool_name: string;
+  pool_type: ProductPoolType;
+  description: string;
+  sku_ids: string[];
+  pair_sku_ids: string[];
+  status: EntityStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RecommendationStrategyEntity = {
+  strategy_id: string;
+  strategy_name: string;
+  scene: SuggestionScene;
+  target_dealer_ids: string[];
+  dealer_segment_ids: string[];
+  product_pool_ids: string[];
+  campaign_ids: string[];
+  candidate_sku_ids: string[];
+  reference_items: TemplateReferenceItem[];
+  business_notes: string;
+  expression_template_id: string;
+  priority: number;
+  status: EntityStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExpressionTemplateType =
+  | "recommendation"
+  | "cart_optimization"
+  | "explanation";
+
+export type ExpressionTemplateEntity = {
+  expression_template_id: string;
+  expression_template_name: string;
+  template_type: ExpressionTemplateType;
+  scene: SuggestionScene | "all";
+  tone: string;
+  avoid: string[];
+  reason_limit: number;
+  system_role: string;
+  instruction: string;
+  style_hint: string;
+  status: EntityStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GlobalRuleEntity = {
+  global_rule_id: string;
+  rule_version: string;
+  replenishment_days_threshold: number;
+  cart_gap_trigger_amount: number;
+  threshold_amount: number;
+  prefer_frequent_items: boolean;
+  prefer_pair_items: boolean;
+  box_adjust_if_close: boolean;
+  box_adjust_distance_limit: number;
+  allow_new_product_recommendation: boolean;
+  status: EntityStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GenerationJobStatus =
+  | "draft"
+  | "prechecking"
+  | "ready"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type PublicationStatus = "unpublished" | "ready" | "published";
+
+export type GenerationJobEntity = {
+  job_id: string;
+  job_name: string;
+  business_date: string;
+  target_dealer_ids: string[];
+  target_segment_ids: string[];
+  strategy_ids: string[];
+  publish_mode: "manual" | "auto";
+  status: GenerationJobStatus;
+  publication_status: PublicationStatus;
+  precheck_summary: string;
+  last_precheck_at?: string;
+  last_sample_batch_id?: string;
+  last_batch_id?: string;
+  published_batch_id?: string;
+  published_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RecommendationBatchStatus =
+  | "queued"
+  | "running"
+  | "success"
+  | "partial_failed"
+  | "failed"
+  | "cancelled"
+  | "fallback_served";
+
+export type RecommendationBatchRecord = {
+  batch_id: string;
+  batch_type:
+    | "scheduled_generation"
+    | "sample_generation"
+    | "frontstage_realtime"
+    | "manual_replay";
+  trigger_source: "system" | "admin" | "frontstage" | "fallback";
+  session_id?: string;
+  job_id?: string;
+  customer_id?: string;
+  scene?: SuggestionScene;
+  trace_id?: string;
+  related_run_ids: string[];
+  config_snapshot_id: string;
+  started_at: string;
+  finished_at?: string;
+  status: RecommendationBatchStatus;
+  publication_status: PublicationStatus;
+  error_summary?: string;
+  fallback_used: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RecoverySnapshotStatus = "available" | "applied" | "archived";
+
+export type RecoverySnapshotRecord = {
+  snapshot_id: string;
+  snapshot_name: string;
+  source: "seed" | "manual" | "system";
+  description: string;
+  config_snapshot_id: string;
+  related_entity_types: string[];
+  status: RecoverySnapshotStatus;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  applied_at?: string;
+};
+
 export type DealerSuggestionTemplateEntity = {
   template_id: string;
   customer_id: string;
@@ -71,9 +239,12 @@ export type CampaignEntity = {
   week_id: string;
   campaign_name: string;
   weekly_focus_items: string[];
+  product_pool_ids?: string[];
   promo_threshold: number;
   promo_type: string;
   activity_notes: string[];
+  target_dealer_ids?: string[];
+  target_segment_ids?: string[];
   target_customer_types: string[];
   status: EntityStatus;
   created_at: string;
@@ -134,6 +305,9 @@ export type MetricEvent = {
     | "box_adjusted"
     | "pair_item_added"
     | "explanation_viewed"
+    | "generation_job_created"
+    | "recommendation_batch_created"
+    | "recovery_snapshot_applied"
     | "config_updated";
   scene: SuggestionScene | "admin_config";
   payload: Record<string, unknown>;
@@ -165,6 +339,7 @@ export type MetricsStore = {
 export type RecommendationRunRecord = {
   recommendation_run_id: string;
   session_id: string;
+  batch_id?: string;
   trace_id?: string;
   function_id?: string;
   telemetry_metadata?: Record<string, unknown>;
@@ -173,6 +348,8 @@ export type RecommendationRunRecord = {
   scene: SuggestionScene;
   page_name: "/procurement" | "/catalog" | "/basket";
   trigger_source: "auto" | "manual" | "assistant";
+  strategy_id?: string;
+  expression_template_id?: string;
   template_id?: string;
   template_name?: string;
   prompt_version?: string;
@@ -272,26 +449,43 @@ export type AuditLogEvent = {
   entity_type:
     | "product"
     | "dealer"
-    | "suggestion_template"
+    | "dealer_segment"
+    | "product_pool"
+    | "recommendation_strategy"
+    | "expression_template"
     | "campaign"
+    | "global_rule"
+    | "generation_job"
+    | "recommendation_batch"
+    | "recovery_snapshot"
+    | "suggestion_template"
     | "rule"
     | "prompt";
   entity_id: string;
-  action: "create" | "update" | "delete" | "toggle";
+  action: "create" | "update" | "delete" | "toggle" | "apply";
   summary: string;
 };
 
 export type AppMemoryStore = {
   products: ProductEntity[];
   dealers: DealerEntity[];
-  suggestionTemplates: DealerSuggestionTemplateEntity[];
+  dealerSegments: DealerSegmentEntity[];
+  productPools: ProductPoolEntity[];
+  recommendationStrategies: RecommendationStrategyEntity[];
+  expressionTemplates: ExpressionTemplateEntity[];
   campaigns: CampaignEntity[];
-  rules: RuleConfigEntity;
-  promptConfig: PromptConfigEntity;
+  globalRules: GlobalRuleEntity;
+  generationJobs: GenerationJobEntity[];
+  recommendationBatches: RecommendationBatchRecord[];
+  recoverySnapshots: RecoverySnapshotRecord[];
   uiConfig: UIConfigEntity;
   metrics: MetricsStore;
   recommendationRuns: RecommendationRunRecord[];
   recommendationItems: RecommendationItemRecord[];
   cartSessions: Record<string, CartSession>;
   auditLogs: AuditLogEvent[];
+  // Legacy compatibility adapters for Stage 2 transition.
+  suggestionTemplates: DealerSuggestionTemplateEntity[];
+  rules: RuleConfigEntity;
+  promptConfig: PromptConfigEntity;
 };

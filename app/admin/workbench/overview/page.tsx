@@ -11,164 +11,188 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requestJson } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
-import type { AuditLogEvent, MetricsStore } from "@/lib/memory/types";
+import type {
+  AuditLogEvent,
+  CampaignEntity,
+  ExpressionTemplateEntity,
+  ProductEntity,
+  RecommendationBatchRecord,
+  RecommendationRunRecord,
+  RecommendationStrategyEntity,
+  DealerEntity,
+} from "@/lib/memory/types";
 
-type SummaryResponse = {
-  entities: {
-    products: { total: number; active: number };
-    dealers: { total: number; active: number };
-    suggestionTemplates: { total: number; active: number };
-    campaigns: { total: number; active: number };
-  };
-  metrics: MetricsStore;
-  recommendationRuns: {
-    total: number;
-    generated: number;
-    partiallyApplied: number;
-    fullyApplied: number;
-    ignored: number;
-  };
+type ConfigHealthItem = {
+  label: string;
+  total: number;
+  active: number;
 };
 
-const EMPTY_SUMMARY: SummaryResponse = {
-  entities: {
-    products: { total: 0, active: 0 },
-    dealers: { total: 0, active: 0 },
-    suggestionTemplates: { total: 0, active: 0 },
-    campaigns: { total: 0, active: 0 },
-  },
-  metrics: {
-    sessionCount: 0,
-    recommendationRequests: 0,
-    weeklyFocusRequests: 0,
-    cartOptimizationRequests: 0,
-    explanationRequests: 0,
-    addToCartFromSuggestion: 0,
-    applyOptimizationCount: 0,
-    thresholdReachedCount: 0,
-    boxAdjustmentCount: 0,
-    pairSuggestionAppliedCount: 0,
-    totalCartAmountBefore: 0,
-    totalCartAmountAfter: 0,
-    totalRevenueLift: 0,
-    averageModelLatencyMs: 0,
-    totalModelCalls: 0,
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    structuredOutputFailureCount: 0,
-    customerSceneBreakdown: {},
-    latestEvents: [],
-  },
-  recommendationRuns: {
-    total: 0,
-    generated: 0,
-    partiallyApplied: 0,
-    fullyApplied: 0,
-    ignored: 0,
-  },
+type WorkbenchData = {
+  todayBatches: RecommendationBatchRecord[];
+  todayRecords: RecommendationRunRecord[];
+  recentLogs: AuditLogEvent[];
+  configHealth: ConfigHealthItem[];
 };
 
-const QUICK_ENTRIES = [
-  {
-    href: "/admin/master-data/products",
-    label: "商品档案",
-    description: "维护上架 SKU、价格与箱规。",
-  },
-  {
-    href: "/admin/master-data/dealers",
-    label: "经销商档案",
-    description: "维护客户基础信息与经营画像。",
-  },
-  {
-    href: "/admin/strategy/recommendation-templates",
-    label: "推荐模板",
-    description: "维护分场景推荐参考模板。",
-  },
-  {
-    href: "/admin/strategy/rules",
-    label: "推荐规则",
-    description: "维护补货门槛与凑单逻辑规则。",
-  },
-  {
-    href: "/admin/strategy/ai-expression",
-    label: "AI 表达配置",
-    description: "统一推荐理由表达与生成风格。",
-  },
-  {
-    href: "/admin/analytics/recommendations",
-    label: "推荐记录",
-    description: "查看批次结果、采纳状态与明细。",
-  },
-] as const;
+const EMPTY_DATA: WorkbenchData = {
+  todayBatches: [],
+  todayRecords: [],
+  recentLogs: [],
+  configHealth: [],
+};
+
+function getTodayIsoRange() {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  };
+}
 
 function toPercent(value: number) {
-  if (!Number.isFinite(value)) {
-    return "0.0%";
-  }
+  if (!Number.isFinite(value)) return "0.0%";
   return `${value.toFixed(1)}%`;
 }
 
+async function fetchHealthItem<T>(
+  label: string,
+  endpoint: string,
+): Promise<ConfigHealthItem> {
+  const [totalData, activeData] = await Promise.all([
+    requestJson<ListResult<T>>(
+      `${endpoint}&page=1&pageSize=1&sortBy=updated_at&sortOrder=desc`,
+    ),
+    requestJson<ListResult<T>>(
+      `${endpoint}&page=1&pageSize=1&status=active&sortBy=updated_at&sortOrder=desc`,
+    ),
+  ]);
+  return {
+    label,
+    total: totalData.total,
+    active: activeData.total,
+  };
+}
+
 export default function WorkbenchOverviewPage() {
-  const [summary, setSummary] = useState<SummaryResponse>(EMPTY_SUMMARY);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEvent[]>([]);
+  const [data, setData] = useState<WorkbenchData>(EMPTY_DATA);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const loadData = async () => {
     setLoading(true);
-    setError("");
+    setErrorMessage("");
     try {
-      const [summaryData, auditData] = await Promise.all([
-        requestJson<SummaryResponse>("/api/admin/reports/summary"),
+      const { startIso, endIso } = getTodayIsoRange();
+      const batchParams = new URLSearchParams({
+        page: "1",
+        pageSize: "500",
+        sortBy: "created_at",
+        sortOrder: "desc",
+        dateFrom: startIso,
+        dateTo: endIso,
+      });
+      const recordParams = new URLSearchParams({
+        page: "1",
+        pageSize: "500",
+        sortBy: "created_at",
+        sortOrder: "desc",
+        dateFrom: startIso,
+        dateTo: endIso,
+      });
+
+      const [
+        batchData,
+        recordData,
+        logData,
+        productsHealth,
+        dealersHealth,
+        strategyHealth,
+        campaignHealth,
+        expressionHealth,
+      ] = await Promise.all([
+        requestJson<ListResult<RecommendationBatchRecord>>(
+          `/api/admin/recommendation-batches?${batchParams.toString()}`,
+        ),
+        requestJson<ListResult<RecommendationRunRecord>>(
+          `/api/admin/recommendation-records?${recordParams.toString()}`,
+        ),
         requestJson<ListResult<AuditLogEvent>>(
-          "/api/admin/reports/audit-logs?page=1&pageSize=6&sortBy=timestamp&sortOrder=desc",
+          "/api/admin/audit-logs?page=1&pageSize=6&sortBy=timestamp&sortOrder=desc",
+        ),
+        fetchHealthItem<ProductEntity>("商品档案", "/api/admin/products?"),
+        fetchHealthItem<DealerEntity>("经销商档案", "/api/admin/dealers?"),
+        fetchHealthItem<RecommendationStrategyEntity>(
+          "推荐策略",
+          "/api/admin/recommendation-strategies?",
+        ),
+        fetchHealthItem<CampaignEntity>("活动策略", "/api/admin/campaigns?"),
+        fetchHealthItem<ExpressionTemplateEntity>(
+          "表达模板",
+          "/api/admin/expression-templates?",
         ),
       ]);
-      setSummary(summaryData);
-      setAuditLogs(auditData.items);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "加载失败");
+
+      setData({
+        todayBatches: batchData.items,
+        todayRecords: recordData.items,
+        recentLogs: logData.items,
+        configHealth: [
+          productsHealth,
+          dealersHealth,
+          strategyHealth,
+          campaignHealth,
+          expressionHealth,
+        ],
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "加载工作台失败");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
-  const adoptionRate =
-    summary.metrics.recommendationRequests === 0
-      ? 0
-      : (summary.metrics.addToCartFromSuggestion / summary.metrics.recommendationRequests) * 100;
+  const batchSuccessCount = data.todayBatches.filter((item) => item.status === "success").length;
+  const batchPartialCount = data.todayBatches.filter(
+    (item) => item.status === "partial_failed",
+  ).length;
+  const batchFailureCount = data.todayBatches.filter(
+    (item) => item.status === "failed" || item.status === "fallback_served",
+  ).length;
+  const abnormalBatches = data.todayBatches.filter((item) =>
+    ["partial_failed", "failed", "fallback_served"].includes(item.status),
+  );
+  const todayPublished = data.todayBatches.filter(
+    (item) => item.publication_status === "published",
+  );
 
-  const configHealthItems = [
-    {
-      label: "商品档案",
-      active: summary.entities.products.active,
-      total: summary.entities.products.total,
-    },
-    {
-      label: "经销商档案",
-      active: summary.entities.dealers.active,
-      total: summary.entities.dealers.total,
-    },
-    {
-      label: "推荐模板",
-      active: summary.entities.suggestionTemplates.active,
-      total: summary.entities.suggestionTemplates.total,
-    },
-    {
-      label: "活动策略",
-      active: summary.entities.campaigns.active,
-      total: summary.entities.campaigns.total,
-    },
-  ] as const;
+  const adoptedCount = data.todayRecords.filter((item) =>
+    ["partially_applied", "fully_applied"].includes(item.status),
+  ).length;
+  const adoptionRate =
+    data.todayRecords.length === 0
+      ? 0
+      : (adoptedCount / data.todayRecords.length) * 100;
+  const avgLatency =
+    data.todayRecords.length === 0
+      ? 0
+      : Math.round(
+          data.todayRecords.reduce((sum, item) => sum + item.model_latency_ms, 0) /
+            data.todayRecords.length,
+        );
 
   return (
     <AdminPageFrame
       title="运营工作台"
-      description="聚焦今日运行状态、配置健康度、快捷入口、最近变更与推荐效果摘要。"
+      description="聚焦今日批量生成、异常批次、配置健康度、发布状态、最近变更和推荐效果。"
       action={
         <Button className="rounded-full" variant="outline" onClick={loadData} disabled={loading}>
           <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -176,34 +200,103 @@ export default function WorkbenchOverviewPage() {
         </Button>
       }
     >
-      <FeedbackBanner kind="error" message={error} />
+      <FeedbackBanner kind="error" message={errorMessage} />
 
-      <section className="grid gap-4 xl:grid-cols-2" data-testid="admin-workbench-kpis">
+      <section className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">今日运行状态</CardTitle>
+            <CardTitle className="text-lg">今日批量生成结果</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm md:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">推荐生成次数</p>
-              <p className="kpi-value text-xl">{summary.metrics.recommendationRequests}</p>
+              <p className="text-slate-500">批次总数</p>
+              <p className="kpi-value text-xl">{data.todayBatches.length}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">订单优化次数</p>
-              <p className="kpi-value text-xl">{summary.metrics.cartOptimizationRequests}</p>
+              <p className="text-slate-500">成功批次</p>
+              <p className="kpi-value text-xl">{batchSuccessCount}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">解释触发次数</p>
-              <p className="kpi-value text-xl">{summary.metrics.explanationRequests}</p>
+              <p className="text-slate-500">部分失败</p>
+              <p className="kpi-value text-xl">{batchPartialCount}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">平均模型耗时</p>
-              <p className="kpi-value text-xl">{summary.metrics.averageModelLatencyMs}ms</p>
+              <p className="text-slate-500">失败 / 兜底</p>
+              <p className="kpi-value text-xl">{batchFailureCount}</p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">结构化失败次数</p>
-              <p className="kpi-value text-xl">{summary.metrics.structuredOutputFailureCount}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">今日发布状态</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+              <p className="text-slate-500">已发布批次</p>
+              <p className="kpi-value text-xl">{todayPublished.length}</p>
             </div>
+            <div className="space-y-2">
+              {todayPublished.length === 0 ? (
+                <p className="text-sm text-slate-500">今日暂无已发布批次。</p>
+              ) : (
+                todayPublished.slice(0, 4).map((item) => (
+                  <div
+                    key={item.batch_id}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
+                  >
+                    <p className="font-mono text-slate-700">{item.batch_id}</p>
+                    <p className="text-slate-500">{item.job_id ?? "无任务"} · {item.batch_type}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">待处理异常批次</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {abnormalBatches.length === 0 ? (
+              <p className="text-sm text-slate-500">今日无异常批次。</p>
+            ) : (
+              abnormalBatches.slice(0, 6).map((batch) => (
+                <div
+                  key={batch.batch_id}
+                  className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-mono text-xs text-amber-900">{batch.batch_id}</p>
+                    <Badge variant="outline">{batch.status}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-amber-800">{batch.error_summary || "无错误摘要"}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button asChild size="sm" variant="outline">
+                      <Link
+                        href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
+                          batch.batch_id,
+                        )}`}
+                      >
+                        查看记录
+                      </Link>
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <Link
+                        href={`/admin/observability/traces?batchId=${encodeURIComponent(
+                          batch.batch_id,
+                        )}`}
+                      >
+                        查看链路
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -211,8 +304,8 @@ export default function WorkbenchOverviewPage() {
           <CardHeader>
             <CardTitle className="text-lg">配置健康度</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3 text-sm md:grid-cols-2">
-            {configHealthItems.map((item) => {
+          <CardContent className="grid gap-3 text-sm">
+            {data.configHealth.map((item) => {
               const ratio = item.total === 0 ? 0 : (item.active / item.total) * 100;
               return (
                 <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -220,9 +313,7 @@ export default function WorkbenchOverviewPage() {
                   <p className="kpi-value text-xl">
                     {item.active}/{item.total}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    启用率 {toPercent(ratio)} · {item.active > 0 ? "可参与运行" : "待补充配置"}
-                  </p>
+                  <p className="text-xs text-slate-500">启用率 {toPercent(ratio)}</p>
                 </div>
               );
             })}
@@ -230,37 +321,16 @@ export default function WorkbenchOverviewPage() {
         </Card>
       </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">快捷入口</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {QUICK_ENTRIES.map((entry) => (
-            <Link
-              key={entry.href}
-              href={entry.href}
-              className="group rounded-xl border border-slate-200 bg-white p-3 transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              <p className="inline-flex items-center gap-1 text-sm font-semibold text-slate-900">
-                {entry.label}
-                <ArrowRight className="h-3.5 w-3.5 text-slate-500 transition group-hover:translate-x-0.5" />
-              </p>
-              <p className="mt-1 text-xs text-slate-500">{entry.description}</p>
-            </Link>
-          ))}
-        </CardContent>
-      </Card>
-
       <section className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">最近变更</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {auditLogs.length === 0 ? (
+            {data.recentLogs.length === 0 ? (
               <p className="text-sm text-slate-500">暂无配置变更记录。</p>
             ) : (
-              auditLogs.map((log) => (
+              data.recentLogs.map((log) => (
                 <div key={log.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm text-slate-800">{log.summary}</p>
                   <p className="mt-1 text-xs text-slate-500">
@@ -280,30 +350,36 @@ export default function WorkbenchOverviewPage() {
           <CardContent className="space-y-3">
             <div className="grid gap-3 text-sm md:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">建议采纳次数</p>
-                <p className="kpi-value text-xl">{summary.metrics.addToCartFromSuggestion}</p>
+                <p className="text-slate-500">今日推荐记录</p>
+                <p className="kpi-value text-xl">{data.todayRecords.length}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">优化应用次数</p>
-                <p className="kpi-value text-xl">{summary.metrics.applyOptimizationCount}</p>
+                <p className="text-slate-500">已采纳记录</p>
+                <p className="kpi-value text-xl">{adoptedCount}</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 md:col-span-2">
-                <p className="text-slate-500">累计提升金额</p>
-                <p className="kpi-value text-xl">¥{summary.metrics.totalRevenueLift}</p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">采纳率</p>
+                <p className="kpi-value text-xl">{toPercent(adoptionRate)}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-slate-500">平均模型耗时</p>
+                <p className="kpi-value text-xl">{avgLatency}ms</p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <Badge variant="outline">总批次 {summary.recommendationRuns.total}</Badge>
-              <Badge variant="outline">已生成 {summary.recommendationRuns.generated}</Badge>
-              <Badge variant="outline">
-                部分采纳 {summary.recommendationRuns.partiallyApplied}
-              </Badge>
-              <Badge variant="outline">
-                完全采纳 {summary.recommendationRuns.fullyApplied}
-              </Badge>
-              <Badge variant="outline">未采纳 {summary.recommendationRuns.ignored}</Badge>
+            <div className="grid gap-2 md:grid-cols-2">
+              <Button asChild variant="outline">
+                <Link href="/admin/operations/recommendation-batches" className="gap-2">
+                  批次中心
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/admin/analytics/recommendation-records" className="gap-2">
+                  记录复盘
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
             </div>
-            <p className="text-xs text-slate-500">建议采纳率：{toPercent(adoptionRate)}</p>
           </CardContent>
         </Card>
       </section>

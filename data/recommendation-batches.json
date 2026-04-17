@@ -1,0 +1,35 @@
+[
+  {
+    "batch_id": "batch_seed_001",
+    "batch_type": "scheduled_generation",
+    "trigger_source": "admin",
+    "customer_id": "dealer_xm_sm",
+    "scene": "daily_recommendation",
+    "trace_id": "trace_seed_001",
+    "related_run_ids": ["reco_run_seed_001"],
+    "config_snapshot_id": "snapshot_seed_default",
+    "started_at": "2026-04-15T01:08:00.000Z",
+    "finished_at": "2026-04-15T01:18:00.000Z",
+    "status": "success",
+    "fallback_used": false,
+    "created_at": "2026-04-15T01:08:00.000Z",
+    "updated_at": "2026-04-15T01:18:00.000Z"
+  },
+  {
+    "batch_id": "batch_seed_002",
+    "batch_type": "frontstage_realtime",
+    "trigger_source": "frontstage",
+    "session_id": "session_seed_002",
+    "customer_id": "dealer_cd_pf",
+    "scene": "box_pair_optimization",
+    "trace_id": "trace_seed_002",
+    "related_run_ids": ["reco_run_seed_002"],
+    "config_snapshot_id": "snapshot_seed_default",
+    "started_at": "2026-04-15T01:20:00.000Z",
+    "finished_at": "2026-04-15T01:23:00.000Z",
+    "status": "success",
+    "fallback_used": false,
+    "created_at": "2026-04-15T01:20:00.000Z",
+    "updated_at": "2026-04-15T01:23:00.000Z"
+  }
+]

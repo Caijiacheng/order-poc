@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ExternalLink, Filter, RefreshCw } from "lucide-react";
 
 import { AdminPageFrame } from "@/components/admin/page-frame";
@@ -26,17 +27,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  buildLangfuseTraceUrl,
-  fetchRecommendationRunDetail,
-  fetchRecommendationRuns,
-} from "@/lib/frontstage/api";
+import { buildLangfuseTraceUrl } from "@/lib/frontstage/api";
+import { requestJsonWithMeta } from "@/lib/admin/client";
+import type { ListResult } from "@/lib/admin/types";
 import type { RecommendationItemRecord, RecommendationRunRecord } from "@/lib/memory/types";
 
 type TraceDetail = {
   run: RecommendationRunRecord;
   items: RecommendationItemRecord[];
-  langfuseBaseUrl: string;
 };
 
 type QueryState = {
@@ -48,6 +46,7 @@ type QueryState = {
   customerId: string;
   scene: string;
   adoptionStatus: string;
+  batchId: string;
 };
 
 const INITIAL_QUERY: QueryState = {
@@ -59,6 +58,7 @@ const INITIAL_QUERY: QueryState = {
   customerId: "",
   scene: "",
   adoptionStatus: "",
+  batchId: "",
 };
 
 const SCENE_LABELS: Record<string, string> = {
@@ -97,14 +97,26 @@ function toSearchParams(query: QueryState) {
   if (query.customerId) params.set("customerId", query.customerId);
   if (query.scene) params.set("scene", query.scene);
   if (query.adoptionStatus) params.set("adoptionStatus", query.adoptionStatus);
+  if (query.batchId) params.set("batchId", query.batchId);
   return params;
 }
 
+function getLangfuseBaseUrl(meta: Record<string, unknown>) {
+  const value = meta.langfuse_base_url;
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  return process.env.NEXT_PUBLIC_LANGFUSE_BASE_URL ?? "";
+}
+
 export default function TraceObservabilityPage() {
+  const searchParams = useSearchParams();
+  const initialBatchId = searchParams.get("batchId") ?? "";
+
   const [query, setQuery] = useState<QueryState>(INITIAL_QUERY);
   const [rows, setRows] = useState<RecommendationRunRecord[]>([]);
   const [total, setTotal] = useState(0);
-  const [detail, setDetail] = useState<TraceDetail | null>(null);
+  const [detail, setDetail] = useState<(TraceDetail & { langfuseBaseUrl: string }) | null>(null);
   const [langfuseBaseUrl, setLangfuseBaseUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -114,12 +126,16 @@ export default function TraceObservabilityPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const result = await fetchRecommendationRuns(toSearchParams(nextQuery));
-      setRows(result.list.items);
-      setTotal(result.list.total);
-      setLangfuseBaseUrl(result.langfuseBaseUrl);
+      const result = await requestJsonWithMeta<ListResult<RecommendationRunRecord>>(
+        `/api/admin/recommendation-records?${toSearchParams(nextQuery).toString()}`,
+      );
+      setRows(result.data.items);
+      setTotal(result.data.total);
+      setLangfuseBaseUrl(getLangfuseBaseUrl(result.meta));
       setDetail((prev) =>
-        result.list.items.some((item) => item.recommendation_run_id === prev?.run.recommendation_run_id)
+        result.data.items.some(
+          (item) => item.recommendation_run_id === prev?.run.recommendation_run_id,
+        )
           ? prev
           : null,
       );
@@ -134,8 +150,13 @@ export default function TraceObservabilityPage() {
     setLoadingDetail(true);
     setErrorMessage("");
     try {
-      const result = await fetchRecommendationRunDetail(id);
-      setDetail(result);
+      const result = await requestJsonWithMeta<TraceDetail>(
+        `/api/admin/recommendation-records/${id}`,
+      );
+      setDetail({
+        ...result.data,
+        langfuseBaseUrl: getLangfuseBaseUrl(result.meta),
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载链路详情失败");
     } finally {
@@ -144,7 +165,12 @@ export default function TraceObservabilityPage() {
   };
 
   useEffect(() => {
-    void loadTraces(INITIAL_QUERY);
+    const nextQuery = {
+      ...INITIAL_QUERY,
+      batchId: initialBatchId,
+    };
+    setQuery(nextQuery);
+    void loadTraces(nextQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -159,7 +185,7 @@ export default function TraceObservabilityPage() {
             刷新
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/analytics/recommendations">查看推荐记录</Link>
+            <Link href="/admin/analytics/recommendation-records">查看建议单记录</Link>
           </Button>
         </div>
       }
@@ -167,7 +193,7 @@ export default function TraceObservabilityPage() {
       <FeedbackBanner kind="error" message={errorMessage} />
 
       <Card>
-        <CardContent className="grid gap-3 p-4 md:grid-cols-3 xl:grid-cols-7">
+        <CardContent className="grid gap-3 p-4 md:grid-cols-3 xl:grid-cols-8">
           <div className="space-y-1">
             <Label>开始时间</Label>
             <Input
@@ -194,6 +220,15 @@ export default function TraceObservabilityPage() {
               value={query.customerId}
               onChange={(event) =>
                 setQuery((prev) => ({ ...prev, customerId: event.target.value, page: 1 }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>批次 ID</Label>
+            <Input
+              value={query.batchId}
+              onChange={(event) =>
+                setQuery((prev) => ({ ...prev, batchId: event.target.value, page: 1 }))
               }
             />
           </div>
@@ -250,7 +285,7 @@ export default function TraceObservabilityPage() {
               onChange={(event) =>
                 setQuery((prev) => ({ ...prev, q: event.target.value, page: 1 }))
               }
-              placeholder="批次 ID / 经销商 / 模型名"
+              placeholder="run_id / 经销商 / 模型名"
             />
           </div>
           <div className="flex items-end">
@@ -274,8 +309,8 @@ export default function TraceObservabilityPage() {
                 <TableRow>
                   <TableHead>时间</TableHead>
                   <TableHead>Trace</TableHead>
+                  <TableHead>批次</TableHead>
                   <TableHead>经销商</TableHead>
-                  <TableHead>场景</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">耗时</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -305,8 +340,8 @@ export default function TraceObservabilityPage() {
                         {new Date(row.created_at).toLocaleString("zh-CN")}
                       </TableCell>
                       <TableCell className="font-mono text-xs">{row.trace_id ?? "-"}</TableCell>
+                      <TableCell className="font-mono text-xs">{row.batch_id ?? "-"}</TableCell>
                       <TableCell>{row.customer_name}</TableCell>
-                      <TableCell>{SCENE_LABELS[row.scene] ?? row.scene}</TableCell>
                       <TableCell>
                         <Badge variant="outline">{STATUS_LABELS[row.status] ?? row.status}</Badge>
                       </TableCell>
@@ -354,7 +389,7 @@ export default function TraceObservabilityPage() {
                     状态：{STATUS_LABELS[detail.run.status] ?? detail.run.status}
                   </p>
                   <p className="text-xs text-slate-500">
-                    耗时：{detail.run.model_latency_ms}ms · 模型：{detail.run.model_name}
+                    批次：{detail.run.batch_id ?? "-"} · 耗时：{detail.run.model_latency_ms}ms
                   </p>
                   <p className="text-xs text-slate-500">
                     Trace ID：{detail.run.trace_id ?? "暂无"}
@@ -378,7 +413,10 @@ export default function TraceObservabilityPage() {
                   <p className="text-xs text-slate-500">推荐条目（前 8 条）</p>
                   <div className="mt-2 space-y-2">
                     {detail.items.slice(0, 8).map((item) => (
-                      <div key={item.recommendation_item_id} className="rounded-lg border border-slate-200 p-2">
+                      <div
+                        key={item.recommendation_item_id}
+                        className="rounded-lg border border-slate-200 p-2"
+                      >
                         <p className="text-sm font-medium text-slate-800">{item.sku_name}</p>
                         <p className="text-xs text-slate-500">
                           {item.sku_id} · 建议数量 {item.suggested_qty} ·{" "}

@@ -1,6 +1,35 @@
 # AI 建议单 + 智能凑单 Demo
 
-美味鲜 / 厨邦 经销商下单 POC。
+美味鲜 / 厨邦经销商采购 POC，聚焦三类角色的端到端演示闭环：
+
+- 经销商：消费已发布建议并完成采购下单
+- 运营：配置策略并批量生成/发布建议单
+- IT 运维：追踪链路、审计变更、执行恢复
+
+## Canonical 路由
+
+前台（经销商）主流程：
+
+- `/procurement` -> `/catalog` -> `/basket` -> `/checkout`
+
+后台（运营 / IT）主信息架构：
+
+- `/admin` -> `/admin/workbench/overview`
+- `/admin/master-data/products`
+- `/admin/master-data/dealers`
+- `/admin/master-data/segments`
+- `/admin/master-data/product-pools`
+- `/admin/strategy/campaigns`
+- `/admin/strategy/recommendation-strategies`
+- `/admin/strategy/expression-templates`
+- `/admin/strategy/global-rules`
+- `/admin/operations/generation-jobs`
+- `/admin/operations/recommendation-batches`
+- `/admin/analytics/overview`
+- `/admin/analytics/recommendation-records`
+- `/admin/observability/traces`
+- `/admin/observability/audit-logs`
+- `/admin/observability/recovery`
 
 ## 启动
 
@@ -19,8 +48,8 @@ cp .env.example .env.local
 
 3. 选择运行模式
 
-- Mock 手工测试：把 `.env.local` 里的 `LLM_MOCK_MODE` 设为 `true`
-- Live 手工测试：把 `LLM_MOCK_MODE` 设为 `false`，并补齐 `LLM_*`、`LANGFUSE_*`、`NEXT_PUBLIC_LANGFUSE_BASE_URL`
+- Mock 演示：`LLM_MOCK_MODE=true`
+- Live 验证：`LLM_MOCK_MODE=false`，并补齐 `LLM_*`、`LANGFUSE_*`、`NEXT_PUBLIC_LANGFUSE_BASE_URL`
 
 4. 启动开发服务器
 
@@ -28,7 +57,7 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)。
+访问 [http://localhost:3000](http://localhost:3000)。
 
 ## 常用命令
 
@@ -40,13 +69,11 @@ pnpm test:e2e:mock
 pnpm test:e2e:live
 ```
 
-## 手工测试说明
+## 手工测试
 
-完整手工测试路径见：
+完整手工路径见 [docs/manual-testing.md](/Users/caijiacheng/AIProject/order-poc/docs/manual-testing.md)（按经销商 / 运营 / IT 三角色组织）。
 
-- [docs/manual-testing.md](/Users/caijiacheng/AIProject/order-poc/docs/manual-testing.md)
+## 运行约束
 
-## 说明
-
-- 所有业务数据都在内存中，重启应用后会回到 seed 初始状态。
-- 后台 CRUD、购物车、推荐记录、报表都不是持久化数据。
+- 数据为 mock + 内存态，重启应用后回到 seed 初始状态。
+- 后台 CRUD、建议单记录、报表、审计日志均非持久化存储。

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, ShoppingCart, Sparkles } from "lucide-react";
+import { Loader2, ShoppingCart } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,10 @@ import {
 } from "@/components/ui/select";
 import {
   addCartItem,
-  createRecommendations,
   fetchActiveDealers,
   fetchActiveProducts,
   fetchCart,
+  fetchPublishedSuggestions,
   formatMoney,
   type RecommendationCardItem,
 } from "@/lib/frontstage/api";
@@ -51,9 +51,7 @@ export default function CatalogPage() {
   const [busyApplyHints, setBusyApplyHints] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [hintRecommendations, setHintRecommendations] = useState<RecommendationCardItem[]>(
-    [],
-  );
+  const [hintRecommendations, setHintRecommendations] = useState<RecommendationCardItem[]>([]);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -77,6 +75,27 @@ export default function CatalogPage() {
 
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    const loadHints = async () => {
+      if (!dealerId) {
+        return;
+      }
+      setLoadingHints(true);
+      setErrorMessage("");
+      try {
+        const result = await fetchPublishedSuggestions(dealerId);
+        setHintRecommendations([...result.dailyRecommendations, ...result.weeklyFocusRecommendations]);
+      } catch (error) {
+        setHintRecommendations([]);
+        setErrorMessage(error instanceof Error ? error.message : "加载已发布系统提示失败");
+      } finally {
+        setLoadingHints(false);
+      }
+    };
+
+    void loadHints();
+  }, [dealerId]);
 
   const currentDealer = dealers.find((item) => item.customer_id === dealerId) ?? null;
   const frequentSet = useMemo(
@@ -152,30 +171,6 @@ export default function CatalogPage() {
     }
   };
 
-  const refreshHints = async () => {
-    if (!dealerId) {
-      setErrorMessage("请先选择经销商。");
-      return;
-    }
-    setLoadingHints(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-    try {
-      const result = await createRecommendations({
-        customerId: dealerId,
-        triggerSource: "manual",
-        pageName: "/catalog",
-      });
-      const merged = [...result.dailyRecommendations, ...result.weeklyFocusRecommendations];
-      setHintRecommendations(merged);
-      setSuccessMessage("已刷新待补货与活动提示。");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "刷新提示失败");
-    } finally {
-      setLoadingHints(false);
-    }
-  };
-
   const applyHintItem = async (item: RecommendationCardItem) => {
     const actionKey = item.recommendation_item_id || item.sku_id;
     setBusyActionKey(actionKey);
@@ -188,9 +183,10 @@ export default function CatalogPage() {
         recommendation_item_id: item.recommendation_item_id,
         sku_id: item.sku_id,
         qty: item.suggested_qty,
+        lifecycle_action: "apply",
       });
       await reloadCart();
-      setSuccessMessage(`已采纳提示：${item.sku_name}`);
+      setSuccessMessage(`已采纳系统提示：${item.sku_name}`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "采纳提示失败");
     } finally {
@@ -215,11 +211,12 @@ export default function CatalogPage() {
           recommendation_item_id: item.recommendation_item_id,
           sku_id: item.sku_id,
           qty: item.suggested_qty,
+          lifecycle_action: "apply",
         });
         count += 1;
       }
       await reloadCart();
-      setSuccessMessage(`已批量采纳 ${count} 条提示。`);
+      setSuccessMessage(`已批量采纳 ${count} 条系统提示。`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "批量采纳失败");
     } finally {
@@ -233,10 +230,8 @@ export default function CatalogPage() {
     <div className="space-y-6">
       <section className="space-y-3">
         <Badge className="rounded-full px-3 py-1">商品选购</Badge>
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">采购工作台</h1>
-        <p className="text-sm text-slate-600">
-          按采购视角筛选商品，快速加购并实时查看采购清单进度。
-        </p>
+        <h1 className="text-3xl font-semibold tracking-tight text-slate-950">选品工作台</h1>
+        <p className="text-sm text-slate-600">系统提示会自动加载在右侧，选品与补货可并行进行。</p>
       </section>
 
       {errorMessage ? (
@@ -253,17 +248,9 @@ export default function CatalogPage() {
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
         <Card className="border-slate-200 bg-white/92">
           <CardHeader className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-xl text-slate-900">商品选购区</CardTitle>
-              <Button variant="outline" onClick={refreshHints} disabled={loadingHints || !dealerId}>
-                {loadingHints ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                刷新待补货提示
-              </Button>
-            </div>
+            <CardTitle className="text-xl text-slate-900">商品选购区</CardTitle>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                Demo Mode · 经销商切换
-              </p>
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Demo Mode · 经销商切换</p>
               <div className="mt-2 grid gap-2 md:grid-cols-3">
                 <Select value={dealerId} onValueChange={setDealerId} disabled={loadingPage}>
                   <SelectTrigger className="h-9 w-full rounded-xl bg-white">
@@ -336,7 +323,7 @@ export default function CatalogPage() {
                       <Badge variant="secondary">{product.category}</Badge>
                       <Badge variant="outline">箱规 {product.box_multiple}</Badge>
                       {frequentSet.has(product.sku_id) ? <Badge variant="outline">常购</Badge> : null}
-                      {isHinted ? <Badge variant="outline">建议补货</Badge> : null}
+                      {isHinted ? <Badge variant="outline">系统提示</Badge> : null}
                       {product.is_weekly_focus ? <Badge variant="outline">活动</Badge> : null}
                       {product.is_new_product ? <Badge variant="outline">新品</Badge> : null}
                     </div>
@@ -346,20 +333,10 @@ export default function CatalogPage() {
                         min={1}
                         className="h-8 w-24"
                         value={qtyDraft[product.sku_id] ?? "1"}
-                        onChange={(event) =>
-                          setQtyDraft((prev) => ({ ...prev, [product.sku_id]: event.target.value }))
-                        }
+                        onChange={(event) => setQtyDraft((prev) => ({ ...prev, [product.sku_id]: event.target.value }))}
                       />
-                      <Button
-                        size="sm"
-                        onClick={() => addManualItem(product)}
-                        disabled={busyActionKey === product.sku_id}
-                      >
-                        {busyActionKey === product.sku_id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <ShoppingCart className="h-4 w-4" />
-                        )}
+                      <Button size="sm" onClick={() => addManualItem(product)} disabled={busyActionKey === product.sku_id}>
+                        {busyActionKey === product.sku_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
                         加入采购清单
                       </Button>
                     </div>
@@ -378,9 +355,7 @@ export default function CatalogPage() {
             <CardContent className="space-y-3 text-sm">
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-slate-500">当前经销商</p>
-                <p className="mt-1 font-medium text-slate-900">
-                  {currentDealer?.customer_name ?? "未选择"}
-                </p>
+                <p className="mt-1 font-medium text-slate-900">{currentDealer?.customer_name ?? "未选择"}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-slate-500">SKU / 件数</p>
@@ -391,8 +366,7 @@ export default function CatalogPage() {
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-slate-500">金额 / 门槛</p>
                 <p className="kpi-value mt-1 text-lg text-slate-900">
-                  {formatMoney(cart?.summary.total_amount ?? 0)} /{" "}
-                  {formatMoney(cart?.summary.threshold_amount ?? 0)}
+                  {formatMoney(cart?.summary.total_amount ?? 0)} / {formatMoney(cart?.summary.threshold_amount ?? 0)}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   {cart?.summary.threshold_reached
@@ -400,9 +374,7 @@ export default function CatalogPage() {
                     : `距门槛还差 ${formatMoney(cart?.summary.gap_to_threshold ?? 0)}`}
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3 text-slate-600">
-                常购待补货：{missingFrequentCount} 项
-              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3 text-slate-600">常购待补货：{missingFrequentCount} 项</div>
               <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm">
                   <Link href="/basket">去采购清单</Link>
@@ -417,22 +389,22 @@ export default function CatalogPage() {
           <Card className="border-slate-200 bg-white/92">
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-lg text-slate-900">系统补货提示</CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={applyAllHints}
-                  disabled={busyApplyHints || hintRecommendations.length === 0}
-                >
+                <CardTitle className="text-lg text-slate-900">系统提示</CardTitle>
+                <Button size="sm" variant="outline" onClick={applyAllHints} disabled={busyApplyHints || hintRecommendations.length === 0}>
                   {busyApplyHints ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  批量采纳
+                  应用全部
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {hintRecommendations.length === 0 ? (
+              {loadingHints ? (
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-600">
+                  <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                  正在同步系统提示...
+                </div>
+              ) : hintRecommendations.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 p-3 text-slate-500">
-                  点击“刷新待补货提示”获取建议商品。
+                  当前暂无系统提示，可继续按分类手工选品。
                 </div>
               ) : (
                 hintRecommendations.slice(0, 5).map((item) => {
@@ -443,13 +415,8 @@ export default function CatalogPage() {
                       <p className="mt-1 text-xs text-slate-600">{item.reason}</p>
                       <div className="mt-2 flex items-center justify-between">
                         <span className="text-xs text-slate-500">建议 {item.suggested_qty} 箱</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => applyHintItem(item)}
-                          disabled={busyActionKey === actionKey}
-                        >
-                          采纳
+                        <Button size="sm" variant="outline" onClick={() => applyHintItem(item)} disabled={busyActionKey === actionKey}>
+                          应用
                         </Button>
                       </div>
                     </div>

@@ -3,35 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
-import { AdminPageFrame } from "@/components/admin/page-frame";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
+import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
+import { AdminPageFrame } from "@/components/admin/page-frame";
+import { TokenEditor } from "@/components/admin/token-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  AdminClientError,
-  formatFieldErrors,
-  fromEditableText,
-  requestJson,
-  toEditableText,
-} from "@/lib/admin/client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AdminClientError, formatFieldErrors, requestJson } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
 import type { ProductEntity } from "@/lib/memory/types";
 
@@ -43,8 +26,8 @@ type ProductForm = {
   spec: string;
   price_per_case: number;
   box_multiple: number;
-  tags: string;
-  pair_items: string;
+  tags: string[];
+  pair_items: string[];
   is_weekly_focus: boolean;
   is_new_product: boolean;
   status: "active" | "inactive";
@@ -59,8 +42,8 @@ const EMPTY_FORM: ProductForm = {
   spec: "",
   price_per_case: 1,
   box_multiple: 1,
-  tags: "",
-  pair_items: "",
+  tags: [],
+  pair_items: [],
   is_weekly_focus: false,
   is_new_product: false,
   status: "active",
@@ -69,6 +52,7 @@ const EMPTY_FORM: ProductForm = {
 
 export default function ProductsPage() {
   const [items, setItems] = useState<ProductEntity[]>([]);
+  const [allProducts, setAllProducts] = useState<ProductEntity[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState({
     page: 1,
@@ -76,7 +60,7 @@ export default function ProductsPage() {
     q: "",
     status: "",
     sortBy: "display_order",
-    sortOrder: "asc",
+    sortOrder: "asc" as "asc" | "desc",
   });
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
@@ -88,16 +72,19 @@ export default function ProductsPage() {
     const params = new URLSearchParams();
     params.set("page", String(query.page));
     params.set("pageSize", String(query.pageSize));
-    if (query.q) {
-      params.set("q", query.q);
-    }
-    if (query.status) {
-      params.set("status", query.status);
-    }
     params.set("sortBy", query.sortBy);
     params.set("sortOrder", query.sortOrder);
+    if (query.q) params.set("q", query.q);
+    if (query.status) params.set("status", query.status);
     return params.toString();
   }, [query]);
+
+  const loadAllProducts = useCallback(async () => {
+    const data = await requestJson<ListResult<ProductEntity>>(
+      "/api/admin/products?page=1&pageSize=500&sortBy=display_order&sortOrder=asc",
+    );
+    setAllProducts(data.items);
+  }, []);
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -116,8 +103,26 @@ export default function ProductsPage() {
   }, [queryString]);
 
   useEffect(() => {
+    void loadAllProducts();
+  }, [loadAllProducts]);
+
+  useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
+
+  const categoryOptions = useMemo(() => {
+    return Array.from(new Set(allProducts.map((item) => item.category).filter(Boolean))).sort();
+  }, [allProducts]);
+
+  const pairOptions = useMemo<ChecklistOption[]>(() => {
+    return allProducts
+      .filter((item) => item.sku_id !== form.sku_id)
+      .map((item) => ({
+        value: item.sku_id,
+        label: item.sku_name,
+        description: `${item.sku_id} · ${item.category}`,
+      }));
+  }, [allProducts, form.sku_id]);
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -134,8 +139,8 @@ export default function ProductsPage() {
       spec: item.spec,
       price_per_case: item.price_per_case,
       box_multiple: item.box_multiple,
-      tags: toEditableText(item.tags),
-      pair_items: toEditableText(item.pair_items),
+      tags: item.tags,
+      pair_items: item.pair_items,
       is_weekly_focus: item.is_weekly_focus,
       is_new_product: item.is_new_product,
       status: item.status,
@@ -143,52 +148,44 @@ export default function ProductsPage() {
     });
   };
 
-  const payloadFromForm = () => ({
-    ...form,
-    tags: fromEditableText(form.tags),
-    pair_items: fromEditableText(form.pair_items),
-  });
-
   const submitCreate = async () => {
     setSuccessMessage("");
     setErrorMessage("");
     try {
       await requestJson<ProductEntity>("/api/admin/products", {
         method: "POST",
-        body: JSON.stringify(payloadFromForm()),
+        body: JSON.stringify(form),
       });
       setSuccessMessage("商品创建成功");
       resetForm();
-      await loadProducts();
+      await Promise.all([loadProducts(), loadAllProducts()]);
     } catch (error) {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
-        return;
+      } else {
+        setErrorMessage("商品创建失败");
       }
-      setErrorMessage("商品创建失败");
     }
   };
 
   const submitUpdate = async () => {
-    if (!editingId) {
-      return;
-    }
+    if (!editingId) return;
     setSuccessMessage("");
     setErrorMessage("");
     try {
       await requestJson<ProductEntity>(`/api/admin/products/${editingId}`, {
         method: "PATCH",
-        body: JSON.stringify(payloadFromForm()),
+        body: JSON.stringify(form),
       });
       setSuccessMessage("商品更新成功");
       resetForm();
-      await loadProducts();
+      await Promise.all([loadProducts(), loadAllProducts()]);
     } catch (error) {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
-        return;
+      } else {
+        setErrorMessage("商品更新失败");
       }
-      setErrorMessage("商品更新失败");
     }
   };
 
@@ -200,10 +197,8 @@ export default function ProductsPage() {
         method: "DELETE",
       });
       setSuccessMessage("商品已停用");
-      if (editingId === id) {
-        resetForm();
-      }
-      await loadProducts();
+      if (editingId === id) resetForm();
+      await Promise.all([loadProducts(), loadAllProducts()]);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "停用失败");
     }
@@ -212,7 +207,7 @@ export default function ProductsPage() {
   return (
     <AdminPageFrame
       title="商品档案"
-      description="维护商品主数据（内存态），支持查询筛选、编辑与软停用。"
+      description="维护 SKU、价格、箱规与标签关系，供活动和推荐策略结构化引用。"
       action={
         <Button className="rounded-full" onClick={resetForm}>
           <Plus className="h-4 w-4" />
@@ -309,55 +304,60 @@ export default function ProductsPage() {
                   <TableHead>SKU</TableHead>
                   <TableHead>商品</TableHead>
                   <TableHead>价格/箱规</TableHead>
+                  <TableHead>关系</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.sku_id}>
-                    <TableCell className="font-mono text-xs">{item.sku_id}</TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <p>{item.sku_name}</p>
-                        <p className="text-xs text-slate-500">
-                          {item.category} · {item.spec}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      ¥{item.price_per_case} / {item.box_multiple}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={item.status === "active" ? "secondary" : "outline"}>
-                        {item.status === "active" ? "启用" : "停用"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
-                          编辑
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => softDelete(item.sku_id)}
-                          disabled={item.status === "inactive"}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          停用
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
                 {items.length === 0 ? (
                   <TableRow>
-                    <TableCell className="text-center text-slate-500" colSpan={5}>
-                      无数据
+                    <TableCell className="text-center text-slate-500" colSpan={6}>
+                      {loading ? "加载中..." : "无数据"}
                     </TableCell>
                   </TableRow>
-                ) : null}
+                ) : (
+                  items.map((item) => (
+                    <TableRow key={item.sku_id}>
+                      <TableCell className="font-mono text-xs">{item.sku_id}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <p>{item.sku_name}</p>
+                          <p className="text-xs text-slate-500">
+                            {item.category} · {item.spec}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        ¥{item.price_per_case} / 箱规 {item.box_multiple}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600">
+                        标签 {item.tags.length} · 搭配 SKU {item.pair_items.length}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={item.status === "active" ? "secondary" : "outline"}>
+                          {item.status === "active" ? "启用" : "停用"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
+                            编辑
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => softDelete(item.sku_id)}
+                            disabled={item.status === "inactive"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            停用
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -390,11 +390,31 @@ export default function ProductsPage() {
               </div>
               <div className="space-y-1">
                 <Label>品类</Label>
+                <Select
+                  value={form.category || "__custom__"}
+                  onValueChange={(value) => {
+                    if (value === "__custom__") return;
+                    setForm((prev) => ({ ...prev, category: value }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择已有品类" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__custom__">手工输入</SelectItem>
+                    {categoryOptions.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   value={form.category}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, category: event.target.value }))
                   }
+                  placeholder="或手工输入品类"
                 />
               </div>
               <div className="space-y-1">
@@ -420,7 +440,7 @@ export default function ProductsPage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>起订箱规</Label>
+                <Label>箱规</Label>
                 <Input
                   type="number"
                   value={form.box_multiple}
@@ -432,25 +452,23 @@ export default function ProductsPage() {
                   }
                 />
               </div>
-              <div className="space-y-1 md:col-span-2">
-                <Label>标签（逗号分隔）</Label>
-                <Input
-                  value={form.tags}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, tags: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1 md:col-span-2">
-                <Label>搭配商品 SKU（逗号分隔）</Label>
-                <Input
-                  value={form.pair_items}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, pair_items: event.target.value }))
-                  }
-                />
-              </div>
             </div>
+
+            <TokenEditor
+              label="商品标签"
+              value={form.tags}
+              onChange={(tags) => setForm((prev) => ({ ...prev, tags }))}
+              placeholder="输入标签，例如：高频动销"
+              suggestions={["高频动销", "常购", "活动", "新品", "利润款"]}
+            />
+            <MultiSelectChecklist
+              label="搭配商品 SKU"
+              options={pairOptions}
+              selected={form.pair_items}
+              onChange={(pair_items) => setForm((prev) => ({ ...prev, pair_items }))}
+              searchPlaceholder="搜索可搭配商品"
+              emptyText="没有可搭配商品"
+            />
 
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <label className="inline-flex items-center gap-1">

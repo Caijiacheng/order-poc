@@ -4,7 +4,7 @@ import { ADMIN_NAV_TREE, getAdminRouteMatch } from "../lib/navigation";
 import { ADMIN_ROUTES } from "../lib/routes";
 
 describe("admin navigation IA contract", () => {
-  it("keeps 5 primary groups with canonical default child mapping", () => {
+  it("keeps 6 primary groups with canonical default child mapping", () => {
     expect(
       ADMIN_NAV_TREE.map((group) => ({
         key: group.key,
@@ -13,14 +13,12 @@ describe("admin navigation IA contract", () => {
     ).toEqual([
       { key: "workbench", defaultHref: "/admin/workbench/overview" },
       { key: "master-data", defaultHref: "/admin/master-data/products" },
-      {
-        key: "strategy",
-        defaultHref: "/admin/strategy/recommendation-templates",
-      },
+      { key: "strategy", defaultHref: "/admin/strategy/campaigns" },
+      { key: "operations", defaultHref: "/admin/operations/generation-jobs" },
       { key: "analytics", defaultHref: "/admin/analytics/overview" },
       { key: "observability", defaultHref: "/admin/observability/audit-logs" },
     ]);
-    expect(ADMIN_NAV_TREE).toHaveLength(5);
+    expect(ADMIN_NAV_TREE).toHaveLength(6);
   });
 
   it("keeps canonical admin leaf routes aligned with route registry", () => {
@@ -28,7 +26,7 @@ describe("admin navigation IA contract", () => {
       group.items.map((item) => item.href),
     );
     expect(navLeafRoutes).toEqual(ADMIN_ROUTES);
-    expect(navLeafRoutes).toHaveLength(11);
+    expect(navLeafRoutes).toHaveLength(16);
   });
 
   it("maps each group default href to the first child and active route match", () => {

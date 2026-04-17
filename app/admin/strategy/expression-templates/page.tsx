@@ -5,6 +5,7 @@ import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
 import { AdminPageFrame } from "@/components/admin/page-frame";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
+import { TokenEditor } from "@/components/admin/token-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,70 +33,60 @@ import {
   requestJson,
 } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
-import type { DealerSuggestionTemplateEntity, SuggestionScene } from "@/lib/memory/types";
+import type { ExpressionTemplateEntity } from "@/lib/memory/types";
 
 type TemplateForm = {
-  template_id: string;
-  customer_id: string;
-  template_name: string;
-  scene: SuggestionScene;
-  reference_items: string;
-  business_notes: string;
+  expression_template_id: string;
+  expression_template_name: string;
+  template_type: ExpressionTemplateEntity["template_type"];
+  scene: ExpressionTemplateEntity["scene"];
+  tone: string;
+  avoid: string[];
+  reason_limit: number;
+  system_role: string;
+  instruction: string;
   style_hint: string;
-  priority: number;
-  enabled: boolean;
+  status: "active" | "inactive";
 };
-
-const EMPTY_REFERENCE_ITEMS = JSON.stringify(
-  [
-    {
-      sku_id: "cb_weijixian_500",
-      qty: 12,
-      reason: "示例原因",
-      reason_tags: ["常购品"],
-      sort_order: 1,
-    },
-    {
-      sku_id: "cb_oyster_700",
-      qty: 8,
-      reason: "示例原因",
-      reason_tags: ["搭配品"],
-      sort_order: 2,
-    },
-  ],
-  null,
-  2,
-);
 
 const EMPTY_FORM: TemplateForm = {
-  template_id: "",
-  customer_id: "",
-  template_name: "",
-  scene: "daily_recommendation",
-  reference_items: EMPTY_REFERENCE_ITEMS,
-  business_notes: "",
+  expression_template_id: "",
+  expression_template_name: "",
+  template_type: "recommendation",
+  scene: "all",
+  tone: "",
+  avoid: [],
+  reason_limit: 3,
+  system_role: "",
+  instruction: "",
   style_hint: "",
-  priority: 1,
-  enabled: true,
+  status: "active",
 };
 
-const SCENE_LABELS: Record<SuggestionScene, string> = {
+const TYPE_LABELS: Record<ExpressionTemplateEntity["template_type"], string> = {
+  recommendation: "推荐生成",
+  cart_optimization: "凑单优化",
+  explanation: "解释说明",
+};
+
+const SCENE_LABELS: Record<ExpressionTemplateEntity["scene"], string> = {
+  all: "全场景",
   daily_recommendation: "日常补货",
   weekly_focus: "周活动备货",
   threshold_topup: "门槛补差",
   box_pair_optimization: "箱规与搭配优化",
 };
 
-export default function SuggestionTemplatesPage() {
-  const [items, setItems] = useState<DealerSuggestionTemplateEntity[]>([]);
+export default function ExpressionTemplatesPage() {
+  const [items, setItems] = useState<ExpressionTemplateEntity[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState({
     page: 1,
     pageSize: 10,
     q: "",
     status: "",
-    sortBy: "priority",
-    sortOrder: "asc",
+    sortBy: "expression_template_name",
+    sortOrder: "asc" as "asc" | "desc",
   });
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<TemplateForm>(EMPTY_FORM);
@@ -107,14 +98,10 @@ export default function SuggestionTemplatesPage() {
     const params = new URLSearchParams();
     params.set("page", String(query.page));
     params.set("pageSize", String(query.pageSize));
-    if (query.q) {
-      params.set("q", query.q);
-    }
-    if (query.status) {
-      params.set("status", query.status);
-    }
     params.set("sortBy", query.sortBy);
     params.set("sortOrder", query.sortOrder);
+    if (query.q) params.set("q", query.q);
+    if (query.status) params.set("status", query.status);
     return params.toString();
   }, [query]);
 
@@ -122,13 +109,13 @@ export default function SuggestionTemplatesPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const data = await requestJson<ListResult<DealerSuggestionTemplateEntity>>(
-        `/api/admin/suggestion-templates?${queryString}`,
+      const data = await requestJson<ListResult<ExpressionTemplateEntity>>(
+        `/api/admin/expression-templates?${queryString}`,
       );
       setItems(data.items);
       setTotal(data.total);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载模板失败");
+      setErrorMessage(error instanceof Error ? error.message : "加载表达模板失败");
     } finally {
       setLoading(false);
     }
@@ -143,69 +130,66 @@ export default function SuggestionTemplatesPage() {
     setEditingId(null);
   };
 
-  const pickForEdit = (item: DealerSuggestionTemplateEntity) => {
-    setEditingId(item.template_id);
+  const pickForEdit = (item: ExpressionTemplateEntity) => {
+    setEditingId(item.expression_template_id);
     setForm({
-      template_id: item.template_id,
-      customer_id: item.customer_id,
-      template_name: item.template_name,
+      expression_template_id: item.expression_template_id,
+      expression_template_name: item.expression_template_name,
+      template_type: item.template_type,
       scene: item.scene,
-      reference_items: JSON.stringify(item.reference_items, null, 2),
-      business_notes: item.business_notes,
+      tone: item.tone,
+      avoid: item.avoid,
+      reason_limit: item.reason_limit,
+      system_role: item.system_role,
+      instruction: item.instruction,
       style_hint: item.style_hint,
-      priority: item.priority,
-      enabled: item.enabled,
+      status: item.status,
     });
   };
 
-  const payloadFromForm = () => ({
-    ...form,
-    reference_items: form.reference_items,
-  });
+  const payloadFromForm = () => ({ ...form });
 
   const submitCreate = async () => {
     setSuccessMessage("");
     setErrorMessage("");
     try {
-      await requestJson<DealerSuggestionTemplateEntity>("/api/admin/suggestion-templates", {
+      await requestJson<ExpressionTemplateEntity>("/api/admin/expression-templates", {
         method: "POST",
         body: JSON.stringify(payloadFromForm()),
       });
-      setSuccessMessage("模板创建成功");
+      setSuccessMessage("表达模板创建成功");
       resetForm();
       await loadTemplates();
     } catch (error) {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
-        return;
+      } else {
+        setErrorMessage("表达模板创建失败");
       }
-      setErrorMessage("模板创建失败");
     }
   };
 
   const submitUpdate = async () => {
-    if (!editingId) {
-      return;
-    }
+    if (!editingId) return;
     setSuccessMessage("");
     setErrorMessage("");
     try {
-      await requestJson<DealerSuggestionTemplateEntity>(
-        `/api/admin/suggestion-templates/${editingId}`,
+      await requestJson<ExpressionTemplateEntity>(
+        `/api/admin/expression-templates/${editingId}`,
         {
           method: "PATCH",
           body: JSON.stringify(payloadFromForm()),
         },
       );
-      setSuccessMessage("模板更新成功");
+      setSuccessMessage("表达模板更新成功");
       resetForm();
       await loadTemplates();
     } catch (error) {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
-        return;
+      } else {
+        setErrorMessage("表达模板更新失败");
       }
-      setErrorMessage("模板更新失败");
     }
   };
 
@@ -213,11 +197,10 @@ export default function SuggestionTemplatesPage() {
     setSuccessMessage("");
     setErrorMessage("");
     try {
-      await requestJson<DealerSuggestionTemplateEntity>(
-        `/api/admin/suggestion-templates/${id}`,
-        { method: "DELETE" },
-      );
-      setSuccessMessage("模板已停用");
+      await requestJson<ExpressionTemplateEntity>(`/api/admin/expression-templates/${id}`, {
+        method: "DELETE",
+      });
+      setSuccessMessage("表达模板已停用");
       if (editingId === id) {
         resetForm();
       }
@@ -229,13 +212,19 @@ export default function SuggestionTemplatesPage() {
 
   return (
     <AdminPageFrame
-      title="推荐模板"
-      description="维护推荐模板（内存态），支持按场景配置参考条目并进行软停用。"
+      title="表达模板"
+      description="仅使用 canonical expression-templates 数据源维护表达策略。"
       action={
-        <Button className="rounded-full" onClick={resetForm}>
-          <Plus className="h-4 w-4" />
-          新建模板
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadTemplates} disabled={loading}>
+            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            刷新
+          </Button>
+          <Button className="rounded-full" onClick={resetForm}>
+            <Plus className="h-4 w-4" />
+            新建模板
+          </Button>
+        </div>
       }
     >
       <FeedbackBanner kind="success" message={successMessage} />
@@ -244,7 +233,7 @@ export default function SuggestionTemplatesPage() {
       <Card>
         <CardContent className="grid gap-3 p-4 md:grid-cols-6">
           <Input
-            placeholder="搜索模板 ID/名称/场景"
+            placeholder="搜索模板 ID/名称/类型"
             value={query.q}
             onChange={(event) =>
               setQuery((prev) => ({ ...prev, q: event.target.value, page: 1 }))
@@ -261,7 +250,7 @@ export default function SuggestionTemplatesPage() {
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder="状态" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部状态</SelectItem>
@@ -277,8 +266,8 @@ export default function SuggestionTemplatesPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="priority">优先级</SelectItem>
-              <SelectItem value="template_name">模板名称</SelectItem>
+              <SelectItem value="expression_template_name">模板名称</SelectItem>
+              <SelectItem value="template_type">模板类型</SelectItem>
               <SelectItem value="updated_at">更新时间</SelectItem>
             </SelectContent>
           </Select>
@@ -311,10 +300,7 @@ export default function SuggestionTemplatesPage() {
               <SelectItem value="50">50 / 页</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={loadTemplates} disabled={loading}>
-            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-            刷新
-          </Button>
+          <div className="flex items-center text-xs text-slate-500">总数 {total}</div>
         </CardContent>
       </Card>
 
@@ -326,23 +312,25 @@ export default function SuggestionTemplatesPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>模板</TableHead>
-                  <TableHead>场景</TableHead>
+                  <TableHead>类型/场景</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((item) => (
-                  <TableRow key={item.template_id}>
-                    <TableCell className="font-mono text-xs">{item.template_id}</TableCell>
+                  <TableRow key={item.expression_template_id}>
+                    <TableCell className="font-mono text-xs">{item.expression_template_id}</TableCell>
                     <TableCell>
-                      <p>{item.template_name}</p>
-                      <p className="text-xs text-slate-500">{item.customer_id}</p>
+                      <p>{item.expression_template_name}</p>
+                      <p className="text-xs text-slate-500">{item.style_hint || "-"}</p>
                     </TableCell>
-                    <TableCell>{SCENE_LABELS[item.scene]}</TableCell>
+                    <TableCell className="text-xs text-slate-600">
+                      {TYPE_LABELS[item.template_type]} · {SCENE_LABELS[item.scene]}
+                    </TableCell>
                     <TableCell>
-                      <Badge variant={item.enabled ? "secondary" : "outline"}>
-                        {item.enabled ? "启用" : "停用"}
+                      <Badge variant={item.status === "active" ? "secondary" : "outline"}>
+                        {item.status === "active" ? "启用" : "停用"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -353,8 +341,8 @@ export default function SuggestionTemplatesPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => softDelete(item.template_id)}
-                          disabled={!item.enabled}
+                          onClick={() => softDelete(item.expression_template_id)}
+                          disabled={item.status === "inactive"}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           停用
@@ -384,78 +372,125 @@ export default function SuggestionTemplatesPage() {
               <div className="space-y-1">
                 <Label>模板编码</Label>
                 <Input
-                  value={form.template_id}
+                  value={form.expression_template_id}
                   disabled={Boolean(editingId)}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, template_id: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      expression_template_id: event.target.value,
+                    }))
                   }
                 />
               </div>
               <div className="space-y-1">
-                <Label>经销商编码</Label>
-                <Input
-                  value={form.customer_id}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, customer_id: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1 md:col-span-2">
                 <Label>模板名称</Label>
                 <Input
-                  value={form.template_name}
+                  value={form.expression_template_name}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, template_name: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      expression_template_name: event.target.value,
+                    }))
                   }
                 />
               </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
               <div className="space-y-1">
-                <Label>适用场景</Label>
+                <Label>模板类型</Label>
                 <Select
-                  value={form.scene}
+                  value={form.template_type}
                   onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, scene: value as SuggestionScene }))
+                    setForm((prev) => ({
+                      ...prev,
+                      template_type: value as ExpressionTemplateEntity["template_type"],
+                    }))
                   }
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="daily_recommendation">日常补货</SelectItem>
-                    <SelectItem value="weekly_focus">周活动备货</SelectItem>
-                    <SelectItem value="threshold_topup">门槛补差</SelectItem>
-                    <SelectItem value="box_pair_optimization">
-                      箱规与搭配优化
-                    </SelectItem>
+                    <SelectItem value="recommendation">推荐生成</SelectItem>
+                    <SelectItem value="cart_optimization">凑单优化</SelectItem>
+                    <SelectItem value="explanation">解释说明</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>优先级</Label>
+                <Label>适用场景</Label>
+                <Select
+                  value={form.scene}
+                  onValueChange={(value) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      scene: value as ExpressionTemplateEntity["scene"],
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全场景</SelectItem>
+                    <SelectItem value="daily_recommendation">日常补货</SelectItem>
+                    <SelectItem value="weekly_focus">周活动备货</SelectItem>
+                    <SelectItem value="threshold_topup">门槛补差</SelectItem>
+                    <SelectItem value="box_pair_optimization">箱规与搭配优化</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label>语气</Label>
+                <Input
+                  value={form.tone}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, tone: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>理由数量上限</Label>
                 <Input
                   type="number"
-                  value={form.priority}
+                  value={form.reason_limit}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
-                      priority: Number(event.target.value || "1"),
+                      reason_limit: Number(event.target.value || "1"),
                     }))
                   }
                 />
               </div>
             </div>
-
+            <TokenEditor
+              label="禁用词"
+              value={form.avoid}
+              onChange={(avoid) => setForm((prev) => ({ ...prev, avoid }))}
+              placeholder="输入禁用词"
+            />
             <div className="space-y-1">
-              <Label>业务说明</Label>
+              <Label>系统角色</Label>
               <Textarea
-                value={form.business_notes}
+                value={form.system_role}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, business_notes: event.target.value }))
+                  setForm((prev) => ({ ...prev, system_role: event.target.value }))
                 }
               />
             </div>
             <div className="space-y-1">
-              <Label>表达风格提示</Label>
+              <Label>指令模板</Label>
+              <Textarea
+                value={form.instruction}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, instruction: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>风格提示</Label>
               <Textarea
                 value={form.style_hint}
                 onChange={(event) =>
@@ -463,27 +498,21 @@ export default function SuggestionTemplatesPage() {
                 }
               />
             </div>
-            <div className="space-y-1">
-              <Label>参考商品清单（JSON 数组）</Label>
-              <Textarea
-                className="min-h-[180px] font-mono text-xs"
-                value={form.reference_items}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, reference_items: event.target.value }))
-                }
-              />
-            </div>
 
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.enabled}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, enabled: event.target.checked }))
-                }
-              />
-              启用模板
-            </label>
+            <Select
+              value={form.status}
+              onValueChange={(value) =>
+                setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+              }
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">启用</SelectItem>
+                <SelectItem value="inactive">停用</SelectItem>
+              </SelectContent>
+            </Select>
 
             <div className="flex gap-2">
               {editingId ? (
@@ -501,9 +530,6 @@ export default function SuggestionTemplatesPage() {
                 重置
               </Button>
             </div>
-            <p className="text-xs text-slate-500">
-              总数 {total}，当前第 {query.page} 页。
-            </p>
           </CardContent>
         </Card>
       </section>
