@@ -2,7 +2,6 @@ import type {
   CampaignEntity,
   DealerEntity,
   DealerSegmentEntity,
-  DealerSuggestionTemplateEntity,
   ExpressionTemplateEntity,
   GenerationJobEntity,
   GlobalRuleEntity,
@@ -10,7 +9,6 @@ import type {
   ProductPoolEntity,
   RecommendationBatchRecord,
   RecommendationStrategyEntity,
-  PromptConfigEntity,
   RuleConfigEntity,
   TemplateReferenceItem,
   RecoverySnapshotRecord,
@@ -83,13 +81,25 @@ function parseEntityStatus(value: unknown): "active" | "inactive" {
   return String(value ?? "active") === "inactive" ? "inactive" : "active";
 }
 
-function isValidScene(value: string) {
+function isValidSuggestionScene(value: string) {
   return (
     value === "daily_recommendation" ||
     value === "weekly_focus" ||
     value === "threshold_topup" ||
     value === "box_pair_optimization"
   );
+}
+
+function isValidStrategyScene(value: string) {
+  return (
+    value === "hot_sale_bundle" ||
+    value === "replenishment_bundle" ||
+    value === "campaign_bundle"
+  );
+}
+
+function isValidExpressionTemplateScene(value: string) {
+  return value === "all" || value === "bundle" || value === "topup";
 }
 
 export function validateProductInput(
@@ -237,107 +247,6 @@ export function validateDealerInput(
   };
 }
 
-function parseReferenceItems(value: unknown): TemplateReferenceItem[] {
-  if (Array.isArray(value)) {
-    return value as TemplateReferenceItem[];
-  }
-
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) {
-        return parsed as TemplateReferenceItem[];
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
-}
-
-export function validateTemplateInput(
-  payload: unknown,
-  mode: "create" | "update",
-): ValidationResult<Omit<DealerSuggestionTemplateEntity, "created_at" | "updated_at">> {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const fieldErrors: Record<string, string> = {};
-
-  const template_id = String(body.template_id ?? "").trim();
-  const customer_id = String(body.customer_id ?? "").trim();
-  const template_name = String(body.template_name ?? "").trim();
-  const scene = String(body.scene ?? "") as DealerSuggestionTemplateEntity["scene"];
-  const reference_items = parseReferenceItems(body.reference_items);
-  const business_notes = String(body.business_notes ?? "").trim();
-  const style_hint = String(body.style_hint ?? "").trim();
-  const priority = parseNumber(body.priority, 1);
-  const enabled = parseBoolean(body.enabled);
-
-  const validScenes = new Set([
-    "daily_recommendation",
-    "weekly_focus",
-    "threshold_topup",
-    "box_pair_optimization",
-  ]);
-
-  if (mode === "create" && !isNonEmptyString(template_id)) {
-    fieldErrors.template_id = "模板 ID 不能为空";
-  }
-  if (!isNonEmptyString(customer_id)) {
-    fieldErrors.customer_id = "经销商不能为空";
-  }
-  if (!isNonEmptyString(template_name)) {
-    fieldErrors.template_name = "模板名称不能为空";
-  }
-  if (!validScenes.has(scene)) {
-    fieldErrors.scene = "模板场景不合法";
-  }
-  if (!isNonEmptyString(business_notes)) {
-    fieldErrors.business_notes = "业务说明不能为空";
-  }
-  if (!isNonEmptyString(style_hint)) {
-    fieldErrors.style_hint = "风格提示不能为空";
-  }
-  if (reference_items.length < 1) {
-    fieldErrors.reference_items = "至少需要 1 条参考商品";
-  } else {
-    for (let i = 0; i < reference_items.length; i += 1) {
-      const item = reference_items[i];
-      if (!isNonEmptyString(item?.sku_id)) {
-        fieldErrors[`reference_items[${i}].sku_id`] = "sku_id 不能为空";
-      }
-      if (!Number.isFinite(item?.qty) || item.qty <= 0) {
-        fieldErrors[`reference_items[${i}].qty`] = "qty 必须大于 0";
-      }
-      if (!isNonEmptyString(item?.reason)) {
-        fieldErrors[`reference_items[${i}].reason`] = "reason 不能为空";
-      }
-      if (!Array.isArray(item?.reason_tags)) {
-        fieldErrors[`reference_items[${i}].reason_tags`] = "reason_tags 必须为数组";
-      }
-    }
-  }
-
-  if (Object.keys(fieldErrors).length > 0) {
-    return { valid: false, fieldErrors };
-  }
-
-  return {
-    valid: true,
-    value: {
-      template_id,
-      customer_id,
-      template_name,
-      scene,
-      reference_items,
-      business_notes,
-      style_hint,
-      priority,
-      enabled,
-    },
-  };
-}
-
 export function validateCampaignInput(
   payload: unknown,
   mode: "create" | "update",
@@ -466,72 +375,6 @@ export function validateRulesInput(payload: unknown): ValidationResult<RuleConfi
   }
 
   return { valid: true, value: rules };
-}
-
-export function validatePromptConfigInput(
-  payload: unknown,
-): ValidationResult<PromptConfigEntity> {
-  const body = (payload ?? {}) as Record<string, unknown>;
-  const fieldErrors: Record<string, string> = {};
-
-  const global_style = (body.global_style ?? {}) as Record<string, unknown>;
-  const recommendation_prompt = (body.recommendation_prompt ?? {}) as Record<
-    string,
-    unknown
-  >;
-  const cart_opt_prompt = (body.cart_opt_prompt ?? {}) as Record<string, unknown>;
-  const explain_prompt = (body.explain_prompt ?? {}) as Record<string, unknown>;
-
-  const value: PromptConfigEntity = {
-    global_style: {
-      tone: String(global_style.tone ?? "").trim(),
-      avoid: toStringList(global_style.avoid),
-      reason_limit: parseNumber(global_style.reason_limit),
-    },
-    recommendation_prompt: {
-      system_role: String(recommendation_prompt.system_role ?? "").trim(),
-      instruction: String(recommendation_prompt.instruction ?? "").trim(),
-    },
-    cart_opt_prompt: {
-      system_role: String(cart_opt_prompt.system_role ?? "").trim(),
-      instruction: String(cart_opt_prompt.instruction ?? "").trim(),
-    },
-    explain_prompt: {
-      system_role: String(explain_prompt.system_role ?? "").trim(),
-      instruction: String(explain_prompt.instruction ?? "").trim(),
-    },
-  };
-
-  if (!isNonEmptyString(value.global_style.tone)) {
-    fieldErrors["global_style.tone"] = "tone 不能为空";
-  }
-  if (value.global_style.reason_limit <= 0) {
-    fieldErrors["global_style.reason_limit"] = "reason_limit 必须大于 0";
-  }
-  if (!isNonEmptyString(value.recommendation_prompt.system_role)) {
-    fieldErrors["recommendation_prompt.system_role"] = "推荐 system_role 不能为空";
-  }
-  if (!isNonEmptyString(value.recommendation_prompt.instruction)) {
-    fieldErrors["recommendation_prompt.instruction"] = "推荐 instruction 不能为空";
-  }
-  if (!isNonEmptyString(value.cart_opt_prompt.system_role)) {
-    fieldErrors["cart_opt_prompt.system_role"] = "凑单 system_role 不能为空";
-  }
-  if (!isNonEmptyString(value.cart_opt_prompt.instruction)) {
-    fieldErrors["cart_opt_prompt.instruction"] = "凑单 instruction 不能为空";
-  }
-  if (!isNonEmptyString(value.explain_prompt.system_role)) {
-    fieldErrors["explain_prompt.system_role"] = "解释 system_role 不能为空";
-  }
-  if (!isNonEmptyString(value.explain_prompt.instruction)) {
-    fieldErrors["explain_prompt.instruction"] = "解释 instruction 不能为空";
-  }
-
-  if (Object.keys(fieldErrors).length > 0) {
-    return { valid: false, fieldErrors };
-  }
-
-  return { valid: true, value };
 }
 
 export function validateDealerSegmentInput(
@@ -697,7 +540,7 @@ export function validateRecommendationStrategyInput(
   if (!isNonEmptyString(strategy_name)) {
     fieldErrors.strategy_name = "strategy_name 不能为空";
   }
-  if (!isValidScene(scene)) {
+  if (!isValidStrategyScene(scene)) {
     fieldErrors.scene = "scene 不合法";
   }
   if (target_dealer_ids.length === 0 && dealer_segment_ids.length === 0) {
@@ -782,10 +625,10 @@ export function validateExpressionTemplateInput(
   if (!isNonEmptyString(expression_template_name)) {
     fieldErrors.expression_template_name = "expression_template_name 不能为空";
   }
-  if (!["recommendation", "cart_optimization", "explanation"].includes(template_type)) {
+  if (!["bundle_explanation", "topup_explanation"].includes(template_type)) {
     fieldErrors.template_type = "template_type 不合法";
   }
-  if (!(scene === "all" || isValidScene(scene))) {
+  if (!isValidExpressionTemplateScene(scene)) {
     fieldErrors.scene = "scene 不合法";
   }
   if (!isNonEmptyString(tone)) {
@@ -988,7 +831,7 @@ export function validateRecommendationBatchInput(
   if (!["system", "admin", "frontstage", "fallback"].includes(trigger_source)) {
     fieldErrors.trigger_source = "trigger_source 不合法";
   }
-  if (scene && !isValidScene(scene)) {
+  if (scene && !isValidSuggestionScene(scene)) {
     fieldErrors.scene = "scene 不合法";
   }
   if (!isNonEmptyString(config_snapshot_id)) {

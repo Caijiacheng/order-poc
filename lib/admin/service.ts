@@ -16,10 +16,12 @@ import {
   nowIso,
 } from "@/lib/memory/store";
 import type {
+  ActivityHighlight,
+  BundleTemplate,
+  BundleTemplateItem,
   CampaignEntity,
   DealerEntity,
   DealerSegmentEntity,
-  DealerSuggestionTemplateEntity,
   ExpressionTemplateEntity,
   GenerationJobEntity,
   GlobalRuleEntity,
@@ -31,6 +33,7 @@ import type {
   RecommendationRunRecord,
   RecommendationStrategyEntity,
   RecoverySnapshotRecord,
+  PublishedSuggestionsCartSummary,
   RuleConfigEntity,
   SuggestionScene,
   TemplateReferenceItem,
@@ -65,20 +68,10 @@ type RecommendationBatchUpsertInput = Omit<
 > &
   Partial<Pick<RecommendationBatchRecord, "job_id" | "publication_status">>;
 
-type PublishedSuggestionItem = {
-  recommendation_item_id: string;
-  sku_id: string;
-  sku_name: string;
-  suggested_qty: number;
-  reason: string;
-  reason_tags: string[];
-  priority: number;
-  action_type: "add_to_cart" | "adjust_qty" | "replace_item";
-};
-
 export type PublishedSuggestionsPayload = {
-  dailyRecommendations: PublishedSuggestionItem[];
-  weeklyFocusRecommendations: PublishedSuggestionItem[];
+  bundleTemplates: BundleTemplate[];
+  activityHighlights: ActivityHighlight[];
+  cartSummary: PublishedSuggestionsCartSummary;
   summary: {
     published: boolean;
     job_id?: string;
@@ -152,10 +145,9 @@ function toPromptConfig(templates: ExpressionTemplateEntity[]): PromptConfigEnti
   const pick = (type: ExpressionTemplateEntity["template_type"]) =>
     templates.find((item) => item.template_type === type && item.status === "active");
 
-  const recommendation = pick("recommendation");
-  const cart = pick("cart_optimization");
-  const explain = pick("explanation");
-  const shared = recommendation ?? cart ?? explain;
+  const bundle = pick("bundle_explanation");
+  const topup = pick("topup_explanation");
+  const shared = bundle ?? topup;
 
   return {
     global_style: {
@@ -164,67 +156,22 @@ function toPromptConfig(templates: ExpressionTemplateEntity[]): PromptConfigEnti
       reason_limit: shared?.reason_limit ?? 3,
     },
     recommendation_prompt: {
-      system_role: recommendation?.system_role ?? "",
-      instruction: recommendation?.instruction ?? "",
+      system_role: bundle?.system_role ?? "",
+      instruction: bundle?.instruction ?? "",
     },
     cart_opt_prompt: {
-      system_role: cart?.system_role ?? "",
-      instruction: cart?.instruction ?? "",
+      system_role: topup?.system_role ?? bundle?.system_role ?? "",
+      instruction: topup?.instruction ?? bundle?.instruction ?? "",
     },
     explain_prompt: {
-      system_role: explain?.system_role ?? "",
-      instruction: explain?.instruction ?? "",
+      system_role: bundle?.system_role ?? topup?.system_role ?? "",
+      instruction: bundle?.instruction ?? topup?.instruction ?? "",
     },
   };
 }
 
-function strategyToLegacyTemplate(
-  strategy: RecommendationStrategyEntity,
-  expressionTemplates: ExpressionTemplateEntity[],
-): DealerSuggestionTemplateEntity {
-  const expression = expressionTemplates.find(
-    (item) => item.expression_template_id === strategy.expression_template_id,
-  );
-  return {
-    template_id: strategy.strategy_id,
-    customer_id: strategy.target_dealer_ids[0] ?? "",
-    template_name: strategy.strategy_name,
-    scene: strategy.scene,
-    reference_items: strategy.reference_items,
-    business_notes: strategy.business_notes,
-    style_hint: expression?.style_hint ?? "沿用表达模板",
-    priority: strategy.priority,
-    enabled: strategy.status === "active",
-    created_at: strategy.created_at,
-    updated_at: strategy.updated_at,
-  };
-}
-
-function legacyTemplateToStrategy(
-  input: UpsertInput<DealerSuggestionTemplateEntity>,
-): UpsertInput<RecommendationStrategyEntity> {
-  return {
-    strategy_id: input.template_id,
-    strategy_name: input.template_name,
-    scene: input.scene,
-    target_dealer_ids: [input.customer_id],
-    dealer_segment_ids: [],
-    product_pool_ids: ["pool_regular_replenishment", "pool_pairing"],
-    campaign_ids: [],
-    candidate_sku_ids: input.reference_items.map((item) => item.sku_id),
-    reference_items: input.reference_items,
-    business_notes: input.business_notes,
-    expression_template_id: "expr_recommendation_default",
-    priority: input.priority,
-    status: input.enabled ? "active" : "inactive",
-  };
-}
-
-function syncLegacyAdapters() {
+function refreshDerivedConfigs() {
   const store = getMemoryStore();
-  store.suggestionTemplates = store.recommendationStrategies.map((item) =>
-    strategyToLegacyTemplate(item, store.expressionTemplates),
-  );
   store.rules = toRuleConfig(store.globalRules);
   store.promptConfig = toPromptConfig(store.expressionTemplates);
 }
@@ -360,50 +307,6 @@ function deleteWithStatusGuard<T extends { status: string; updated_at: string }>
   item.status = "inactive";
   item.updated_at = nowIso();
   return item;
-}
-
-function upsertExpressionTemplateByType(
-  type: ExpressionTemplateEntity["template_type"],
-  payload: {
-    name: string;
-    system_role: string;
-    instruction: string;
-    tone: string;
-    avoid: string[];
-    reason_limit: number;
-  },
-) {
-  const store = getMemoryStore();
-  const existing = store.expressionTemplates.find((item) => item.template_type === type);
-  const timestamp = nowIso();
-  if (existing) {
-    existing.expression_template_name = payload.name;
-    existing.system_role = payload.system_role;
-    existing.instruction = payload.instruction;
-    existing.tone = payload.tone;
-    existing.avoid = payload.avoid;
-    existing.reason_limit = payload.reason_limit;
-    existing.scene = "all";
-    existing.status = "active";
-    existing.updated_at = timestamp;
-    return existing;
-  }
-  const created: ExpressionTemplateEntity = {
-    expression_template_id: `expr_${type}_${randomUUID().slice(0, 8)}`,
-    expression_template_name: payload.name,
-    template_type: type,
-    scene: "all",
-    tone: payload.tone,
-    avoid: payload.avoid,
-    reason_limit: payload.reason_limit,
-    system_role: payload.system_role,
-    instruction: payload.instruction,
-    style_hint: "从兼容 prompt 配置同步",
-    status: "active",
-    ...nowPair(),
-  };
-  store.expressionTemplates.push(created);
-  return created;
 }
 
 export function listProducts(query: ListQuery): ListResult<ProductEntity> {
@@ -860,7 +763,7 @@ export function createRecommendationStrategy(
   validateStrategyRelations(input);
   const created: RecommendationStrategyEntity = { ...input, ...nowPair() };
   store.recommendationStrategies.push(created);
-  syncLegacyAdapters();
+  refreshDerivedConfigs();
   appendAudit({
     entity_type: "recommendation_strategy",
     entity_id: created.strategy_id,
@@ -882,7 +785,7 @@ export function updateRecommendationStrategy(
   );
   validateStrategyRelations(input);
   Object.assign(item, input, { updated_at: nowIso() });
-  syncLegacyAdapters();
+  refreshDerivedConfigs();
   appendAudit({
     entity_type: "recommendation_strategy",
     entity_id: item.strategy_id,
@@ -900,7 +803,7 @@ export function softDeleteRecommendationStrategy(id: string) {
     "推荐策略不存在",
   );
   deleteWithStatusGuard(item, "推荐策略");
-  syncLegacyAdapters();
+  refreshDerivedConfigs();
   appendAudit({
     entity_type: "recommendation_strategy",
     entity_id: item.strategy_id,
@@ -948,7 +851,7 @@ export function createExpressionTemplate(
   }
   const created: ExpressionTemplateEntity = { ...input, ...nowPair() };
   store.expressionTemplates.push(created);
-  syncLegacyAdapters();
+  refreshDerivedConfigs();
   appendAudit({
     entity_type: "expression_template",
     entity_id: created.expression_template_id,
@@ -969,7 +872,7 @@ export function updateExpressionTemplate(
     "表达模板不存在",
   );
   Object.assign(item, input, { updated_at: nowIso() });
-  syncLegacyAdapters();
+  refreshDerivedConfigs();
   appendAudit({
     entity_type: "expression_template",
     entity_id: item.expression_template_id,
@@ -987,7 +890,7 @@ export function softDeleteExpressionTemplate(id: string) {
     "表达模板不存在",
   );
   deleteWithStatusGuard(item, "表达模板");
-  syncLegacyAdapters();
+  refreshDerivedConfigs();
   appendAudit({
     entity_type: "expression_template",
     entity_id: item.expression_template_id,
@@ -1010,7 +913,7 @@ export function updateGlobalRules(input: UpsertInput<GlobalRuleEntity>) {
     global_rule_id: store.globalRules.global_rule_id || input.global_rule_id,
     updated_at: nowIso(),
   };
-  syncLegacyAdapters();
+  refreshDerivedConfigs();
   appendAudit({
     entity_type: "global_rule",
     entity_id: store.globalRules.global_rule_id,
@@ -1258,7 +1161,7 @@ async function executeGenerationBatch(input: {
         session_id: `session_admin_${job.job_id}_${i}_${Date.now()}`,
         customer_id: dealerId,
         trigger_source: "assistant",
-        page_name: "/procurement",
+        page_name: "/purchase",
       });
       sampledCustomerIds.push(dealerId);
       generatedRunIds.push(result.summary.daily_run_id, result.summary.weekly_run_id);
@@ -1465,36 +1368,240 @@ export function publishGenerationJob(id: string): GenerationJobActionResult {
   };
 }
 
-function toPublishedSuggestionItems(
+const OPEN_RECOMMENDATION_STATUSES = new Set<RecommendationItemRecord["final_status"]>([
+  "pending",
+  "viewed",
+  "explained",
+]);
+
+const BUNDLE_TEMPLATE_DEFINITIONS: Array<
+  Pick<
+    BundleTemplate,
+    "template_id" | "template_type" | "template_name" | "template_subtitle"
+  >
+> = [
+  {
+    template_id: "bundle_hot_sale",
+    template_type: "hot_sale_restock",
+    template_name: "热销补货",
+    template_subtitle: "优先补齐高动销 SKU，保障本周周转。",
+  },
+  {
+    template_id: "bundle_stockout",
+    template_type: "stockout_restock",
+    template_name: "缺货补货",
+    template_subtitle: "补齐临近缺货品，优先覆盖常购基础货。",
+  },
+  {
+    template_id: "bundle_campaign",
+    template_type: "campaign_stockup",
+    template_name: "活动备货",
+    template_subtitle: "按当前活动与周推商品完成备货。",
+  },
+];
+
+function sumBundleAmount(items: BundleTemplateItem[]) {
+  return items.reduce((sum, item) => sum + item.line_amount, 0);
+}
+
+function asBundleTemplateItem(
+  record: RecommendationItemRecord,
+  product: ProductEntity,
+): BundleTemplateItem {
+  const suggestedQty = Math.max(1, record.suggested_qty);
+  return {
+    recommendation_item_id: record.recommendation_item_id,
+    sku_id: record.sku_id,
+    sku_name: record.sku_name,
+    suggested_qty: suggestedQty,
+    reason: record.reason,
+    reason_tags: record.reason_tags,
+    priority: record.suggested_rank,
+    action_type: record.action_type,
+    unit_price: product.price_per_case,
+    line_amount: product.price_per_case * suggestedQty,
+  };
+}
+
+function toFallbackBundleItem(input: {
+  product: ProductEntity;
+  reason: string;
+  reasonTags: string[];
+  priority: number;
+  qty?: number;
+}): BundleTemplateItem {
+  const suggestedQty = Math.max(1, input.qty ?? input.product.box_multiple);
+  return {
+    recommendation_item_id: undefined,
+    sku_id: input.product.sku_id,
+    sku_name: input.product.sku_name,
+    suggested_qty: suggestedQty,
+    reason: input.reason,
+    reason_tags: input.reasonTags,
+    priority: input.priority,
+    unit_price: input.product.price_per_case,
+    line_amount: input.product.price_per_case * suggestedQty,
+  };
+}
+
+function dedupeBundleItems(items: BundleTemplateItem[]) {
+  const map = new Map<string, BundleTemplateItem>();
+  for (const item of items) {
+    const existing = map.get(item.sku_id);
+    if (!existing || item.priority < existing.priority) {
+      map.set(item.sku_id, item);
+    }
+  }
+  return Array.from(map.values()).sort((left, right) => left.priority - right.priority);
+}
+
+function pickOpenItemsForRun(
   run: RecommendationRunRecord | undefined,
   items: RecommendationItemRecord[],
-): PublishedSuggestionItem[] {
+) {
   if (!run) {
-    return [];
+    return [] as RecommendationItemRecord[];
   }
-  const openStatuses = new Set<RecommendationItemRecord["final_status"]>([
-    "pending",
-    "viewed",
-    "explained",
-  ]);
-
   return items
     .filter(
       (item) =>
         item.recommendation_run_id === run.recommendation_run_id &&
-        openStatuses.has(item.final_status),
+        OPEN_RECOMMENDATION_STATUSES.has(item.final_status),
     )
-    .sort((left, right) => left.suggested_rank - right.suggested_rank)
-    .map((item) => ({
-      recommendation_item_id: item.recommendation_item_id,
-      sku_id: item.sku_id,
-      sku_name: item.sku_name,
-      suggested_qty: item.suggested_qty,
-      reason: item.reason,
-      reason_tags: item.reason_tags,
-      priority: item.suggested_rank,
-      action_type: item.action_type,
-    }));
+    .sort((left, right) => left.suggested_rank - right.suggested_rank);
+}
+
+function createBundleTemplate(input: {
+  templateType: BundleTemplate["template_type"];
+  recommendationItems: BundleTemplateItem[];
+  fallbackItems: BundleTemplateItem[];
+}): BundleTemplate {
+  const definition = BUNDLE_TEMPLATE_DEFINITIONS.find(
+    (item) => item.template_type === input.templateType,
+  );
+  if (!definition) {
+    throw new Error(`unknown template type: ${input.templateType}`);
+  }
+
+  const recommended = dedupeBundleItems(input.recommendationItems).slice(0, 5);
+  const source: BundleTemplate["source"] =
+    recommended.length > 0 ? "published_recommendation" : "fallback_catalog";
+  const base = recommended.length > 0 ? recommended : dedupeBundleItems(input.fallbackItems);
+  const items = base.slice(0, 5);
+
+  return {
+    ...definition,
+    source,
+    estimated_amount: sumBundleAmount(items),
+    items,
+  };
+}
+
+function toCartSummary(input: {
+  source: PublishedSuggestionsCartSummary["source"];
+  skuCount: number;
+  itemCount: number;
+  totalAmount: number;
+  thresholdAmount: number;
+}): PublishedSuggestionsCartSummary {
+  const safeTotal = Math.max(0, Math.round(input.totalAmount));
+  const safeThreshold = Math.max(0, Math.round(input.thresholdAmount));
+  const gap = Math.max(0, safeThreshold - safeTotal);
+  return {
+    source: input.source,
+    sku_count: Math.max(0, input.skuCount),
+    item_count: Math.max(0, input.itemCount),
+    total_amount: safeTotal,
+    threshold_amount: safeThreshold,
+    gap_to_threshold: gap,
+    threshold_reached: gap === 0,
+  };
+}
+
+function projectCartSummaryFromTemplates(
+  templates: BundleTemplate[],
+  thresholdAmount: number,
+): PublishedSuggestionsCartSummary {
+  const projection = new Map<string, BundleTemplateItem>();
+  for (const template of templates) {
+    for (const item of template.items) {
+      const existing = projection.get(item.sku_id);
+      if (!existing || item.suggested_qty > existing.suggested_qty) {
+        projection.set(item.sku_id, item);
+      }
+    }
+  }
+  const projectedItems = Array.from(projection.values());
+  return toCartSummary({
+    source: "template_projection",
+    skuCount: projectedItems.length,
+    itemCount: projectedItems.reduce((sum, item) => sum + item.suggested_qty, 0),
+    totalAmount: projectedItems.reduce((sum, item) => sum + item.line_amount, 0),
+    thresholdAmount,
+  });
+}
+
+function resolveActivityHighlights(input: {
+  campaigns: CampaignEntity[];
+  dealer: DealerEntity | null;
+  customerId: string;
+  productMap: Map<string, ProductEntity>;
+  weeklyRunItems: RecommendationItemRecord[];
+}): ActivityHighlight[] {
+  const scopedCampaigns = input.campaigns
+    .filter((item) => item.status === "active")
+    .filter((item) => {
+      if (item.target_dealer_ids && item.target_dealer_ids.length > 0) {
+        return item.target_dealer_ids.includes(input.customerId);
+      }
+      if (!input.dealer) {
+        return true;
+      }
+      return item.target_customer_types.includes(input.dealer.customer_type);
+    })
+    .slice(0, 3);
+
+  const weeklyItemMap = new Map<string, RecommendationItemRecord>();
+  for (const item of input.weeklyRunItems) {
+    const existing = weeklyItemMap.get(item.sku_id);
+    if (!existing || item.suggested_rank < existing.suggested_rank) {
+      weeklyItemMap.set(item.sku_id, item);
+    }
+  }
+
+  return scopedCampaigns.map((campaign) => {
+    const items = campaign.weekly_focus_items
+      .map((skuId, index) => {
+        const product = input.productMap.get(skuId);
+        if (!product || product.status !== "active") {
+          return null;
+        }
+        const weekly = weeklyItemMap.get(skuId);
+        if (weekly) {
+          return asBundleTemplateItem(weekly, product);
+        }
+        return toFallbackBundleItem({
+          product,
+          reason: "活动档期备货，建议提前补齐活动货。",
+          reasonTags: ["活动备货"],
+          priority: index + 1,
+        });
+      })
+      .filter((item): item is BundleTemplateItem => Boolean(item))
+      .slice(0, 5);
+
+    return {
+      activity_id: campaign.campaign_id,
+      activity_name: campaign.campaign_name,
+      week_id: campaign.week_id,
+      promo_type: campaign.promo_type,
+      promo_threshold: campaign.promo_threshold,
+      activity_notes: campaign.activity_notes,
+      sku_ids: items.map((item) => item.sku_id),
+      estimated_amount: sumBundleAmount(items),
+      items,
+    };
+  });
 }
 
 function pickLatestRunByScene(input: {
@@ -1520,6 +1627,15 @@ export function getPublishedSuggestionsForCustomer(
   customerId: string,
 ): PublishedSuggestionsPayload {
   const store = getMemoryStore();
+  const dealer =
+    store.dealers.find((item) => item.customer_id === customerId && item.status === "active") ??
+    null;
+  const productMap = new Map(
+    store.products
+      .filter((item) => item.status === "active")
+      .map((item) => [item.sku_id, item]),
+  );
+
   const publishedJobs = [...store.generationJobs]
     .filter(
       (item) =>
@@ -1563,41 +1679,153 @@ export function getPublishedSuggestionsForCustomer(
   }
 
   if (!selectedBatch) {
-    return {
-      dailyRecommendations: [],
-      weeklyFocusRecommendations: [],
-      summary: {
-        published: false,
-      },
-    };
+    selectedJob = undefined;
   }
 
+  const runIds = selectedBatch?.related_run_ids ?? [];
   const dailyRun = pickLatestRunByScene({
-    runIds: selectedBatch.related_run_ids,
+    runIds,
     customerId,
     scene: "daily_recommendation",
   });
   const weeklyRun = pickLatestRunByScene({
-    runIds: selectedBatch.related_run_ids,
+    runIds,
     customerId,
     scene: "weekly_focus",
   });
+  const dailyOpenItems = pickOpenItemsForRun(dailyRun, store.recommendationItems);
+  const weeklyOpenItems = pickOpenItemsForRun(weeklyRun, store.recommendationItems);
+
+  const hotSaleRecommendationItems = dailyOpenItems
+    .filter((item) => {
+      const product = productMap.get(item.sku_id);
+      if (!product) {
+        return false;
+      }
+      return (
+        product.tags.some((tag) => tag.includes("高频动销") || tag.includes("高客单")) ||
+        item.reason_tags.some((tag) => tag.includes("热销") || tag.includes("动销"))
+      );
+    })
+    .map((item) => {
+      const product = productMap.get(item.sku_id);
+      return product ? asBundleTemplateItem(item, product) : null;
+    })
+    .filter((item): item is BundleTemplateItem => Boolean(item));
+
+  const stockoutRecommendationItems = dailyOpenItems
+    .filter(
+      (item) =>
+        item.reason_tags.some((tag) => tag.includes("补货")) ||
+        item.reason.includes("补货") ||
+        item.reason.includes("缺货"),
+    )
+    .map((item) => {
+      const product = productMap.get(item.sku_id);
+      return product ? asBundleTemplateItem(item, product) : null;
+    })
+    .filter((item): item is BundleTemplateItem => Boolean(item));
+
+  const campaignRecommendationItems = weeklyOpenItems
+    .map((item) => {
+      const product = productMap.get(item.sku_id);
+      return product ? asBundleTemplateItem(item, product) : null;
+    })
+    .filter((item): item is BundleTemplateItem => Boolean(item));
+
+  const frequentProducts = (dealer?.frequent_items ?? [])
+    .map((skuId) => productMap.get(skuId))
+    .filter((item): item is ProductEntity => Boolean(item));
+
+  const hotSaleFallbackItems = [
+    ...store.products
+      .filter(
+        (item) =>
+          item.status === "active" &&
+          item.tags.some((tag) => tag.includes("高频动销") || tag.includes("高客单")),
+      )
+      .sort((left, right) => left.display_order - right.display_order)
+      .slice(0, 5)
+      .map((item, index) =>
+        toFallbackBundleItem({
+          product: item,
+          reason: "热销动销稳定，建议优先补齐。",
+          reasonTags: ["热销补货"],
+          priority: index + 1,
+        }),
+      ),
+  ];
+
+  const stockoutFallbackItems = [
+    ...frequentProducts
+      .slice(0, 5)
+      .map((item, index) =>
+        toFallbackBundleItem({
+          product: item,
+          reason: "经销商常购基础货，建议按箱规补齐。",
+          reasonTags: ["常购补货"],
+          priority: index + 1,
+        }),
+      ),
+  ];
+
+  const activityHighlights = resolveActivityHighlights({
+    campaigns: store.campaigns,
+    dealer,
+    customerId,
+    productMap,
+    weeklyRunItems: weeklyOpenItems,
+  });
+
+  const campaignFallbackItems = activityHighlights.flatMap((highlight) => highlight.items);
+
+  const bundleTemplates: BundleTemplate[] = [
+    createBundleTemplate({
+      templateType: "hot_sale_restock",
+      recommendationItems: hotSaleRecommendationItems,
+      fallbackItems: hotSaleFallbackItems,
+    }),
+    createBundleTemplate({
+      templateType: "stockout_restock",
+      recommendationItems: stockoutRecommendationItems,
+      fallbackItems: stockoutFallbackItems,
+    }),
+    createBundleTemplate({
+      templateType: "campaign_stockup",
+      recommendationItems: campaignRecommendationItems,
+      fallbackItems: campaignFallbackItems,
+    }),
+  ];
+
+  const customerSessions = Object.values(store.cartSessions)
+    .filter((session) => session.customer_id === customerId)
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+
+  const cartSummary = customerSessions[0]
+    ? toCartSummary({
+        source: "customer_cart",
+        skuCount: customerSessions[0].summary.sku_count,
+        itemCount: customerSessions[0].summary.item_count,
+        totalAmount: customerSessions[0].summary.total_amount,
+        thresholdAmount: customerSessions[0].summary.threshold_amount,
+      })
+    : projectCartSummaryFromTemplates(bundleTemplates, store.rules.threshold_amount);
 
   return {
-    dailyRecommendations: toPublishedSuggestionItems(dailyRun, store.recommendationItems),
-    weeklyFocusRecommendations: toPublishedSuggestionItems(
-      weeklyRun,
-      store.recommendationItems,
-    ),
+    bundleTemplates,
+    activityHighlights,
+    cartSummary,
     summary: {
-      published: true,
+      published: Boolean(selectedBatch),
       job_id: selectedJob?.job_id,
-      batch_id: selectedBatch.batch_id,
+      batch_id: selectedBatch?.batch_id,
       published_at:
-        selectedJob?.published_at ?? selectedBatch.finished_at ?? selectedBatch.updated_at,
-      trace_id: dailyRun?.trace_id ?? weeklyRun?.trace_id ?? selectedBatch.trace_id,
+        selectedJob?.published_at ??
+        selectedBatch?.finished_at ??
+        selectedBatch?.updated_at,
+      trace_id: dailyRun?.trace_id ?? weeklyRun?.trace_id ?? selectedBatch?.trace_id,
     },
-  };
+  } as PublishedSuggestionsPayload;
 }
 
 export function listRecommendationBatches(
@@ -1928,12 +2156,10 @@ export function applyRecoverySnapshot(id: string) {
 }
 
 export function getReportSummary() {
-  syncLegacyAdapters();
+  refreshDerivedConfigs();
   const store = getMemoryStore();
-  const countActive = <T extends { status?: string; enabled?: boolean }>(items: T[]) =>
-    items.filter((item) =>
-      typeof item.enabled === "boolean" ? item.enabled : item.status === "active",
-    ).length;
+  const countActive = <T extends { status?: string }>(items: T[]) =>
+    items.filter((item) => item.status === "active").length;
 
   return {
     entities: {
@@ -1945,9 +2171,13 @@ export function getReportSummary() {
         total: store.dealers.length,
         active: countActive(store.dealers),
       },
-      suggestionTemplates: {
-        total: store.suggestionTemplates.length,
-        active: countActive(store.suggestionTemplates),
+      recommendationStrategies: {
+        total: store.recommendationStrategies.length,
+        active: countActive(store.recommendationStrategies),
+      },
+      expressionTemplates: {
+        total: store.expressionTemplates.length,
+        active: countActive(store.expressionTemplates),
       },
       campaigns: {
         total: store.campaigns.length,
@@ -1986,171 +2216,6 @@ export function listAuditLogs(query: ListQuery) {
     defaultSortBy: "timestamp",
   });
 }
-
-// ---------------------------------------------------------------------------
-// Legacy adapters (old API contract) - backed by new source of truth.
-// ---------------------------------------------------------------------------
-
-export function listSuggestionTemplates(
-  query: ListQuery,
-): ListResult<DealerSuggestionTemplateEntity> {
-  syncLegacyAdapters();
-  const store = getMemoryStore();
-  return filterSortAndPaginate(store.suggestionTemplates, {
-    query,
-    searchFields: ["template_id", "template_name", "customer_id", "scene"],
-    statusResolver: (item) => (item.enabled ? "active" : "inactive"),
-    defaultSortBy: "priority",
-  });
-}
-
-export function getSuggestionTemplateById(id: string) {
-  syncLegacyAdapters();
-  const store = getMemoryStore();
-  return store.suggestionTemplates.find((item) => item.template_id === id) ?? null;
-}
-
-export function createSuggestionTemplate(input: UpsertInput<DealerSuggestionTemplateEntity>) {
-  const payload = legacyTemplateToStrategy(input);
-  if (!payload.expression_template_id) {
-    payload.expression_template_id = "expr_recommendation_default";
-  }
-  const strategy = createRecommendationStrategy(payload);
-  syncLegacyAdapters();
-  appendAudit({
-    entity_type: "suggestion_template",
-    entity_id: input.template_id,
-    action: "create",
-    summary: `新增兼容模板 ${input.template_name}`,
-  });
-  return strategyToLegacyTemplate(strategy, getMemoryStore().expressionTemplates);
-}
-
-export function updateSuggestionTemplate(
-  id: string,
-  input: Partial<UpsertInput<DealerSuggestionTemplateEntity>>,
-) {
-  const store = getMemoryStore();
-  const current = findById(
-    store.recommendationStrategies,
-    (item) => item.strategy_id === id,
-    "模板不存在",
-  );
-
-  const patch: Partial<UpsertInput<RecommendationStrategyEntity>> = {};
-  if (input.template_name !== undefined) patch.strategy_name = input.template_name;
-  if (input.scene !== undefined) patch.scene = input.scene;
-  if (input.customer_id !== undefined) patch.target_dealer_ids = [input.customer_id];
-  if (input.reference_items !== undefined) {
-    patch.reference_items = input.reference_items;
-    patch.candidate_sku_ids = input.reference_items.map((item) => item.sku_id);
-  }
-  if (input.business_notes !== undefined) patch.business_notes = input.business_notes;
-  if (input.priority !== undefined) patch.priority = input.priority;
-  if (input.enabled !== undefined) patch.status = input.enabled ? "active" : "inactive";
-
-  const strategy = updateRecommendationStrategy(current.strategy_id, patch);
-  syncLegacyAdapters();
-  appendAudit({
-    entity_type: "suggestion_template",
-    entity_id: id,
-    action: "update",
-    summary: `更新兼容模板 ${strategy.strategy_name}`,
-  });
-  return strategyToLegacyTemplate(strategy, getMemoryStore().expressionTemplates);
-}
-
-export function softDeleteSuggestionTemplate(id: string) {
-  const strategy = softDeleteRecommendationStrategy(id);
-  syncLegacyAdapters();
-  appendAudit({
-    entity_type: "suggestion_template",
-    entity_id: id,
-    action: "toggle",
-    summary: `停用兼容模板 ${strategy.strategy_name}`,
-  });
-  return strategyToLegacyTemplate(strategy, getMemoryStore().expressionTemplates);
-}
-
-export function getPrompts() {
-  syncLegacyAdapters();
-  return getMemoryStore().promptConfig;
-}
-
-export function updatePrompts(input: PromptConfigEntity) {
-  const store = getMemoryStore();
-
-  upsertExpressionTemplateByType("recommendation", {
-    name: "推荐表达模板",
-    system_role: input.recommendation_prompt.system_role,
-    instruction: input.recommendation_prompt.instruction,
-    tone: input.global_style.tone,
-    avoid: input.global_style.avoid,
-    reason_limit: input.global_style.reason_limit,
-  });
-
-  upsertExpressionTemplateByType("cart_optimization", {
-    name: "凑单优化表达模板",
-    system_role: input.cart_opt_prompt.system_role,
-    instruction: input.cart_opt_prompt.instruction,
-    tone: input.global_style.tone,
-    avoid: input.global_style.avoid,
-    reason_limit: input.global_style.reason_limit,
-  });
-
-  upsertExpressionTemplateByType("explanation", {
-    name: "解释表达模板",
-    system_role: input.explain_prompt.system_role,
-    instruction: input.explain_prompt.instruction,
-    tone: input.global_style.tone,
-    avoid: input.global_style.avoid,
-    reason_limit: input.global_style.reason_limit,
-  });
-
-  store.promptConfig = input;
-  syncLegacyAdapters();
-  appendAudit({
-    entity_type: "prompt",
-    entity_id: "legacy_prompt_config",
-    action: "update",
-    summary: "更新兼容 Prompt 配置并同步表达模板",
-  });
-  return store.promptConfig;
-}
-
-export function getRules() {
-  syncLegacyAdapters();
-  return getMemoryStore().rules;
-}
-
-export function updateRules(input: RuleConfigEntity) {
-  const store = getMemoryStore();
-  store.globalRules = {
-    ...store.globalRules,
-    rule_version: `${new Date().toISOString().slice(0, 10)}.manual`,
-    replenishment_days_threshold: input.replenishment_days_threshold,
-    cart_gap_trigger_amount: input.cart_gap_trigger_amount,
-    threshold_amount: input.threshold_amount,
-    prefer_frequent_items: input.prefer_frequent_items,
-    prefer_pair_items: input.prefer_pair_items,
-    box_adjust_if_close: input.box_adjust_if_close,
-    box_adjust_distance_limit: input.box_adjust_distance_limit,
-    allow_new_product_recommendation: input.allow_new_product_recommendation,
-    updated_at: nowIso(),
-  };
-  syncLegacyAdapters();
-  appendAudit({
-    entity_type: "rule",
-    entity_id: store.globalRules.global_rule_id,
-    action: "update",
-    summary: "更新兼容规则配置并同步全局规则",
-  });
-  return store.rules;
-}
-
-// Keep name aliases for compatibility with frontstage/admin legacy report endpoints.
-export const listRecommendationRecordsLegacy = listRecommendationRuns;
-export const getRecommendationRecordDetailLegacy = getRecommendationRunDetail;
 
 export function inferSceneFromActionType(
   actionType: TemplateReferenceItem["sort_order"] | number,

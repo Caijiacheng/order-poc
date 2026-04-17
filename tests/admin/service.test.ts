@@ -13,29 +13,22 @@ import {
   createRecommendationBatch,
   createRecommendationStrategy,
   createRecoverySnapshot,
-  createSuggestionTemplate,
   getExpressionTemplateById,
   getGlobalRules,
   getPublishedSuggestionsForCustomer,
   getRecommendationRecordDetail,
   getRecoverySnapshotById,
-  getRules,
-  getSuggestionTemplateById,
   listGenerationJobs,
   listRecommendationBatches,
   listRecommendationRecords,
   listRecommendationStrategies,
-  listSuggestionTemplates,
+  listExpressionTemplates,
   publishGenerationJob,
   softDeleteExpressionTemplate,
-  softDeleteSuggestionTemplate,
   updateCampaign,
   updateGenerationJob,
   updateExpressionTemplate,
   updateGlobalRules,
-  updatePrompts,
-  updateRules,
-  updateSuggestionTemplate,
 } from "../../lib/admin/service";
 import type { ListQuery } from "../../lib/admin/list-query";
 import { validateCampaignInput } from "../../lib/admin/validation";
@@ -102,8 +95,8 @@ describe("admin service Stage 2 contracts", () => {
     const expressionTemplate = createExpressionTemplate({
       expression_template_id: "expr_stage2_new",
       expression_template_name: "Stage2 表达模板",
-      template_type: "recommendation",
-      scene: "all",
+      template_type: "bundle_explanation",
+      scene: "bundle",
       tone: "清晰可执行",
       avoid: ["空泛建议"],
       reason_limit: 2,
@@ -117,7 +110,7 @@ describe("admin service Stage 2 contracts", () => {
     const strategy = createRecommendationStrategy({
       strategy_id: "stg_stage2_new",
       strategy_name: "Stage2 推荐策略",
-      scene: "daily_recommendation",
+      scene: "replenishment_bundle",
       target_dealer_ids: ["dealer_xm_sm"],
       dealer_segment_ids: ["seg_stage2_new"],
       product_pool_ids: ["pool_stage2_new"],
@@ -152,6 +145,20 @@ describe("admin service Stage 2 contracts", () => {
 
     const deletedExpressionTemplate = softDeleteExpressionTemplate("expr_stage2_new");
     expect(deletedExpressionTemplate.status).toBe("inactive");
+  });
+
+  it("locks admin strategy/expression enums to final canonical sets", () => {
+    const strategyScenes = new Set(
+      listRecommendationStrategies(LIST_QUERY).items.map((item) => item.scene),
+    );
+    expect(strategyScenes).toEqual(
+      new Set(["hot_sale_bundle", "replenishment_bundle", "campaign_bundle"]),
+    );
+
+    const templateTypes = new Set(
+      listExpressionTemplates(LIST_QUERY).items.map((item) => item.template_type),
+    );
+    expect(templateTypes).toEqual(new Set(["bundle_explanation", "topup_explanation"]));
   });
 
   it("enforces campaigns structured linkage fields in validation and supports create/update in service", () => {
@@ -320,111 +327,12 @@ describe("admin service Stage 2 contracts", () => {
     );
   });
 
-  it("keeps legacy suggestion-template adapter working on top of recommendation-strategies source-of-truth", () => {
-    const createdLegacy = createSuggestionTemplate({
-      template_id: "tpl_stage2_legacy",
-      customer_id: "dealer_xm_sm",
-      template_name: "Stage2 兼容模板",
-      scene: "weekly_focus",
-      reference_items: [
-        {
-          sku_id: "cb_zeroadd_shengchou_500",
-          qty: 2,
-          reason: "stage2 legacy reason",
-          reason_tags: ["legacy"],
-          sort_order: 1,
-        },
-      ],
-      business_notes: "legacy note",
-      style_hint: "legacy style",
-      priority: 9,
-      enabled: true,
-    });
-    expect(createdLegacy.template_id).toBe("tpl_stage2_legacy");
-
-    const strategy = listRecommendationStrategies(LIST_QUERY).items.find(
-      (item) => item.strategy_id === "tpl_stage2_legacy",
-    );
-    expect(strategy?.strategy_name).toBe("Stage2 兼容模板");
-    expect(strategy?.status).toBe("active");
-
-    updateSuggestionTemplate("tpl_stage2_legacy", {
-      template_name: "Stage2 兼容模板(更新)",
-      reference_items: [
-        {
-          sku_id: "cb_zeroadd_head_500",
-          qty: 3,
-          reason: "stage2 legacy reason updated",
-          reason_tags: ["legacy-updated"],
-          sort_order: 1,
-        },
-      ],
-    });
-    expect(getSuggestionTemplateById("tpl_stage2_legacy")?.template_name).toBe(
-      "Stage2 兼容模板(更新)",
-    );
-    expect(getSuggestionTemplateById("tpl_stage2_legacy")?.enabled).toBe(true);
-
-    const deletedLegacy = softDeleteSuggestionTemplate("tpl_stage2_legacy");
-    expect(deletedLegacy.enabled).toBe(false);
-    expect(() => softDeleteSuggestionTemplate("tpl_stage2_legacy")).toThrowError(
-      AdminServiceError,
-    );
-  });
-
-  it("keeps legacy prompts/rules adapters writable while syncing new expression/global objects", () => {
-    const nextPrompts = {
-      global_style: {
-        tone: "偏执行语气",
-        avoid: ["模糊建议"],
-        reason_limit: 2,
-      },
-      recommendation_prompt: {
-        system_role: "stage2 recommendation role",
-        instruction: "stage2 recommendation instruction",
-      },
-      cart_opt_prompt: {
-        system_role: "stage2 cart role",
-        instruction: "stage2 cart instruction",
-      },
-      explain_prompt: {
-        system_role: "stage2 explain role",
-        instruction: "stage2 explain instruction",
-      },
-    };
-    const updatedPrompts = updatePrompts(nextPrompts);
-    expect(updatedPrompts.recommendation_prompt.system_role).toBe(
-      "stage2 recommendation role",
-    );
-
-    const recommendationExpression = getExpressionTemplateById(
-      "expr_recommendation_default",
-    );
-    expect(recommendationExpression?.system_role).toBe("stage2 recommendation role");
-    expect(recommendationExpression?.reason_limit).toBe(2);
-
-    const nextRules = {
-      replenishment_days_threshold: 8,
-      cart_gap_trigger_amount: 25,
-      threshold_amount: 1300,
-      prefer_frequent_items: true,
-      prefer_pair_items: false,
-      box_adjust_if_close: true,
-      box_adjust_distance_limit: 3,
-      allow_new_product_recommendation: true,
-    };
-    const updatedRules = updateRules(nextRules);
-    expect(updatedRules.threshold_amount).toBe(1300);
-    expect(getRules().threshold_amount).toBe(1300);
-    expect(getGlobalRules().threshold_amount).toBe(1300);
-  });
-
-  it("supports list surfaces for generation jobs and legacy templates", () => {
+  it("supports list surfaces for generation jobs and recommendation strategies", () => {
     const jobs = listGenerationJobs(REPORT_QUERY);
     expect(jobs.items.length).toBeGreaterThan(0);
 
-    const templates = listSuggestionTemplates(LIST_QUERY);
-    expect(templates.items.length).toBeGreaterThan(0);
+    const strategies = listRecommendationStrategies(LIST_QUERY);
+    expect(strategies.items.length).toBeGreaterThan(0);
   });
 
   it("validates recommendation batch run references", () => {
@@ -543,7 +451,7 @@ describe("admin service Stage 2 contracts", () => {
     ).toBe(true);
   });
 
-  it("returns published daily/weekly suggestions from seed and empty payload when unpublished", () => {
+  it("returns canonical published suggestions payload for published and unpublished states", () => {
     const initial = getPublishedSuggestionsForCustomer("dealer_xm_sm");
     if (!initial.summary.published) {
       const publishedResult = publishGenerationJob("job_seed_2026-04-15");
@@ -555,15 +463,25 @@ describe("admin service Stage 2 contracts", () => {
     expect(published.summary.published).toBe(true);
     expect(published.summary.job_id).toBe("job_seed_2026-04-15");
     expect(published.summary.batch_id).toBe("batch_seed_001");
-    expect(published.dailyRecommendations).toHaveLength(1);
-    expect(published.dailyRecommendations[0]).toMatchObject({
-      recommendation_item_id: "reco_item_seed_002",
-      sku_id: "cb_oyster_700",
-      suggested_qty: 8,
-      priority: 2,
-      action_type: "add_to_cart",
+    expect(published.bundleTemplates).toHaveLength(3);
+    expect(published.bundleTemplates.map((item) => item.template_name)).toEqual([
+      "热销补货",
+      "缺货补货",
+      "活动备货",
+    ]);
+    expect(published.activityHighlights.length).toBeGreaterThanOrEqual(0);
+    expect(published.cartSummary).toMatchObject({
+      sku_count: expect.any(Number),
+      item_count: expect.any(Number),
+      total_amount: expect.any(Number),
+      threshold_amount: expect.any(Number),
+      gap_to_threshold: expect.any(Number),
+      threshold_reached: expect.any(Boolean),
     });
-    expect(published.weeklyFocusRecommendations).toEqual([]);
+    expect("dailyRecommendations" in (published as Record<string, unknown>)).toBe(false);
+    expect("weeklyFocusRecommendations" in (published as Record<string, unknown>)).toBe(
+      false,
+    );
 
     const store = getMemoryStore();
     for (const job of store.generationJobs) {
@@ -576,11 +494,20 @@ describe("admin service Stage 2 contracts", () => {
     }
 
     const unpublished = getPublishedSuggestionsForCustomer("dealer_xm_sm");
-    expect(unpublished).toEqual({
-      dailyRecommendations: [],
-      weeklyFocusRecommendations: [],
-      summary: { published: false },
+    expect(unpublished.summary.published).toBe(false);
+    expect(unpublished.bundleTemplates).toHaveLength(3);
+    expect(unpublished.cartSummary).toMatchObject({
+      sku_count: expect.any(Number),
+      item_count: expect.any(Number),
+      total_amount: expect.any(Number),
+      threshold_amount: expect.any(Number),
+      gap_to_threshold: expect.any(Number),
+      threshold_reached: expect.any(Boolean),
     });
+    expect("dailyRecommendations" in (unpublished as Record<string, unknown>)).toBe(false);
+    expect("weeklyFocusRecommendations" in (unpublished as Record<string, unknown>)).toBe(
+      false,
+    );
   });
 
   it("publishes target batch and writes published batch metadata back to generation job", () => {

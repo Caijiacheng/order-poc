@@ -1,8 +1,6 @@
 export const FRONTSTAGE_NAV = [
-  { href: "/procurement", label: "采购首页", hint: "待补货与常购入口" },
-  { href: "/catalog", label: "商品选购", hint: "采购工作台" },
-  { href: "/basket", label: "采购清单", hint: "订单校正与优化" },
-  { href: "/checkout", label: "下单确认", hint: "交易确认" },
+  { href: "/purchase", label: "采购工作台", hint: "建议单与选品一体化" },
+  { href: "/order-submit", label: "购物车提交页", hint: "自动优化与交易确认" },
 ] as const;
 
 export type AdminNavItem = {

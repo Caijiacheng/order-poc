@@ -13,11 +13,11 @@ import { getMemoryStore } from "../../lib/memory/store";
 import type { SuggestionScene } from "../../lib/memory/types";
 import { resetRuntimeState } from "../helpers/runtime";
 
-type RecommendationPageName = "/procurement" | "/catalog" | "/basket";
+type RecommendationPageName = "/purchase" | "/order-submit";
 
 function createRunAndItems(
   scene: SuggestionScene = "daily_recommendation",
-  pageName: RecommendationPageName = "/procurement",
+  pageName: RecommendationPageName = "/purchase",
 ) {
   const run = createRecommendationRun({
     session_id: "sess_stage5",

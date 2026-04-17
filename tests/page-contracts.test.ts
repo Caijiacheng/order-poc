@@ -27,40 +27,62 @@ function expectPublishedSuggestionReadonlyContract(source: string) {
   expect(source).not.toMatch(/\bcreateRecommendations\b/);
 }
 
-describe("source testid contract", () => {
-  it("keeps frontstage page ids", () => {
-    const procurementSource = readSource("app/(frontstage)/procurement/page.tsx");
-    expectTestIdContract(procurementSource, "procurement-home");
-    expectTestIdContract(procurementSource, "replenishment-module");
-    expectTestIdContract(procurementSource, "quick-reorder-module");
-    expectTestIdContract(procurementSource, "campaign-module");
+describe("frontstage canonical source contract", () => {
+  it("keeps canonical purchase/order-submit page ids", () => {
+    const purchaseSource = readSource("app/(frontstage)/purchase/page.tsx");
+    expectTestIdContract(purchaseSource, "purchase-workbench");
+    expectTestIdContract(purchaseSource, "purchase-bundle-templates");
+    expectTestIdContract(purchaseSource, "purchase-activity-zone");
+    expectTestIdContract(purchaseSource, "purchase-catalog-zone");
+    expectTestIdContract(purchaseSource, "purchase-procurement-summary");
 
-    const catalogSource = readSource("app/(frontstage)/catalog/page.tsx");
-    expectTestIdContract(catalogSource, "catalog-grid");
-
-    const basketSource = readSource("app/(frontstage)/basket/page.tsx");
-    expectTestIdContract(basketSource, "basket-summary");
-    expectTestIdContract(basketSource, "basket-optimization-panel");
-
-    const checkoutSource = readSource("app/(frontstage)/checkout/page.tsx");
-    expectTestIdContract(checkoutSource, "checkout-summary");
+    const orderSubmitSource = readSource("app/(frontstage)/order-submit/page.tsx");
+    expectTestIdContract(orderSubmitSource, "order-submit-workbench");
+    expectTestIdContract(orderSubmitSource, "order-submit-recommendation-bars");
+    expectTestIdContract(orderSubmitSource, "order-submit-summary");
   });
 
-  it("keeps procurement/catalog on published-suggestions readonly contract", () => {
-    const procurementSource = readSource("app/(frontstage)/procurement/page.tsx");
-    expectPublishedSuggestionReadonlyContract(procurementSource);
-    expect(procurementSource).toMatch(/\bfetchPublishedSuggestions\s*\(/);
-
-    const catalogSource = readSource("app/(frontstage)/catalog/page.tsx");
-    expectPublishedSuggestionReadonlyContract(catalogSource);
-    expect(catalogSource).toMatch(/\bfetchPublishedSuggestions\s*\(/);
+  it("keeps /purchase on published-suggestions readonly contract", () => {
+    const purchaseSource = readSource("app/(frontstage)/purchase/page.tsx");
+    expectPublishedSuggestionReadonlyContract(purchaseSource);
+    expect(purchaseSource).toMatch(/\bfetchPublishedSuggestions\s*\(/);
+    expect(purchaseSource).toMatch(/快速下单/);
+    expect(purchaseSource).toMatch(/活动专区/);
+    expect(purchaseSource).toMatch(/商品选购区/);
+    expect(purchaseSource).toMatch(/右侧采购摘要/);
+    expect(purchaseSource).not.toMatch(/今日建议单/);
+    expect(purchaseSource).not.toMatch(/常购快捷补货/);
+    expect(purchaseSource).not.toMatch(/一键复购/);
+    expect(purchaseSource).not.toMatch(/采纳\/改量/);
+    expect(purchaseSource).not.toMatch(/忽略/);
+    expect(purchaseSource).toMatch(/查看原因/);
+    expect(purchaseSource).toMatch(/purchase-reason-drawer/);
+    expect(purchaseSource).toMatch(/组货后去结算/);
+    expect(purchaseSource).not.toMatch(/生成建议/);
 
     const frontstageApiSource = readSource("lib/frontstage/api.ts");
     expect(frontstageApiSource).toMatch(
       /\/api\/frontstage\/published-suggestions\?customerId=/,
     );
+    expect(frontstageApiSource).toMatch(/\bbundleTemplates\b/);
+    expect(frontstageApiSource).toMatch(/\bactivityHighlights\b/);
+    expect(frontstageApiSource).toMatch(/\bcartSummary\b/);
   });
 
+  it("keeps /order-submit recommendation-bar contract without legacy optimization panel", () => {
+    const orderSubmitSource = readSource("app/(frontstage)/order-submit/page.tsx");
+    expect(orderSubmitSource).toMatch(/\boptimizeCart\b/);
+    expect(orderSubmitSource).toMatch(/顺手补货推荐/);
+    expect(orderSubmitSource).toMatch(/为什么推荐/);
+    expect(orderSubmitSource).toMatch(/order-submit-reason-drawer/);
+    expect(orderSubmitSource).toMatch(/recommendationBars/);
+    expect(orderSubmitSource).not.toMatch(/生成优化建议/);
+    expect(orderSubmitSource).not.toMatch(/一键应用全部/);
+  });
+
+});
+
+describe("admin canonical source contract", () => {
   it("keeps admin page ids", () => {
     const adminLayoutSource = readSource("app/admin/layout.tsx");
     expectTestIdContract(adminLayoutSource, "admin-primary-nav");
@@ -79,22 +101,44 @@ describe("source testid contract", () => {
     expectTestIdContract(traceSource, "trace-link");
   });
 
-  it("does not expose legacy admin route page contracts", () => {
-    expect(existsSync(path.join(process.cwd(), "app/admin/analytics/recommendations/page.tsx"))).toBe(
-      false,
-    );
+  it("locks key CRUD pages to AdminDrawer + AdminConfirmDialog contract", () => {
+    const keyPages = [
+      "app/admin/strategy/campaigns/page.tsx",
+      "app/admin/strategy/recommendation-strategies/page.tsx",
+      "app/admin/strategy/expression-templates/page.tsx",
+      "app/admin/operations/generation-jobs/page.tsx",
+    ] as const;
+
+    for (const pagePath of keyPages) {
+      const source = readSource(pagePath);
+      expect(source).toMatch(/import\s+\{\s*AdminConfirmDialog\s*\}/);
+      expect(source).toMatch(/import\s+\{\s*AdminDrawer\s*\}/);
+      expect(source).toMatch(/<AdminDrawer/);
+      expect(source).toMatch(/<AdminConfirmDialog/);
+      expect(source).toMatch(/setDrawerOpen\(true\)/);
+    }
+  });
+
+  it("does not expose removed admin route page contracts", () => {
     expect(
-      existsSync(path.join(process.cwd(), "app/admin/strategy/recommendation-templates/page.tsx")),
+      existsSync(path.join(process.cwd(), "app/admin/analytics/recommendations/page.tsx")),
     ).toBe(false);
-    expect(existsSync(path.join(process.cwd(), "app/admin/strategy/rules/page.tsx"))).toBe(false);
-    expect(existsSync(path.join(process.cwd(), "app/admin/strategy/ai-expression/page.tsx"))).toBe(
-      false,
-    );
+    expect(
+      existsSync(
+        path.join(process.cwd(), "app/admin/strategy/recommendation-templates/page.tsx"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(path.join(process.cwd(), "app/admin/strategy/rules/page.tsx")),
+    ).toBe(false);
+    expect(
+      existsSync(path.join(process.cwd(), "app/admin/strategy/ai-expression/page.tsx")),
+    ).toBe(false);
   });
 });
 
 describe("admin canonical migration source contract", () => {
-  it("locks strategy/reports pages to canonical APIs and rejects legacy sources", () => {
+  it("locks strategy and analytics pages to canonical APIs", () => {
     const strategiesSource = readSource(
       "app/admin/strategy/recommendation-strategies/page.tsx",
     );
@@ -120,7 +164,7 @@ describe("admin canonical migration source contract", () => {
     expect(traceSource).not.toMatch(/\/api\/admin\/reports\/recommendations/);
   });
 
-  it("keeps workbench/audit/analytics pages off legacy reports endpoints", () => {
+  it("keeps workbench/audit/analytics pages off removed reports endpoints", () => {
     const workbenchSource = readSource("app/admin/workbench/overview/page.tsx");
     expect(workbenchSource).toMatch(/\/api\/admin\/recommendation-batches/);
     expect(workbenchSource).toMatch(/\/api\/admin\/recommendation-records/);

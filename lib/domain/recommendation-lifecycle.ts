@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { appendMetricEvent, getMemoryStore, nowIso } from "@/lib/memory/store";
 import type {
+  FrontstagePageName,
   RecommendationItemRecord,
   RecommendationRunRecord,
   SuggestionScene,
@@ -15,10 +16,10 @@ type CreateRunInput = {
   customer_id: string;
   customer_name: string;
   scene: SuggestionScene;
-  page_name: "/procurement" | "/catalog" | "/basket";
+  page_name: FrontstagePageName;
   trigger_source: "auto" | "manual" | "assistant";
-  template_id?: string;
-  template_name?: string;
+  strategy_id?: string;
+  expression_template_id?: string;
   prompt_version?: string;
   prompt_snapshot: string;
   candidate_sku_ids: string[];

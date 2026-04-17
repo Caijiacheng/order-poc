@@ -1,8 +1,6 @@
 export const FRONTSTAGE_ROUTES = [
-  "/procurement",
-  "/catalog",
-  "/basket",
-  "/checkout",
+  "/purchase",
+  "/order-submit",
 ] as const;
 
 export const ADMIN_ROUTES = [

@@ -3,10 +3,13 @@
 import { requestJson, requestJsonWithMeta } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
 import type {
-  AuditLogEvent,
+  ActivityHighlight,
+  BundleTemplate,
+  CartOptimizationRecommendationBar,
   CartSession,
   DealerEntity,
-  MetricEvent,
+  FrontstagePageName,
+  PublishedSuggestionsCartSummary,
   ProductEntity,
   RecommendationItemRecord,
   RecommendationRunRecord,
@@ -35,8 +38,9 @@ export type RecommendationsResponse = {
 };
 
 export type PublishedSuggestionsResponse = {
-  dailyRecommendations: RecommendationCardItem[];
-  weeklyFocusRecommendations: RecommendationCardItem[];
+  bundleTemplates: BundleTemplate[];
+  activityHighlights: ActivityHighlight[];
+  cartSummary: PublishedSuggestionsCartSummary;
   summary: {
     published: boolean;
     job_id?: string;
@@ -57,33 +61,8 @@ export type ExplainResponse = {
   };
 };
 
-export type OptimizationThresholdSuggestion = {
-  recommendation_item_id?: string;
-  sku_id: string;
-  suggested_qty: number;
-  reason: string;
-  effect: string;
-};
-
-export type OptimizationBoxAdjustment = {
-  recommendation_item_id?: string;
-  sku_id: string;
-  from_qty: number;
-  to_qty: number;
-  reason: string;
-};
-
-export type OptimizationPairSuggestion = {
-  recommendation_item_id?: string;
-  sku_id: string;
-  suggested_qty: number;
-  reason: string;
-};
-
 export type CartOptimizationResponse = {
-  thresholdSuggestion: OptimizationThresholdSuggestion | null;
-  boxAdjustments: OptimizationBoxAdjustment[];
-  pairSuggestions: OptimizationPairSuggestion[];
+  recommendationBars: CartOptimizationRecommendationBar[];
   summary: {
     trace_id?: string;
     recommendation_run_id: string;
@@ -112,44 +91,6 @@ export type SubmitCartResponse = {
     item_count: number;
   };
   cart: CartSession;
-};
-
-export type ReportsSummaryResponse = {
-  entities: {
-    products: { total: number; active: number };
-    dealers: { total: number; active: number };
-    suggestionTemplates: { total: number; active: number };
-    campaigns: { total: number; active: number };
-  };
-  metrics: {
-    sessionCount: number;
-    recommendationRequests: number;
-    weeklyFocusRequests: number;
-    cartOptimizationRequests: number;
-    explanationRequests: number;
-    addToCartFromSuggestion: number;
-    applyOptimizationCount: number;
-    thresholdReachedCount: number;
-    boxAdjustmentCount: number;
-    pairSuggestionAppliedCount: number;
-    totalCartAmountBefore: number;
-    totalCartAmountAfter: number;
-    totalRevenueLift: number;
-    averageModelLatencyMs: number;
-    totalModelCalls: number;
-    totalInputTokens: number;
-    totalOutputTokens: number;
-    structuredOutputFailureCount: number;
-    customerSceneBreakdown: Record<string, number>;
-    latestEvents: MetricEvent[];
-  };
-  recommendationRuns: {
-    total: number;
-    generated: number;
-    partiallyApplied: number;
-    fullyApplied: number;
-    ignored: number;
-  };
 };
 
 export type RecommendationRunDetail = {
@@ -215,7 +156,7 @@ export async function fetchCart() {
 export async function createRecommendations(input: {
   customerId: string;
   triggerSource?: "auto" | "manual" | "assistant";
-  pageName?: "/procurement" | "/catalog" | "/basket";
+  pageName?: FrontstagePageName;
 }) {
   const result = await requestJsonWithMeta<RecommendationsResponse>("/api/recommendations", {
     method: "POST",
@@ -304,23 +245,9 @@ export async function submitCart() {
   });
 }
 
-export async function fetchReportsSummary() {
-  return requestJson<ReportsSummaryResponse>("/api/admin/reports/summary");
-}
-
-export async function fetchReportEvents(query: URLSearchParams) {
-  return requestJson<ListResult<MetricEvent>>(`/api/admin/reports/events?${query.toString()}`);
-}
-
-export async function fetchAuditLogs(query: URLSearchParams) {
-  return requestJson<ListResult<AuditLogEvent>>(
-    `/api/admin/reports/audit-logs?${query.toString()}`,
-  );
-}
-
 export async function fetchRecommendationRuns(query: URLSearchParams) {
   const result = await requestJsonWithMeta<ListResult<RecommendationRunRecord>>(
-    `/api/admin/reports/recommendations?${query.toString()}`,
+    `/api/admin/recommendation-records?${query.toString()}`,
   );
   return {
     list: result.data,
@@ -330,7 +257,7 @@ export async function fetchRecommendationRuns(query: URLSearchParams) {
 
 export async function fetchRecommendationRunDetail(id: string) {
   const result = await requestJsonWithMeta<RecommendationRunDetail>(
-    `/api/admin/reports/recommendations/${id}`,
+    `/api/admin/recommendation-records/${id}`,
   );
   return {
     ...result.data,

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
+import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { AdminPageFrame } from "@/components/admin/page-frame";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
 import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
@@ -89,6 +91,8 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<CampaignForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingDisable, setPendingDisable] = useState<CampaignEntity | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -209,6 +213,7 @@ export default function CampaignsPage() {
       target_customer_types: item.target_customer_types,
       status: item.status,
     });
+    setDrawerOpen(true);
   };
 
   const payloadFromForm = () => ({
@@ -224,6 +229,7 @@ export default function CampaignsPage() {
         body: JSON.stringify(payloadFromForm()),
       });
       setSuccessMessage("活动创建成功");
+      setDrawerOpen(false);
       resetForm();
       await loadCampaigns();
     } catch (error) {
@@ -245,6 +251,7 @@ export default function CampaignsPage() {
         body: JSON.stringify(payloadFromForm()),
       });
       setSuccessMessage("活动更新成功");
+      setDrawerOpen(false);
       resetForm();
       await loadCampaigns();
     } catch (error) {
@@ -270,6 +277,8 @@ export default function CampaignsPage() {
       await loadCampaigns();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "停用失败");
+    } finally {
+      setPendingDisable(null);
     }
   };
 
@@ -283,7 +292,13 @@ export default function CampaignsPage() {
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             刷新
           </Button>
-          <Button className="rounded-full" onClick={resetForm}>
+          <Button
+            className="rounded-full"
+            onClick={() => {
+              resetForm();
+              setDrawerOpen(true);
+            }}
+          >
             <Plus className="h-4 w-4" />
             新建活动
           </Button>
@@ -367,7 +382,7 @@ export default function CampaignsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <section>
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -407,7 +422,7 @@ export default function CampaignsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => softDelete(item.campaign_id)}
+                          onClick={() => setPendingDisable(item)}
                           disabled={item.status === "inactive"}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -428,155 +443,181 @@ export default function CampaignsPage() {
             </Table>
           </CardContent>
         </Card>
+      </section>
 
-        <Card>
-          <CardContent className="space-y-3 p-4">
-            <p className="text-sm font-semibold text-slate-900">
-              {editingId ? `编辑活动: ${editingId}` : "创建活动"}
-            </p>
-
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>活动编码</Label>
-                <Input
-                  value={form.campaign_id}
-                  disabled={Boolean(editingId)}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, campaign_id: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>活动周次</Label>
-                <Input
-                  value={form.week_id}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, week_id: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
+      <AdminDrawer
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        title={editingId ? `编辑活动: ${editingId}` : "创建活动"}
+        description="结构化维护活动商品与目标范围。"
+      >
+        <div className="space-y-3">
+          <div className="grid gap-2 md:grid-cols-2">
             <div className="space-y-1">
-              <Label>活动名称</Label>
+              <Label>活动编码</Label>
               <Input
-                value={form.campaign_name}
+                value={form.campaign_id}
+                disabled={Boolean(editingId)}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, campaign_name: event.target.value }))
+                  setForm((prev) => ({ ...prev, campaign_id: event.target.value }))
                 }
               />
             </div>
-
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>促销门槛金额</Label>
-                <Input
-                  type="number"
-                  value={form.promo_threshold}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      promo_threshold: Number(event.target.value || "0"),
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>促销类型</Label>
-                <Input
-                  value={form.promo_type}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, promo_type: event.target.value }))
-                  }
-                />
-              </div>
+            <div className="space-y-1">
+              <Label>活动周次</Label>
+              <Input
+                value={form.week_id}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, week_id: event.target.value }))
+                }
+              />
             </div>
+          </div>
 
-            <MultiSelectChecklist
-              label="活动商品（SKU）"
-              options={productOptions}
-              selected={form.weekly_focus_items}
-              onChange={(weekly_focus_items) =>
-                setForm((prev) => ({ ...prev, weekly_focus_items }))
+          <div className="space-y-1">
+            <Label>活动名称</Label>
+            <Input
+              value={form.campaign_name}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, campaign_name: event.target.value }))
               }
-              searchPlaceholder="搜索活动商品"
             />
-            <MultiSelectChecklist
-              label="活动商品池（可选）"
-              options={poolOptions}
-              selected={form.product_pool_ids}
-              onChange={(product_pool_ids) =>
-                setForm((prev) => ({ ...prev, product_pool_ids }))
-              }
-              searchPlaceholder="搜索商品池"
-            />
-            <MultiSelectChecklist
-              label="目标经销商"
-              options={dealerOptions}
-              selected={form.target_dealer_ids}
-              onChange={(target_dealer_ids) =>
-                setForm((prev) => ({ ...prev, target_dealer_ids }))
-              }
-              searchPlaceholder="搜索经销商"
-            />
-            <MultiSelectChecklist
-              label="目标分群"
-              options={segmentOptions}
-              selected={form.target_segment_ids}
-              onChange={(target_segment_ids) =>
-                setForm((prev) => ({ ...prev, target_segment_ids }))
-              }
-              searchPlaceholder="搜索分群"
-            />
-            <TokenEditor
-              label="运营标签（可选）"
-              value={form.target_customer_types}
-              onChange={(target_customer_types) =>
-                setForm((prev) => ({ ...prev, target_customer_types }))
-              }
-              placeholder="例如 城区核心客户"
-            />
-            <TokenEditor
-              label="活动说明"
-              value={form.activity_notes}
-              onChange={(activity_notes) => setForm((prev) => ({ ...prev, activity_notes }))}
-              placeholder="输入活动说明"
-            />
+          </div>
 
-            <Select
-              value={form.status}
-              onValueChange={(value) =>
-                setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
-              }
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">启用</SelectItem>
-                <SelectItem value="inactive">停用</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label>促销门槛金额</Label>
+              <Input
+                type="number"
+                value={form.promo_threshold}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    promo_threshold: Number(event.target.value || "0"),
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>促销类型</Label>
+              <Input
+                value={form.promo_type}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, promo_type: event.target.value }))
+                }
+              />
+            </div>
+          </div>
 
-            <div className="flex gap-2">
-              {editingId ? (
-                <Button onClick={submitUpdate}>
-                  <Save className="h-4 w-4" />
-                  保存更新
-                </Button>
-              ) : (
-                <Button onClick={submitCreate}>
-                  <Plus className="h-4 w-4" />
-                  创建
-                </Button>
-              )}
-              <Button variant="outline" onClick={resetForm}>
-                重置
+          <MultiSelectChecklist
+            label="活动商品（SKU）"
+            options={productOptions}
+            selected={form.weekly_focus_items}
+            onChange={(weekly_focus_items) =>
+              setForm((prev) => ({ ...prev, weekly_focus_items }))
+            }
+            searchPlaceholder="搜索活动商品"
+          />
+          <MultiSelectChecklist
+            label="活动商品池（可选）"
+            options={poolOptions}
+            selected={form.product_pool_ids}
+            onChange={(product_pool_ids) =>
+              setForm((prev) => ({ ...prev, product_pool_ids }))
+            }
+            searchPlaceholder="搜索商品池"
+          />
+          <MultiSelectChecklist
+            label="目标经销商"
+            options={dealerOptions}
+            selected={form.target_dealer_ids}
+            onChange={(target_dealer_ids) =>
+              setForm((prev) => ({ ...prev, target_dealer_ids }))
+            }
+            searchPlaceholder="搜索经销商"
+          />
+          <MultiSelectChecklist
+            label="目标分群"
+            options={segmentOptions}
+            selected={form.target_segment_ids}
+            onChange={(target_segment_ids) =>
+              setForm((prev) => ({ ...prev, target_segment_ids }))
+            }
+            searchPlaceholder="搜索分群"
+          />
+          <TokenEditor
+            label="运营标签（可选）"
+            value={form.target_customer_types}
+            onChange={(target_customer_types) =>
+              setForm((prev) => ({ ...prev, target_customer_types }))
+            }
+            placeholder="例如 城区核心客户"
+          />
+          <TokenEditor
+            label="活动说明"
+            value={form.activity_notes}
+            onChange={(activity_notes) => setForm((prev) => ({ ...prev, activity_notes }))}
+            placeholder="输入活动说明"
+          />
+
+          <Select
+            value={form.status}
+            onValueChange={(value) =>
+              setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+            }
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">启用</SelectItem>
+              <SelectItem value="inactive">停用</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex gap-2">
+            {editingId ? (
+              <Button onClick={submitUpdate}>
+                <Save className="h-4 w-4" />
+                保存更新
               </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+            ) : (
+              <Button onClick={submitCreate}>
+                <Plus className="h-4 w-4" />
+                创建
+              </Button>
+            )}
+            <Button variant="outline" onClick={resetForm}>
+              重置
+            </Button>
+          </div>
+        </div>
+      </AdminDrawer>
+
+      <AdminConfirmDialog
+        open={Boolean(pendingDisable)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDisable(null);
+          }
+        }}
+        title="确认停用活动"
+        description={`停用后该活动将不再参与推荐生成。${
+          pendingDisable ? `\n活动：${pendingDisable.campaign_name}` : ""
+        }`}
+        confirmLabel="确认停用"
+        onConfirm={async () => {
+          if (!pendingDisable) {
+            return;
+          }
+          await softDelete(pendingDisable.campaign_id);
+        }}
+      />
     </AdminPageFrame>
   );
 }

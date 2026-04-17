@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { ADMIN_NAV_TREE, getAdminRouteMatch } from "../lib/navigation";
-import { ADMIN_ROUTES } from "../lib/routes";
+import {
+  ADMIN_NAV_TREE,
+  FRONTSTAGE_NAV,
+  getAdminRouteMatch,
+} from "../lib/navigation";
+import { ADMIN_ROUTES, FRONTSTAGE_ROUTES } from "../lib/routes";
 
 describe("admin navigation IA contract", () => {
+  it("keeps frontstage nav on canonical purchase/order-submit flow", () => {
+    const frontstageNavRoutes = FRONTSTAGE_NAV.map((item) => item.href);
+    expect(frontstageNavRoutes).toEqual(FRONTSTAGE_ROUTES);
+    expect(frontstageNavRoutes).toEqual(["/purchase", "/order-submit"]);
+  });
+
   it("keeps 6 primary groups with canonical default child mapping", () => {
     expect(
       ADMIN_NAV_TREE.map((group) => ({

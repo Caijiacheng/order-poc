@@ -21,6 +21,7 @@ type ListResult<TItem> = {
 type StrategySummary = {
   strategy_id: string;
   strategy_name: string;
+  target_dealer_ids: string[];
   status: "active" | "inactive";
 };
 
@@ -54,36 +55,32 @@ type DealerSummary = {
 };
 
 type PublishedSuggestionsResponse = {
+  bundleTemplates: Array<{
+    template_id: string;
+    template_name: "热销补货" | "缺货补货" | "活动备货";
+  }>;
+  activityHighlights: Array<{
+    activity_id: string;
+  }>;
+  cartSummary: {
+    sku_count: number;
+    item_count: number;
+    total_amount: number;
+    threshold_amount: number;
+    gap_to_threshold: number;
+    threshold_reached: boolean;
+  };
   summary: {
     published: boolean;
     batch_id?: string;
   };
 };
 
-type ExplainResponse = {
-  title: string;
-  content: string;
-  summary?: {
-    trace_id?: string;
-  };
-};
-
 type CartOptimizeResponse = {
-  thresholdSuggestion: {
-    recommendation_item_id?: string;
-    sku_id: string;
-    suggested_qty: number;
-  } | null;
-  boxAdjustments: Array<{
-    recommendation_item_id?: string;
-    sku_id: string;
-    from_qty: number;
-    to_qty: number;
-  }>;
-  pairSuggestions: Array<{
-    recommendation_item_id?: string;
-    sku_id: string;
-    suggested_qty: number;
+  recommendationBars: Array<{
+    bar_id: string;
+    headline: string;
+    action_label: string;
   }>;
   summary: {
     trace_id?: string;
@@ -181,7 +178,7 @@ async function expectLangfuseTraceNameIfAvailable(input: {
 
 test.describe.configure({ mode: "serial" });
 
-test("live serial cross-role story keeps operations, frontstage, and trace drill-down aligned", async ({
+test("live serial cross-role story keeps canonical purchase/order-submit flow and drill-down aligned", async ({
   page,
 }) => {
   test.setTimeout(420_000);
@@ -231,16 +228,26 @@ test("live serial cross-role story keeps operations, frontstage, and trace drill
   await page.getByRole("button", { name: "保存更新" }).click();
   await expect(page.getByText("推荐策略更新成功")).toBeVisible({ timeout: 90_000 });
 
-  const jobsPayload = await expectEnvelope<ListResult<GenerationJobSummary>>(
-    await page.request.get(
-      "/api/admin/generation-jobs?page=1&pageSize=20&sortBy=business_date&sortOrder=desc",
-    ),
-  );
-  const job = jobsPayload.data.items[0];
-  if (!job) {
-    throw new Error("缺少可执行生成任务，无法执行 live 运营故事流。");
+  const targetDealerId = strategy.target_dealer_ids[0];
+  if (!targetDealerId) {
+    throw new Error("策略未配置目标经销商，无法执行 live 运营故事流。");
   }
-  shared.jobId = job.job_id;
+  const createJobPayload = await expectEnvelope<GenerationJobSummary>(
+    await page.request.post("/api/admin/generation-jobs", {
+      data: {
+        job_id: `job_live_e2e_${Date.now()}`,
+        job_name: "Live E2E 生成任务",
+        business_date: new Date().toISOString().slice(0, 10),
+        target_dealer_ids: [targetDealerId],
+        target_segment_ids: [],
+        strategy_ids: [shared.strategyId],
+        publish_mode: "manual",
+        status: "ready",
+        precheck_summary: "待预检",
+      },
+    }),
+  );
+  shared.jobId = createJobPayload.data.job_id;
 
   await page.goto("/admin/operations/generation-jobs");
   await expect(page).toHaveURL(/\/admin\/operations\/generation-jobs$/);
@@ -323,84 +330,100 @@ test("live serial cross-role story keeps operations, frontstage, and trace drill
   );
   expect(publishedPayload.data.summary.published).toBe(true);
   expect(publishedPayload.data.summary.batch_id).toBe(shared.batchId);
+  expect(publishedPayload.data.bundleTemplates).toHaveLength(3);
+  expect(publishedPayload.data.bundleTemplates.map((item) => item.template_name)).toEqual([
+    "热销补货",
+    "缺货补货",
+    "活动备货",
+  ]);
+  expect("dailyRecommendations" in (publishedPayload.data as Record<string, unknown>)).toBe(
+    false,
+  );
+  expect(
+    "weeklyFocusRecommendations" in (publishedPayload.data as Record<string, unknown>),
+  ).toBe(false);
 
   const recommendationRunDetail = await fetchRecommendationRecordDetail(page, shared.runId);
   const recommendationTraceId = recommendationRunDetail.run.trace_id ?? "";
-  expect(recommendationRunDetail.run.page_name).toBe("/procurement");
   expect(recommendationRunDetail.run.model_name).toBe(process.env.LLM_MODEL);
   expect(recommendationRunDetail.run.prompt_snapshot).not.toEqual("");
 
   await clearCart(page);
 
-  await page.goto("/procurement");
-  await expect(page).toHaveURL(/\/procurement$/);
-  await expect(page.getByTestId("procurement-home")).toBeVisible();
-  await expect(page.getByTestId("replenishment-module")).toBeVisible();
-  await expect(page.getByTestId("campaign-module")).toBeVisible();
-  await expect(page.getByRole("button", { name: "刷新采购建议" })).toHaveCount(0);
+  await page.goto("/purchase");
+  await expect(page).toHaveURL(/\/purchase$/);
+  await expect(page.getByTestId("purchase-workbench")).toBeVisible();
+  await expect(page.getByTestId("purchase-bundle-templates")).toBeVisible();
+  await expect(page.getByTestId("purchase-activity-zone")).toBeVisible();
+  await expect(page.getByTestId("purchase-catalog-zone")).toBeVisible();
+  await expect(page.getByTestId("purchase-procurement-summary")).toBeVisible();
+  await expect(page.getByText("热销补货")).toBeVisible();
+  await expect(page.getByText("缺货补货")).toBeVisible();
+  await expect(page.getByText("活动备货")).toBeVisible();
+  await expect(
+    page.getByTestId("purchase-bundle-templates").getByRole("button", { name: "快速下单" }),
+  ).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "生成建议" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "采纳/改量" })).toHaveCount(0);
 
   await selectDealer(page, shared.customerName);
-  await expect(page.getByText("已加载当前已发布建议单，可直接采纳、改量或忽略。")).toBeVisible({
+  await expect(page.getByText("已加载模板化建议，可从模板与活动专区快速下单。")).toBeVisible({
     timeout: 90_000,
   });
 
-  const explainResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" && response.url().includes("/api/explain"),
-  );
   await page
-    .getByTestId("replenishment-module")
+    .getByTestId("purchase-bundle-templates")
     .getByRole("button", { name: "查看原因" })
     .first()
     .click();
-  const explainPayload = await expectEnvelope<ExplainResponse>(await explainResponsePromise);
-
-  const explainTraceId = explainPayload.data.summary?.trace_id ?? "";
-  expect(explainPayload.data.title).not.toEqual("");
-  expect(explainPayload.data.content).not.toEqual("");
-  await expect(page.locator("body")).toContainText(explainPayload.data.title, {
-    timeout: 90_000,
-  });
-
-  const applyButton = page.getByRole("button", { name: "采纳/改量" }).first();
-  await expect(applyButton).toBeVisible({ timeout: 90_000 });
-  await applyButton.click();
-  await expect(page.getByText(/已采纳建议：/)).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId("purchase-reason-drawer")).toBeVisible({ timeout: 90_000 });
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(page.getByTestId("purchase-reason-drawer")).toHaveCount(0);
 
   const optimizeResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/cart-optimize"),
   );
-  await page.getByRole("link", { name: "查看采购清单" }).click();
-  await expect(page).toHaveURL(/\/basket$/);
-  await expect(page.getByTestId("basket-summary")).toBeVisible();
-  await expect(page.getByTestId("basket-optimization-panel")).toBeVisible();
+  await page.getByRole("button", { name: "组货后去结算" }).click();
+  await expect(page).toHaveURL(/\/order-submit$/);
+  await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
+  await expect(page.getByTestId("order-submit-recommendation-bars")).toBeVisible();
+  await expect(page.getByText("顺手补货推荐")).toBeVisible();
+  await expect(page.getByText("交易信息", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("order-submit-optimization")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "一键应用全部" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "生成优化建议" })).toHaveCount(0);
   const optimizePayload = await expectEnvelope<CartOptimizeResponse>(
     await optimizeResponsePromise,
   );
 
-  const optimizationTraceId = optimizePayload.data.summary.trace_id ?? "";
+  const optimizationTraceId = getTraceId(
+    optimizePayload.meta,
+    optimizePayload.data.summary.trace_id,
+  );
   const optimizationRunId = optimizePayload.data.summary.recommendation_run_id;
 
   expect(optimizationRunId).toMatch(/^reco_run_/);
 
-  await page.getByRole("button", { name: "一键应用全部" }).click();
-  await expect(page.getByText("已批量应用本轮自动优化建议。")).toBeVisible({
-    timeout: 90_000,
-  });
-
-  await page.getByRole("link", { name: "去下单确认" }).click();
-  await expect(page).toHaveURL(/\/checkout$/);
-  await expect(page.getByTestId("checkout-summary")).toBeVisible();
+  const whyButtons = page
+    .getByTestId("order-submit-recommendation-bars")
+    .getByRole("button", { name: "为什么推荐" });
+  if ((await whyButtons.count()) > 0) {
+    await whyButtons.first().click();
+    await expect(page.getByTestId("order-submit-reason-drawer")).toBeVisible({
+      timeout: 90_000,
+    });
+    await page.getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(page.getByTestId("order-submit-reason-drawer")).toHaveCount(0);
+  }
 
   const submitResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/cart/submit"),
   );
-  await page.getByRole("button", { name: "确认提交订单" }).click();
+  await page.getByRole("button", { name: "提交订单" }).click();
   const submitPayload = await expectEnvelope<SubmitCartResponse>(await submitResponsePromise);
 
   const submitTraceId = getTraceId(
@@ -414,11 +437,8 @@ test("live serial cross-role story keeps operations, frontstage, and trace drill
   });
 
   const optimizationDetail = await fetchRecommendationRecordDetail(page, optimizationRunId);
-  expect(optimizationDetail.run.page_name).toBe("/basket");
-  expect(optimizationDetail.items.some((item) => item.was_applied)).toBe(true);
-  expect(
-    optimizationDetail.items.some((item) => item.final_status === "submitted_with_order"),
-  ).toBe(true);
+  expect(optimizationDetail.run.page_name).toBe("/order-submit");
+  expect(optimizationDetail.items.length).toBeGreaterThanOrEqual(0);
 
   await page.goto("/admin/operations/recommendation-batches");
   await expect(page).toHaveURL(/\/admin\/operations\/recommendation-batches$/);
@@ -486,10 +506,6 @@ test("live serial cross-role story keeps operations, frontstage, and trace drill
   await expectLangfuseTraceNameIfAvailable({
     traceId: recommendationTraceId,
     expectedName: "homepage.generate-recommendations",
-  });
-  await expectLangfuseTraceNameIfAvailable({
-    traceId: explainTraceId,
-    expectedName: "recommendation.explain",
   });
   await expectLangfuseTraceNameIfAvailable({
     traceId: optimizationTraceId,

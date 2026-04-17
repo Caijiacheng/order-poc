@@ -7,7 +7,6 @@ import type {
   CampaignEntity,
   DealerEntity,
   DealerSegmentEntity,
-  DealerSuggestionTemplateEntity,
   ExpressionTemplateEntity,
   GenerationJobEntity,
   GlobalRuleEntity,
@@ -56,10 +55,9 @@ function toPromptConfig(templates: ExpressionTemplateEntity[]): PromptConfigEnti
   const pickTemplate = (type: ExpressionTemplateEntity["template_type"]) =>
     templates.find((item) => item.template_type === type && item.status === "active");
 
-  const recommendation = pickTemplate("recommendation");
-  const cart = pickTemplate("cart_optimization");
-  const explain = pickTemplate("explanation");
-  const shared = recommendation ?? cart ?? explain;
+  const bundle = pickTemplate("bundle_explanation");
+  const topup = pickTemplate("topup_explanation");
+  const shared = bundle ?? topup;
 
   return {
     global_style: {
@@ -68,16 +66,16 @@ function toPromptConfig(templates: ExpressionTemplateEntity[]): PromptConfigEnti
       reason_limit: shared?.reason_limit ?? 3,
     },
     recommendation_prompt: {
-      system_role: recommendation?.system_role ?? "",
-      instruction: recommendation?.instruction ?? "",
+      system_role: bundle?.system_role ?? "",
+      instruction: bundle?.instruction ?? "",
     },
     cart_opt_prompt: {
-      system_role: cart?.system_role ?? "",
-      instruction: cart?.instruction ?? "",
+      system_role: topup?.system_role ?? bundle?.system_role ?? "",
+      instruction: topup?.instruction ?? bundle?.instruction ?? "",
     },
     explain_prompt: {
-      system_role: explain?.system_role ?? "",
-      instruction: explain?.instruction ?? "",
+      system_role: bundle?.system_role ?? topup?.system_role ?? "",
+      instruction: bundle?.instruction ?? topup?.instruction ?? "",
     },
   };
 }
@@ -180,121 +178,6 @@ function deriveProductPools(products: ProductEntity[]): ProductPoolEntity[] {
   ];
 }
 
-function deriveStrategiesFromLegacyTemplates(
-  templates: DealerSuggestionTemplateEntity[],
-  dealers: DealerEntity[],
-  segments: DealerSegmentEntity[],
-): RecommendationStrategyEntity[] {
-  return templates.map((template) => {
-    const linkedSegments = segments
-      .filter((segment) => segment.dealer_ids.includes(template.customer_id))
-      .map((segment) => segment.segment_id);
-    return {
-      strategy_id: template.template_id,
-      strategy_name: template.template_name,
-      scene: template.scene,
-      target_dealer_ids: [template.customer_id],
-      dealer_segment_ids: linkedSegments,
-      product_pool_ids: ["pool_regular_replenishment", "pool_pairing"],
-      campaign_ids: [],
-      candidate_sku_ids: template.reference_items.map((item) => item.sku_id),
-      reference_items: template.reference_items,
-      business_notes: template.business_notes,
-      expression_template_id:
-        template.scene === "box_pair_optimization"
-          ? "expr_cart_opt_default"
-          : "expr_recommendation_default",
-      priority: template.priority,
-      status: template.enabled ? "active" : "inactive",
-      created_at: template.created_at,
-      updated_at: template.updated_at,
-    };
-  });
-}
-
-function deriveLegacyTemplatesFromStrategies(
-  strategies: RecommendationStrategyEntity[],
-): DealerSuggestionTemplateEntity[] {
-  return strategies.map((strategy) => ({
-    template_id: strategy.strategy_id,
-    customer_id: strategy.target_dealer_ids[0] ?? "",
-    template_name: strategy.strategy_name,
-    scene: strategy.scene,
-    reference_items: strategy.reference_items,
-    business_notes: strategy.business_notes,
-    style_hint: "沿用策略表达模板",
-    priority: strategy.priority,
-    enabled: strategy.status === "active",
-    created_at: strategy.created_at,
-    updated_at: strategy.updated_at,
-  }));
-}
-
-function deriveExpressionTemplatesFromPromptConfig(
-  promptConfig: PromptConfigEntity,
-): ExpressionTemplateEntity[] {
-  const now = "2026-04-01T08:00:00.000Z";
-  return [
-    {
-      expression_template_id: "expr_recommendation_default",
-      expression_template_name: "推荐表达模板",
-      template_type: "recommendation",
-      scene: "all",
-      tone: promptConfig.global_style.tone,
-      avoid: promptConfig.global_style.avoid,
-      reason_limit: promptConfig.global_style.reason_limit,
-      system_role: promptConfig.recommendation_prompt.system_role,
-      instruction: promptConfig.recommendation_prompt.instruction,
-      style_hint: "推荐建议输出模板",
-      status: "active",
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      expression_template_id: "expr_cart_opt_default",
-      expression_template_name: "凑单优化表达模板",
-      template_type: "cart_optimization",
-      scene: "all",
-      tone: promptConfig.global_style.tone,
-      avoid: promptConfig.global_style.avoid,
-      reason_limit: promptConfig.global_style.reason_limit,
-      system_role: promptConfig.cart_opt_prompt.system_role,
-      instruction: promptConfig.cart_opt_prompt.instruction,
-      style_hint: "凑单建议输出模板",
-      status: "active",
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      expression_template_id: "expr_explain_default",
-      expression_template_name: "解释表达模板",
-      template_type: "explanation",
-      scene: "all",
-      tone: promptConfig.global_style.tone,
-      avoid: promptConfig.global_style.avoid,
-      reason_limit: promptConfig.global_style.reason_limit,
-      system_role: promptConfig.explain_prompt.system_role,
-      instruction: promptConfig.explain_prompt.instruction,
-      style_hint: "解释文案输出模板",
-      status: "active",
-      created_at: now,
-      updated_at: now,
-    },
-  ];
-}
-
-function toGlobalRules(input: RuleConfigEntity): GlobalRuleEntity {
-  const now = "2026-04-01T08:00:00.000Z";
-  return {
-    global_rule_id: "global_rules_default",
-    rule_version: "2026.04.seed",
-    ...input,
-    status: "active",
-    created_at: now,
-    updated_at: now,
-  };
-}
-
 function createSeedRecommendationRuns(): RecommendationRunRecord[] {
   return [
     {
@@ -305,12 +188,10 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
       scene: "daily_recommendation",
-      page_name: "/procurement",
+      page_name: "/purchase",
       trigger_source: "manual",
       strategy_id: "tpl_xm_daily",
       expression_template_id: "expr_recommendation_default",
-      template_id: "tpl_xm_daily",
-      template_name: "厦门日常补货建议",
       prompt_version: "2026.04.15.a",
       prompt_snapshot: "seed prompt snapshot for xm daily recommendation",
       candidate_sku_ids: [
@@ -337,12 +218,10 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
       customer_id: "dealer_cd_pf",
       customer_name: "成都餐饮批发经销商",
       scene: "box_pair_optimization",
-      page_name: "/basket",
+      page_name: "/order-submit",
       trigger_source: "assistant",
       strategy_id: "tpl_cd_boxpair",
       expression_template_id: "expr_cart_opt_default",
-      template_id: "tpl_cd_boxpair",
-      template_name: "成都箱规与搭配优化",
       prompt_version: "2026.04.15.a",
       prompt_snapshot: "seed prompt snapshot for cd cart optimization",
       candidate_sku_ids: ["cb_oyster_big_2270", "cb_chicken_restaurant_1kg"],
@@ -356,6 +235,32 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
       status: "fully_applied",
       created_at: "2026-04-15T01:20:00.000Z",
       updated_at: "2026-04-15T01:23:00.000Z",
+    },
+    {
+      recommendation_run_id: "reco_run_seed_003",
+      session_id: "session_seed_003",
+      batch_id: "batch_seed_001",
+      trace_id: "trace_seed_003",
+      customer_id: "dealer_xm_sm",
+      customer_name: "厦门思明经销商",
+      scene: "weekly_focus",
+      page_name: "/purchase",
+      trigger_source: "manual",
+      strategy_id: "tpl_xm_daily",
+      expression_template_id: "expr_recommendation_default",
+      prompt_version: "2026.04.15.a",
+      prompt_snapshot: "seed prompt snapshot for xm weekly focus",
+      candidate_sku_ids: ["cb_zeroadd_shengchou_500", "cb_zeroadd_head_500"],
+      returned_sku_ids: ["cb_zeroadd_shengchou_500"],
+      cart_amount_before: 843,
+      cart_amount_after: 1039,
+      model_name: "seed-mock-model",
+      model_latency_ms: 904,
+      input_tokens: 762,
+      output_tokens: 226,
+      status: "generated",
+      created_at: "2026-04-15T01:11:00.000Z",
+      updated_at: "2026-04-15T01:18:00.000Z",
     },
   ];
 }
@@ -455,6 +360,29 @@ function createSeedRecommendationItems(): RecommendationItemRecord[] {
       created_at: "2026-04-15T01:20:00.000Z",
       updated_at: "2026-04-15T01:23:00.000Z",
     },
+    {
+      recommendation_item_id: "reco_item_seed_005",
+      recommendation_run_id: "reco_run_seed_003",
+      customer_id: "dealer_xm_sm",
+      scene: "weekly_focus",
+      sku_id: "cb_zeroadd_shengchou_500",
+      sku_name: "厨邦零添加特级生抽",
+      suggested_qty: 12,
+      suggested_rank: 1,
+      reason: "本周活动主推商品，建议提前备货。",
+      reason_tags: ["活动备货", "新品试销"],
+      action_type: "add_to_cart",
+      effect_type: "weekly_focus",
+      was_viewed: true,
+      was_explained: false,
+      was_applied: true,
+      applied_qty: 12,
+      applied_at: "2026-04-15T01:18:00.000Z",
+      applied_by: "user",
+      final_status: "applied",
+      created_at: "2026-04-15T01:11:00.000Z",
+      updated_at: "2026-04-15T01:18:00.000Z",
+    },
   ];
 }
 
@@ -468,7 +396,7 @@ function createSeedRecommendationBatches(): RecommendationBatchRecord[] {
       customer_id: "dealer_xm_sm",
       scene: "daily_recommendation",
       trace_id: "trace_seed_001",
-      related_run_ids: ["reco_run_seed_001"],
+      related_run_ids: ["reco_run_seed_001", "reco_run_seed_003"],
       config_snapshot_id: "snapshot_seed_default",
       started_at: "2026-04-15T01:08:00.000Z",
       finished_at: "2026-04-15T01:18:00.000Z",
@@ -604,13 +532,23 @@ export function loadSeedStore(): AppMemoryStore {
   const products = loadJsonFile<ProductEntity[]>("products.json");
   const dealers = loadJsonFile<DealerEntity[]>("dealers.json");
   const campaigns = loadJsonFile<CampaignEntity[]>("campaigns.json");
-  const uiConfig = loadJsonFile<UIConfigEntity>("ui-config.json");
-
-  const rulesFromFile = loadJsonFile<RuleConfigEntity>("rules.json");
-  const promptConfigFromFile = loadJsonFile<PromptConfigEntity>("prompt-config.json");
-  const legacyTemplatesFromFile = loadJsonFile<DealerSuggestionTemplateEntity[]>(
-    "suggestion-templates.json",
+  const recommendationStrategies = loadJsonFile<RecommendationStrategyEntity[]>(
+    "recommendation-strategies.json",
   );
+  const expressionTemplates = loadJsonFile<ExpressionTemplateEntity[]>(
+    "expression-templates.json",
+  );
+  const globalRules = loadJsonFile<GlobalRuleEntity>("global-rules.json");
+  const generationJobs =
+    loadJsonFileOptional<GenerationJobEntity[]>("generation-jobs.json") ??
+    createSeedGenerationJobs();
+  const recommendationBatches =
+    loadJsonFileOptional<RecommendationBatchRecord[]>("recommendation-batches.json") ??
+    createSeedRecommendationBatches();
+  const recoverySnapshots =
+    loadJsonFileOptional<RecoverySnapshotRecord[]>("recovery-snapshots.json") ??
+    createSeedRecoverySnapshots();
+  const uiConfig = loadJsonFile<UIConfigEntity>("ui-config.json");
 
   const dealerSegments =
     loadJsonFileOptional<DealerSegmentEntity[]>("dealer-segments.json") ??
@@ -618,37 +556,9 @@ export function loadSeedStore(): AppMemoryStore {
   const productPools =
     loadJsonFileOptional<ProductPoolEntity[]>("product-pools.json") ??
     deriveProductPools(products);
-  const recommendationStrategies =
-    loadJsonFileOptional<RecommendationStrategyEntity[]>(
-      "recommendation-strategies.json",
-    ) ??
-    deriveStrategiesFromLegacyTemplates(
-      legacyTemplatesFromFile,
-      dealers,
-      dealerSegments,
-    );
-  const expressionTemplates =
-    loadJsonFileOptional<ExpressionTemplateEntity[]>("expression-templates.json") ??
-    deriveExpressionTemplatesFromPromptConfig(promptConfigFromFile);
-  const globalRules =
-    loadJsonFileOptional<GlobalRuleEntity>("global-rules.json") ??
-    toGlobalRules(rulesFromFile);
 
   const recommendationRuns = createSeedRecommendationRuns();
   const recommendationItems = createSeedRecommendationItems();
-  const recommendationBatches =
-    loadJsonFileOptional<RecommendationBatchRecord[]>("recommendation-batches.json") ??
-    createSeedRecommendationBatches();
-  const generationJobs =
-    loadJsonFileOptional<GenerationJobEntity[]>("generation-jobs.json") ??
-    createSeedGenerationJobs();
-  const recoverySnapshots =
-    loadJsonFileOptional<RecoverySnapshotRecord[]>("recovery-snapshots.json") ??
-    createSeedRecoverySnapshots();
-
-  const suggestionTemplates = deriveLegacyTemplatesFromStrategies(
-    recommendationStrategies,
-  );
   const promptConfig = toPromptConfig(expressionTemplates);
   const rules = toRuleConfig(globalRules);
 
@@ -698,7 +608,6 @@ export function loadSeedStore(): AppMemoryStore {
     recommendationItems,
     cartSessions: {},
     auditLogs: [],
-    suggestionTemplates,
     rules,
     promptConfig,
   };

@@ -14,6 +14,19 @@ type ListResult<TItem> = {
 type StrategySummary = {
   strategy_id: string;
   strategy_name: string;
+  target_dealer_ids: string[];
+  status: "active" | "inactive";
+};
+
+type CampaignSummary = {
+  campaign_id: string;
+  campaign_name: string;
+  status: "active" | "inactive";
+};
+
+type ExpressionTemplateSummary = {
+  expression_template_id: string;
+  expression_template_name: string;
   status: "active" | "inactive";
 };
 
@@ -51,6 +64,21 @@ type CartApiResponse = {
 };
 
 type PublishedSuggestionsResponse = {
+  bundleTemplates: Array<{
+    template_id: string;
+    template_name: "热销补货" | "缺货补货" | "活动备货";
+  }>;
+  activityHighlights: Array<{
+    activity_id: string;
+  }>;
+  cartSummary: {
+    sku_count: number;
+    item_count: number;
+    total_amount: number;
+    threshold_amount: number;
+    gap_to_threshold: number;
+    threshold_reached: boolean;
+  };
   summary: {
     published: boolean;
     batch_id?: string;
@@ -102,10 +130,16 @@ async function selectDealer(page: Page, dealerName: string) {
   await page.getByRole("option", { name: dealerName }).click();
 }
 
+async function closeDrawer(page: Page) {
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+}
+
 test.describe.configure({ mode: "serial" });
 
-test("运营 story：策略最小改动后完成预检、试生成、发布", async ({ page }) => {
-  test.setTimeout(120_000);
+test("运营 story：策略/活动/模板走 Drawer，任务完成预检、试生成、发布", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
 
   const strategies = await expectEnvelope<ListResult<StrategySummary>>(
     await page.request.get(
@@ -120,38 +154,116 @@ test("运营 story：策略最小改动后完成预检、试生成、发布", as
 
   await page.goto("/admin/strategy/recommendation-strategies");
   await expect(page).toHaveURL(/\/admin\/strategy\/recommendation-strategies$/);
-  await page.getByPlaceholder("搜索策略 ID/名称/场景").fill(shared.strategyId);
 
+  await page.getByRole("button", { name: "新建策略" }).click();
+  await expect(page.getByRole("heading", { name: "创建策略" })).toBeVisible();
+  await closeDrawer(page);
+  await expect(page.getByRole("heading", { name: "创建策略" })).toHaveCount(0);
+
+  await page.getByPlaceholder("搜索策略 ID/名称/场景").fill(shared.strategyId);
   const strategyRow = page.locator("tbody tr", { hasText: shared.strategyId }).first();
   await expect(strategyRow).toBeVisible();
   await strategyRow.getByRole("button", { name: "编辑" }).click();
+  await expect(
+    page.getByRole("heading", { name: new RegExp(`编辑策略: ${shared.strategyId}`) }),
+  ).toBeVisible();
 
   const strategyNameInput = page
     .locator('label:has-text("策略名称")')
     .locator("xpath=following::input[1]");
-  await expect(strategyNameInput).toBeVisible();
   const originalName = (await strategyNameInput.inputValue()).trim() || strategy.strategy_name;
-  const updatedName = `${originalName} [mock-e2e]`;
-  await strategyNameInput.fill(updatedName);
+  const marker = `mock-e2e-${Date.now().toString().slice(-4)}`;
+  const baseName = originalName.replace(/\s*\[mock-e2e-\d{4}\]$/, "");
+  await strategyNameInput.fill(`${baseName} [${marker}]`);
   await page.getByRole("button", { name: "保存更新" }).click();
   await expect(page.getByText("推荐策略更新成功")).toBeVisible();
 
-  const jobs = await expectEnvelope<ListResult<GenerationJobSummary>>(
+  const campaigns = await expectEnvelope<ListResult<CampaignSummary>>(
     await page.request.get(
-      "/api/admin/generation-jobs?page=1&pageSize=20&sortBy=business_date&sortOrder=desc",
+      "/api/admin/campaigns?page=1&pageSize=20&status=active&sortBy=week_id&sortOrder=desc",
     ),
   );
-  const job = jobs.data.items[0];
-  if (!job) {
-    throw new Error("缺少可执行生成任务，无法执行运营 story");
+  const campaign = campaigns.data.items[0];
+  if (!campaign) {
+    throw new Error("缺少可编辑活动，无法执行运营 story");
   }
-  shared.jobId = job.job_id;
+
+  await page.goto("/admin/strategy/campaigns");
+  await expect(page).toHaveURL(/\/admin\/strategy\/campaigns$/);
+  await page.getByPlaceholder("搜索活动 ID/名称").fill(campaign.campaign_id);
+  const campaignRow = page.locator("tbody tr", { hasText: campaign.campaign_id }).first();
+  await expect(campaignRow).toBeVisible();
+  await campaignRow.getByRole("button", { name: "编辑" }).click();
+  await expect(
+    page.getByRole("heading", { name: new RegExp(`编辑活动: ${campaign.campaign_id}`) }),
+  ).toBeVisible();
+  await closeDrawer(page);
+  await campaignRow.getByRole("button", { name: "停用" }).click();
+  await expect(page.getByRole("heading", { name: "确认停用活动" })).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).click();
+
+  const expressionTemplates = await expectEnvelope<ListResult<ExpressionTemplateSummary>>(
+    await page.request.get(
+      "/api/admin/expression-templates?page=1&pageSize=20&status=active&sortBy=expression_template_name&sortOrder=asc",
+    ),
+  );
+  const expressionTemplate = expressionTemplates.data.items[0];
+  if (!expressionTemplate) {
+    throw new Error("缺少可编辑表达模板，无法执行运营 story");
+  }
+
+  await page.goto("/admin/strategy/expression-templates");
+  await expect(page).toHaveURL(/\/admin\/strategy\/expression-templates$/);
+  await page.getByPlaceholder("搜索模板 ID/名称/类型").fill(
+    expressionTemplate.expression_template_id,
+  );
+  const expressionRow = page
+    .locator("tbody tr", { hasText: expressionTemplate.expression_template_id })
+    .first();
+  await expect(expressionRow).toBeVisible();
+  await expressionRow.getByRole("button", { name: "编辑" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: new RegExp(`编辑模板: ${expressionTemplate.expression_template_id}`),
+    }),
+  ).toBeVisible();
+  await closeDrawer(page);
+  await expressionRow.getByRole("button", { name: "停用" }).click();
+  await expect(page.getByRole("heading", { name: "确认停用表达模板" })).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).click();
+
+  const targetDealerId = strategy.target_dealer_ids[0];
+  if (!targetDealerId) {
+    throw new Error("策略未配置目标经销商，无法执行运营 story");
+  }
+  const createJob = await expectEnvelope<GenerationJobSummary>(
+    await page.request.post("/api/admin/generation-jobs", {
+      data: {
+        job_id: `job_mock_e2e_${Date.now()}`,
+        job_name: "Mock E2E 生成任务",
+        business_date: new Date().toISOString().slice(0, 10),
+        target_dealer_ids: [targetDealerId],
+        target_segment_ids: [],
+        strategy_ids: [shared.strategyId],
+        publish_mode: "manual",
+        status: "ready",
+        precheck_summary: "待预检",
+      },
+    }),
+  );
+  shared.jobId = createJob.data.job_id;
 
   await page.goto("/admin/operations/generation-jobs");
   await expect(page).toHaveURL(/\/admin\/operations\/generation-jobs$/);
   await page.getByPlaceholder("搜索任务 ID/名称").fill(shared.jobId);
 
   const getJobRow = () => page.locator("tbody tr", { hasText: shared.jobId }).first();
+  await expect(getJobRow()).toBeVisible();
+  await getJobRow().getByRole("button", { name: "编辑" }).click();
+  await expect(
+    page.getByRole("heading", { name: new RegExp(`编辑任务: ${shared.jobId}`) }),
+  ).toBeVisible();
+  await closeDrawer(page);
 
   const precheckResponsePromise = page.waitForResponse(
     (response) =>
@@ -215,12 +327,12 @@ test("运营 story：策略最小改动后完成预检、试生成、发布", as
   shared.customerName = currentDealer?.customer_name ?? "";
 
   const runDetail = await expectEnvelope<RecommendationRunDetailResponse>(
-    await page.request.get(`/api/admin/reports/recommendations/${shared.runId}`),
+    await page.request.get(`/api/admin/recommendation-records/${shared.runId}`),
   );
   expect(runDetail.data.run.model_name).toBe("mock-e2e-model");
 });
 
-test("经销商 story：自动消费已发布建议单、自动看到凑单优化并提交订单", async ({ page }) => {
+test("经销商 story：/purchase -> /order-submit -> 提交", async ({ page }) => {
   test.setTimeout(120_000);
 
   expect(shared.customerId).not.toEqual("");
@@ -235,41 +347,71 @@ test("经销商 story：自动消费已发布建议单、自动看到凑单优�
   );
   expect(publishedPayload.data.summary.published).toBe(true);
   expect(publishedPayload.data.summary.batch_id).toBe(shared.batchId);
+  expect(publishedPayload.data.bundleTemplates).toHaveLength(3);
+  expect(publishedPayload.data.bundleTemplates.map((item) => item.template_name)).toEqual([
+    "热销补货",
+    "缺货补货",
+    "活动备货",
+  ]);
+  expect(publishedPayload.data.activityHighlights.length).toBeGreaterThanOrEqual(0);
+  expect("dailyRecommendations" in (publishedPayload.data as Record<string, unknown>)).toBe(
+    false,
+  );
+  expect(
+    "weeklyFocusRecommendations" in (publishedPayload.data as Record<string, unknown>),
+  ).toBe(false);
 
-  await page.goto("/procurement");
-  await expect(page).toHaveURL(/\/procurement$/);
-  await expect(page.getByTestId("procurement-home")).toBeVisible();
-  await expect(page.getByRole("button", { name: "刷新采购建议" })).toHaveCount(0);
+  await page.goto("/purchase");
+  await expect(page).toHaveURL(/\/purchase$/);
+  await expect(page.getByTestId("purchase-workbench")).toBeVisible();
+  await expect(page.getByTestId("purchase-bundle-templates")).toBeVisible();
+  await expect(page.getByTestId("purchase-activity-zone")).toBeVisible();
+  await expect(page.getByTestId("purchase-catalog-zone")).toBeVisible();
+  await expect(page.getByTestId("purchase-procurement-summary")).toBeVisible();
+  await expect(page.getByText("热销补货")).toBeVisible();
+  await expect(page.getByText("缺货补货")).toBeVisible();
+  await expect(page.getByText("活动备货")).toBeVisible();
+  await expect(
+    page.getByTestId("purchase-bundle-templates").getByRole("button", { name: "快速下单" }),
+  ).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "生成建议" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "采纳/改量" })).toHaveCount(0);
+  await expect(page.getByText("今日建议单")).toHaveCount(0);
 
   await selectDealer(page, shared.customerName);
-  await expect(page.getByText("已加载当前已发布建议单，可直接采纳、改量或忽略。")).toBeVisible();
+  await expect(page.getByText("已加载模板化建议，可从模板与活动专区快速下单。")).toBeVisible();
 
-  const applyButton = page.getByRole("button", { name: "采纳/改量" }).first();
-  await expect(applyButton).toBeVisible();
-  await applyButton.click();
-  await expect(page.getByText(/已采纳建议：/)).toBeVisible();
+  await page
+    .getByTestId("purchase-bundle-templates")
+    .getByRole("button", { name: "查看原因" })
+    .first()
+    .click();
+  await expect(page.getByTestId("purchase-reason-drawer")).toBeVisible();
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(page.getByTestId("purchase-reason-drawer")).toHaveCount(0);
 
-  await page.getByRole("link", { name: "查看采购清单" }).click();
-  await expect(page).toHaveURL(/\/basket$/);
-  await expect(page.getByTestId("basket-summary")).toBeVisible();
-  await expect(page.getByTestId("basket-optimization-panel")).toBeVisible();
+  await page.getByRole("button", { name: "组货后去结算" }).click();
+  await expect(page).toHaveURL(/\/order-submit$/);
+  await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
+  await expect(page.getByTestId("order-submit-recommendation-bars")).toBeVisible();
+  await expect(page.getByTestId("order-submit-summary")).toBeVisible();
+  await expect(page.getByText("顺手补货推荐")).toBeVisible();
+  await expect(page.getByText("交易信息", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("order-submit-optimization")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "一键应用全部" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "生成优化建议" })).toHaveCount(0);
-
-  await page.getByRole("link", { name: "去下单确认" }).click();
-  await expect(page).toHaveURL(/\/checkout$/);
-  await expect(page.getByTestId("checkout-summary")).toBeVisible();
 
   const submitResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/cart/submit"),
   );
-  await page.getByRole("button", { name: "确认提交订单" }).click();
+  await page.getByRole("button", { name: "提交订单" }).click();
   await expectEnvelope(await submitResponsePromise);
   await expect(page.getByText("订单提交成功。")).toBeVisible();
 });
 
-test("IT story：按批次下钻记录与 trace，并查看 recovery 页面", async ({ page }) => {
+test("IT story：批次/记录/trace/recovery 可钻取", async ({ page }) => {
   test.setTimeout(120_000);
 
   expect(shared.batchId).not.toEqual("");
@@ -286,7 +428,9 @@ test("IT story：按批次下钻记录与 trace，并查看 recovery 页面", as
 
   await page.getByRole("link", { name: "查看批次记录" }).click();
   await expect(page).toHaveURL(
-    new RegExp(`/admin/analytics/recommendation-records\\?batchId=${encodeURIComponent(shared.batchId)}`),
+    new RegExp(
+      `/admin/analytics/recommendation-records\\?batchId=${encodeURIComponent(shared.batchId)}`,
+    ),
   );
   await expect(page.getByTestId("recommendation-report-table")).toBeVisible();
 
@@ -300,7 +444,12 @@ test("IT story：按批次下钻记录与 trace，并查看 recovery 页面", as
     await page.getByRole("button", { name: "查询" }).click();
   }
   await expect(reportRows.first()).not.toContainText("无数据");
-  await reportRows.first().click();
+
+  const runRow = page
+    .locator('[data-testid="recommendation-report-table"] tbody tr', { hasText: shared.runId })
+    .first();
+  const rowToClick = (await runRow.count()) > 0 ? runRow : reportRows.first();
+  await rowToClick.click();
   await expect(page.getByTestId("trace-link")).toBeVisible();
 
   const sameBatchTraceLink = page.getByRole("link", { name: "查看同批次链路" });
@@ -322,8 +471,7 @@ test("IT story：按批次下钻记录与 trace，并查看 recovery 页面", as
   }
   await expect(traceRows.first()).not.toContainText("暂无链路数据");
 
-  const traceRow = traceRows.first();
-  await traceRow.click();
+  await traceRows.first().click();
   await expect(page.getByTestId("trace-link")).toBeVisible();
 
   await page.goto("/admin/observability/recovery");

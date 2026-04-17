@@ -10,7 +10,8 @@
 
 前台（经销商）主流程：
 
-- `/procurement` -> `/catalog` -> `/basket` -> `/checkout`
+- `/` -> `/purchase`
+- `/purchase` -> `/order-submit`
 
 后台（运营 / IT）主信息架构：
 
@@ -30,6 +31,14 @@
 - `/admin/observability/traces`
 - `/admin/observability/audit-logs`
 - `/admin/observability/recovery`
+
+后台关键 CRUD 交互模式（本期统一）：
+
+- `/admin/strategy/campaigns`
+- `/admin/strategy/recommendation-strategies`
+- `/admin/strategy/expression-templates`
+- `/admin/operations/generation-jobs`
+- 以上页面统一为“列表浏览 + Drawer 新建/编辑 + Confirm 停用/删除”
 
 ## 启动
 
@@ -66,6 +75,24 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm test:e2e:mock
+pnpm test:e2e:live
+```
+
+## Live E2E 环境变量注入
+
+`pnpm test:e2e:live` 依赖当前 shell 的显式环境变量。仅有 `.env.local` 不一定能保证 Playwright live worker 与 webServer 进程读取到完整 `LLM_*` / `LANGFUSE_*`。
+
+推荐在同一 shell 中先导出再执行：
+
+```bash
+export LLM_MOCK_MODE=false
+export LLM_BASE_URL=...
+export LLM_API_KEY=...
+export LLM_MODEL=...
+export LANGFUSE_BASE_URL=...
+export LANGFUSE_PUBLIC_KEY=...
+export LANGFUSE_SECRET_KEY=...
+export NEXT_PUBLIC_LANGFUSE_BASE_URL=...
 pnpm test:e2e:live
 ```
 

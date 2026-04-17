@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, PlayCircle, Plus, RefreshCw, Save, Send, ShieldCheck, Trash2 } from "lucide-react";
 
+import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
 import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
 import { AdminPageFrame } from "@/components/admin/page-frame";
@@ -97,6 +99,8 @@ export default function GenerationJobsPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<JobForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingCancel, setPendingCancel] = useState<GenerationJobEntity | null>(null);
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -200,6 +204,7 @@ export default function GenerationJobsPage() {
       published_batch_id: item.published_batch_id,
       published_at: item.published_at,
     });
+    setDrawerOpen(true);
   };
 
   const submitCreate = async () => {
@@ -222,6 +227,7 @@ export default function GenerationJobsPage() {
         body: JSON.stringify(payload),
       });
       setSuccessMessage("生成任务创建成功");
+      setDrawerOpen(false);
       resetForm();
       await loadJobs();
     } catch (error) {
@@ -255,6 +261,7 @@ export default function GenerationJobsPage() {
         body: JSON.stringify(payload),
       });
       setSuccessMessage("生成任务更新成功");
+      setDrawerOpen(false);
       resetForm();
       await loadJobs();
     } catch (error) {
@@ -274,10 +281,15 @@ export default function GenerationJobsPage() {
         method: "DELETE",
       });
       setSuccessMessage("生成任务已取消");
-      if (editingId === id) resetForm();
+      if (editingId === id) {
+        setDrawerOpen(false);
+        resetForm();
+      }
       await loadJobs();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "取消失败");
+    } finally {
+      setPendingCancel(null);
     }
   };
 
@@ -331,7 +343,13 @@ export default function GenerationJobsPage() {
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             刷新
           </Button>
-          <Button className="rounded-full" onClick={resetForm}>
+          <Button
+            className="rounded-full"
+            onClick={() => {
+              resetForm();
+              setDrawerOpen(true);
+            }}
+          >
             <Plus className="h-4 w-4" />
             新建任务
           </Button>
@@ -401,7 +419,7 @@ export default function GenerationJobsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+      <section>
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -494,7 +512,7 @@ export default function GenerationJobsPage() {
                             size="sm"
                             variant="outline"
                             className="text-rose-600"
-                            onClick={() => cancelJob(item.job_id)}
+                            onClick={() => setPendingCancel(item)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             取消
@@ -508,114 +526,141 @@ export default function GenerationJobsPage() {
             </Table>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardContent className="space-y-4 p-4">
-            <p className="text-sm font-semibold text-slate-900">
-              {editingId ? `编辑任务: ${editingId}` : "创建任务"}
-            </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>任务编码</Label>
-                <Input
-                  value={form.job_id}
-                  disabled={Boolean(editingId)}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, job_id: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>任务名称</Label>
-                <Input
-                  value={form.job_name}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, job_name: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>业务日期</Label>
-                <Input
-                  type="date"
-                  value={form.business_date}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, business_date: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>发布方式</Label>
-                <Select
-                  value={form.publish_mode}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, publish_mode: value as "manual" | "auto" }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manual">人工发布</SelectItem>
-                    <SelectItem value="auto">自动发布</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <MultiSelectChecklist
-              label="目标经销商"
-              options={dealerOptions}
-              selected={form.target_dealer_ids}
-              onChange={(target_dealer_ids) =>
-                setForm((prev) => ({ ...prev, target_dealer_ids }))
-              }
-              searchPlaceholder="搜索经销商"
-            />
-            <MultiSelectChecklist
-              label="目标分群"
-              options={segmentOptions}
-              selected={form.target_segment_ids}
-              onChange={(target_segment_ids) =>
-                setForm((prev) => ({ ...prev, target_segment_ids }))
-              }
-              searchPlaceholder="搜索分群"
-            />
-            <MultiSelectChecklist
-              label="执行策略"
-              options={strategyOptions}
-              selected={form.strategy_ids}
-              onChange={(strategy_ids) => setForm((prev) => ({ ...prev, strategy_ids }))}
-              searchPlaceholder="搜索策略"
-            />
-
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              状态与预检说明由任务动作接口维护（预检 / 试生成 / 发布 / 补跑），不在此表单内手工编辑。
-            </div>
-
-            <div className="flex gap-2">
-              {editingId ? (
-                <Button className="rounded-full" onClick={submitUpdate}>
-                  <Save className="h-4 w-4" />
-                  保存任务
-                </Button>
-              ) : (
-                <Button className="rounded-full" onClick={submitCreate}>
-                  <Plus className="h-4 w-4" />
-                  创建任务
-                </Button>
-              )}
-              <Button variant="outline" onClick={resetForm}>
-                重置
-              </Button>
-            </div>
-            <p className="text-xs text-slate-500">
-              共 {total} 条记录，当前第 {query.page} 页。
-            </p>
-          </CardContent>
-        </Card>
       </section>
+
+      <AdminDrawer
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        title={editingId ? `编辑任务: ${editingId}` : "创建任务"}
+        description="维护任务范围与策略集合，执行动作仍在列表区操作。"
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>任务编码</Label>
+              <Input
+                value={form.job_id}
+                disabled={Boolean(editingId)}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, job_id: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>任务名称</Label>
+              <Input
+                value={form.job_name}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, job_name: event.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>业务日期</Label>
+              <Input
+                type="date"
+                value={form.business_date}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, business_date: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>发布方式</Label>
+              <Select
+                value={form.publish_mode}
+                onValueChange={(value) =>
+                  setForm((prev) => ({ ...prev, publish_mode: value as "manual" | "auto" }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">人工发布</SelectItem>
+                  <SelectItem value="auto">自动发布</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <MultiSelectChecklist
+            label="目标经销商"
+            options={dealerOptions}
+            selected={form.target_dealer_ids}
+            onChange={(target_dealer_ids) =>
+              setForm((prev) => ({ ...prev, target_dealer_ids }))
+            }
+            searchPlaceholder="搜索经销商"
+          />
+          <MultiSelectChecklist
+            label="目标分群"
+            options={segmentOptions}
+            selected={form.target_segment_ids}
+            onChange={(target_segment_ids) =>
+              setForm((prev) => ({ ...prev, target_segment_ids }))
+            }
+            searchPlaceholder="搜索分群"
+          />
+          <MultiSelectChecklist
+            label="执行策略"
+            options={strategyOptions}
+            selected={form.strategy_ids}
+            onChange={(strategy_ids) => setForm((prev) => ({ ...prev, strategy_ids }))}
+            searchPlaceholder="搜索策略"
+          />
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            状态与预检说明由任务动作接口维护（预检 / 试生成 / 发布 / 补跑），不在此表单内手工编辑。
+          </div>
+
+          <div className="flex gap-2">
+            {editingId ? (
+              <Button className="rounded-full" onClick={submitUpdate}>
+                <Save className="h-4 w-4" />
+                保存任务
+              </Button>
+            ) : (
+              <Button className="rounded-full" onClick={submitCreate}>
+                <Plus className="h-4 w-4" />
+                创建任务
+              </Button>
+            )}
+            <Button variant="outline" onClick={resetForm}>
+              重置
+            </Button>
+          </div>
+          <p className="text-xs text-slate-500">
+            共 {total} 条记录，当前第 {query.page} 页。
+          </p>
+        </div>
+      </AdminDrawer>
+
+      <AdminConfirmDialog
+        open={Boolean(pendingCancel)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingCancel(null);
+          }
+        }}
+        title="确认取消生成任务"
+        description={`取消后该任务将标记为停用状态，不再参与后续发布。${
+          pendingCancel ? `\n任务：${pendingCancel.job_name}` : ""
+        }`}
+        confirmLabel="确认取消"
+        onConfirm={async () => {
+          if (!pendingCancel) {
+            return;
+          }
+          await cancelJob(pendingCancel.job_id);
+        }}
+      />
     </AdminPageFrame>
   );
 }

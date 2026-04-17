@@ -103,7 +103,7 @@ export default function AdminLayout({
                   演示环境
                 </Badge>
                 <Link
-                  href="/procurement"
+                  href="/purchase"
                   className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
                   <PanelLeftClose className="h-3.5 w-3.5" />

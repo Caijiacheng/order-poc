@@ -5,7 +5,6 @@ import {
   createRecommendationBatch,
   getRecommendationRunDetail,
   listRecommendationBatches,
-  listRecommendationRecords,
   listRecommendationRuns,
 } from "../../lib/admin/service";
 import {
@@ -48,7 +47,7 @@ describe("recommendation report query semantics", () => {
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
       scene: "daily_recommendation",
-      page_name: "/procurement",
+      page_name: "/purchase",
       trigger_source: "manual",
       prompt_snapshot: "generated run",
       candidate_sku_ids: ["cb_weijixian_500"],
@@ -61,7 +60,7 @@ describe("recommendation report query semantics", () => {
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
       scene: "weekly_focus",
-      page_name: "/catalog",
+      page_name: "/purchase",
       trigger_source: "manual",
       prompt_snapshot: "ignored run",
       candidate_sku_ids: ["cb_oyster_700"],
@@ -103,7 +102,7 @@ describe("recommendation report query semantics", () => {
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
       scene: "threshold_topup",
-      page_name: "/basket",
+      page_name: "/order-submit",
       trigger_source: "assistant",
       prompt_snapshot: "stage2 report prompt",
       candidate_sku_ids: ["cb_chicken_essence_200"],
@@ -142,7 +141,7 @@ describe("recommendation report query semantics", () => {
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
       scene: "daily_recommendation",
-      page_name: "/procurement",
+      page_name: "/purchase",
       trigger_source: "manual",
       prompt_snapshot: "stage2 linked prompt",
       candidate_sku_ids: ["cb_weijixian_500"],
@@ -191,15 +190,6 @@ describe("recommendation report query semantics", () => {
     expect(filtered.items).toHaveLength(1);
     expect(filtered.items[0].recommendation_run_id).toBe(run.recommendation_run_id);
 
-    const legacyAlias = listRecommendationRecords(REPORT_QUERY, {
-      batchId: "batch_stage2_linked",
-      strategyId: "tpl_xm_daily",
-      expressionTemplateId: "expr_recommendation_default",
-      customerId: "dealer_xm_sm",
-    });
-    expect(legacyAlias.items).toHaveLength(1);
-    expect(legacyAlias.items[0].recommendation_run_id).toBe(run.recommendation_run_id);
-
     const relatedBatches = listRecommendationBatches(REPORT_QUERY, {
       customerId: "dealer_xm_sm",
       batchType: "manual_replay",
@@ -216,7 +206,7 @@ describe("recommendation report query semantics", () => {
       customer_id: "dealer_dg_sm",
       customer_name: "东莞商超配送经销商",
       scene: "weekly_focus",
-      page_name: "/basket",
+      page_name: "/order-submit",
       trigger_source: "manual",
       prompt_snapshot: "stage2 detail prompt",
       candidate_sku_ids: ["cb_small_shengchou_250"],

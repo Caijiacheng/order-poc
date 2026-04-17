@@ -195,58 +195,84 @@ function normalizeRecommendationPayload(value: unknown): unknown {
 
 function normalizeCartOptimizationPayload(value: unknown): unknown {
   const normalized = coerceJsonScalars(value);
-  if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) {
+  if (Array.isArray(normalized)) {
+    return {
+      decisions: normalized,
+    };
+  }
+
+  if (!normalized || typeof normalized !== "object") {
     return normalized;
   }
 
   const record = normalized as Record<string, unknown>;
-  const thresholdSource =
-    record.thresholdSuggestion &&
-    typeof record.thresholdSuggestion === "object" &&
-    !Array.isArray(record.thresholdSuggestion)
-      ? ({ ...(record.thresholdSuggestion as Record<string, unknown>) } as Record<string, unknown>)
-      : null;
+  const decisionBuckets: Array<{
+    bar_type: "threshold" | "box_adjustment" | "pairing";
+    combo_id: string;
+    explanation: string;
+  }> = [];
 
-  const thresholdSuggestion =
-    thresholdSource &&
-    typeof thresholdSource === "object"
-      ? (() => {
-          const thresholdRecord = thresholdSource as Record<string, unknown>;
-          const action = String(thresholdRecord.action ?? "").toLowerCase();
-          if (action === "none" || !thresholdRecord.sku_id) {
-            return null;
-          }
+  if (Array.isArray(record.decisions)) {
+    for (const item of record.decisions) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const row = item as Record<string, unknown>;
+      const barType = String(row.bar_type ?? "").trim();
+      if (!["threshold", "box_adjustment", "pairing"].includes(barType)) {
+        continue;
+      }
+      const comboId = String(row.combo_id ?? "").trim();
+      if (!comboId) {
+        continue;
+      }
+      const explanation = String(row.explanation ?? "按候选组合优先级推荐该方案。").trim();
+      decisionBuckets.push({
+        bar_type: barType as "threshold" | "box_adjustment" | "pairing",
+        combo_id: comboId,
+        explanation,
+      });
+    }
+  }
 
-          return {
-            ...thresholdRecord,
-            effect:
-              typeof thresholdRecord.effect === "string" &&
-              thresholdRecord.effect.trim()
-                ? thresholdRecord.effect
-                : "达到门槛金额",
-          };
-        })()
-      : null;
+  const aliasMappings: Array<{
+    bar_type: "threshold" | "box_adjustment" | "pairing";
+    combo_id?: string;
+    explanation?: string;
+  }> = [
+    {
+      bar_type: "threshold",
+      combo_id: String(record.threshold_combo_id ?? ""),
+      explanation: String(record.threshold_explanation ?? ""),
+    },
+    {
+      bar_type: "box_adjustment",
+      combo_id: String(record.box_adjustment_combo_id ?? ""),
+      explanation: String(record.box_adjustment_explanation ?? ""),
+    },
+    {
+      bar_type: "pairing",
+      combo_id: String(record.pairing_combo_id ?? ""),
+      explanation: String(record.pairing_explanation ?? ""),
+    },
+  ];
 
-  const boxAdjustments = Array.isArray(record.boxAdjustments)
-    ? record.boxAdjustments.map((item) => {
-        if (!item || typeof item !== "object") {
-          return item;
-        }
-        const boxItem = item as Record<string, unknown>;
-        return {
-          ...boxItem,
-          from_qty: boxItem.from_qty ?? boxItem.current_qty ?? boxItem.suggested_from_qty,
-          to_qty: boxItem.to_qty ?? boxItem.adjusted_qty ?? boxItem.suggested_qty,
-        };
-      })
-    : [];
+  for (const alias of aliasMappings) {
+    const comboId = alias.combo_id?.trim() ?? "";
+    if (!comboId) {
+      continue;
+    }
+    decisionBuckets.push({
+      bar_type: alias.bar_type,
+      combo_id: comboId,
+      explanation:
+        alias.explanation?.trim() || "按候选组合优先级推荐该方案。",
+    });
+  }
 
   return {
     ...record,
-    thresholdSuggestion,
-    boxAdjustments,
-    pairSuggestions: Array.isArray(record.pairSuggestions) ? record.pairSuggestions : [],
+    decisions: decisionBuckets,
   };
 }
 

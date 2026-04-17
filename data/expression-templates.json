@@ -1,57 +1,30 @@
 [
   {
     "expression_template_id": "expr_recommendation_default",
-    "expression_template_name": "推荐表达模板",
-    "template_type": "recommendation",
-    "scene": "all",
+    "expression_template_name": "组货说明模板",
+    "template_type": "bundle_explanation",
+    "scene": "bundle",
     "tone": "专业、简洁、面向执行",
-    "avoid": [
-      "夸张承诺",
-      "绝对化判断",
-      "无依据价格预测"
-    ],
+    "avoid": ["夸张承诺", "绝对化判断", "无依据价格预测"],
     "reason_limit": 3,
-    "system_role": "你是经销商下单建议助手，负责组织候选商品并给出结构化推荐。",
-    "instruction": "请优先输出可执行建议，突出推荐原因与业务价值。",
-    "style_hint": "推荐建议输出模板",
+    "system_role": "你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。",
+    "instruction": "请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。",
+    "style_hint": "组货建议输出模板",
     "status": "active",
     "created_at": "2026-04-01T08:00:00.000Z",
     "updated_at": "2026-04-01T08:00:00.000Z"
   },
   {
     "expression_template_id": "expr_cart_opt_default",
-    "expression_template_name": "凑单优化表达模板",
-    "template_type": "cart_optimization",
-    "scene": "all",
+    "expression_template_name": "凑单说明模板",
+    "template_type": "topup_explanation",
+    "scene": "topup",
     "tone": "专业、简洁、面向执行",
-    "avoid": [
-      "夸张承诺",
-      "绝对化判断",
-      "无依据价格预测"
-    ],
+    "avoid": ["夸张承诺", "绝对化判断", "无依据价格预测"],
     "reason_limit": 3,
-    "system_role": "你是购物车凑单优化助手，负责输出门槛补齐、箱规修正和搭配建议。",
-    "instruction": "请基于给定规则和候选范围输出结构化优化建议。",
+    "system_role": "你是凑单优化助手，负责输出门槛补差、箱规修正和搭配补充的解释。",
+    "instruction": "请基于规则计算结果，给出简洁、可执行、可复核的凑单说明。",
     "style_hint": "凑单建议输出模板",
-    "status": "active",
-    "created_at": "2026-04-01T08:00:00.000Z",
-    "updated_at": "2026-04-01T08:00:00.000Z"
-  },
-  {
-    "expression_template_id": "expr_explain_default",
-    "expression_template_name": "解释表达模板",
-    "template_type": "explanation",
-    "scene": "all",
-    "tone": "专业、简洁、面向执行",
-    "avoid": [
-      "夸张承诺",
-      "绝对化判断",
-      "无依据价格预测"
-    ],
-    "reason_limit": 3,
-    "system_role": "你是推荐解释助手，负责解释指定建议项的业务依据。",
-    "instruction": "请用简洁条目说明推荐原因，不进行规则外计算。",
-    "style_hint": "解释文案输出模板",
     "status": "active",
     "created_at": "2026-04-01T08:00:00.000Z",
     "updated_at": "2026-04-01T08:00:00.000Z"

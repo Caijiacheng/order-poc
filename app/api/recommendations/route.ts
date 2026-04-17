@@ -3,6 +3,7 @@ import { getOrCreateSessionId, setSessionCookie } from "@/lib/cart/session";
 import { assertLlmAvailable } from "@/lib/ai/model-factory";
 import { generateRecommendationsForCustomer } from "@/lib/domain/business-service";
 import { handleBusinessRouteError } from "@/lib/domain/route-errors";
+import type { FrontstagePageName } from "@/lib/memory/types";
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as {
       customerId?: string;
       triggerSource?: "auto" | "manual" | "assistant";
-      pageName?: "/procurement" | "/catalog" | "/basket";
+      pageName?: FrontstagePageName;
     };
 
     if (!payload.customerId) {

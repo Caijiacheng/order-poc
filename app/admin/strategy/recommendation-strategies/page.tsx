@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
+import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { AdminPageFrame } from "@/components/admin/page-frame";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
 import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
@@ -41,15 +43,15 @@ import type {
   ExpressionTemplateEntity,
   ProductEntity,
   ProductPoolEntity,
+  RecommendationStrategyScene,
   RecommendationStrategyEntity,
-  SuggestionScene,
   TemplateReferenceItem,
 } from "@/lib/memory/types";
 
 type StrategyForm = {
   strategy_id: string;
   strategy_name: string;
-  scene: SuggestionScene;
+  scene: RecommendationStrategyScene;
   target_dealer_ids: string[];
   dealer_segment_ids: string[];
   product_pool_ids: string[];
@@ -62,11 +64,10 @@ type StrategyForm = {
   status: "active" | "inactive";
 };
 
-const SCENE_LABELS: Record<SuggestionScene, string> = {
-  daily_recommendation: "日常补货",
-  weekly_focus: "周活动备货",
-  threshold_topup: "门槛补差",
-  box_pair_optimization: "箱规与搭配优化",
+const SCENE_LABELS: Record<RecommendationStrategyScene, string> = {
+  hot_sale_bundle: "热销组货",
+  replenishment_bundle: "补货组货",
+  campaign_bundle: "活动组货",
 };
 
 const EMPTY_REFERENCE_ITEM = (sortOrder = 1): TemplateReferenceItem => ({
@@ -80,7 +81,7 @@ const EMPTY_REFERENCE_ITEM = (sortOrder = 1): TemplateReferenceItem => ({
 const EMPTY_FORM: StrategyForm = {
   strategy_id: "",
   strategy_name: "",
-  scene: "daily_recommendation",
+  scene: "replenishment_bundle",
   target_dealer_ids: [],
   dealer_segment_ids: [],
   product_pool_ids: [],
@@ -90,7 +91,7 @@ const EMPTY_FORM: StrategyForm = {
   business_notes: "",
   expression_template_id: "",
   priority: 1,
-  status: "active",
+  status: "active" as const,
 };
 
 export default function RecommendationStrategiesPage() {
@@ -113,6 +114,10 @@ export default function RecommendationStrategiesPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<StrategyForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingDisable, setPendingDisable] = useState<RecommendationStrategyEntity | null>(
+    null,
+  );
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -274,6 +279,7 @@ export default function RecommendationStrategiesPage() {
       priority: item.priority,
       status: item.status,
     });
+    setDrawerOpen(true);
   };
 
   const updateReferenceItem = (
@@ -333,6 +339,7 @@ export default function RecommendationStrategiesPage() {
         body: JSON.stringify(payloadFromForm()),
       });
       setSuccessMessage("推荐策略创建成功");
+      setDrawerOpen(false);
       resetForm();
       await loadStrategies();
     } catch (error) {
@@ -357,6 +364,7 @@ export default function RecommendationStrategiesPage() {
         },
       );
       setSuccessMessage("推荐策略更新成功");
+      setDrawerOpen(false);
       resetForm();
       await loadStrategies();
     } catch (error) {
@@ -378,25 +386,34 @@ export default function RecommendationStrategiesPage() {
       );
       setSuccessMessage("推荐策略已停用");
       if (editingId === id) {
+        setDrawerOpen(false);
         resetForm();
       }
       await loadStrategies();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "停用失败");
+    } finally {
+      setPendingDisable(null);
     }
   };
 
   return (
     <AdminPageFrame
       title="推荐策略"
-      description="按“给谁-推什么-为什么-发布场景”维护策略，不再使用 legacy 模板与 JSON 文本配置。"
+      description="按“给谁-推什么-为什么-发布场景”维护策略，使用结构化字段维护目标、商品池和表达模板。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadStrategies} disabled={loading}>
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             刷新
           </Button>
-          <Button className="rounded-full" onClick={resetForm}>
+          <Button
+            className="rounded-full"
+            onClick={() => {
+              resetForm();
+              setDrawerOpen(true);
+            }}
+          >
             <Plus className="h-4 w-4" />
             新建策略
           </Button>
@@ -480,7 +497,7 @@ export default function RecommendationStrategiesPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <section>
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -521,7 +538,7 @@ export default function RecommendationStrategiesPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => softDelete(item.strategy_id)}
+                          onClick={() => setPendingDisable(item)}
                           disabled={item.status === "inactive"}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -542,253 +559,282 @@ export default function RecommendationStrategiesPage() {
             </Table>
           </CardContent>
         </Card>
+      </section>
 
-        <Card>
-          <CardContent className="space-y-3 p-4">
-            <p className="text-sm font-semibold text-slate-900">
-              {editingId ? `编辑策略: ${editingId}` : "创建策略"}
-            </p>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>策略编码</Label>
-                <Input
-                  value={form.strategy_id}
-                  disabled={Boolean(editingId)}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, strategy_id: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>优先级</Label>
-                <Input
-                  type="number"
-                  value={form.priority}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      priority: Number(event.target.value || "1"),
-                    }))
-                  }
-                />
-              </div>
-            </div>
+      <AdminDrawer
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        title={editingId ? `编辑策略: ${editingId}` : "创建策略"}
+        description="维护策略范围、候选集合与结构化建议项。"
+      >
+        <div className="space-y-3">
+          <div className="grid gap-2 md:grid-cols-2">
             <div className="space-y-1">
-              <Label>策略名称</Label>
+              <Label>策略编码</Label>
               <Input
-                value={form.strategy_name}
+                value={form.strategy_id}
+                disabled={Boolean(editingId)}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, strategy_name: event.target.value }))
+                  setForm((prev) => ({ ...prev, strategy_id: event.target.value }))
                 }
               />
             </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>发布场景</Label>
-                <Select
-                  value={form.scene}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, scene: value as SuggestionScene }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily_recommendation">日常补货</SelectItem>
-                    <SelectItem value="weekly_focus">周活动备货</SelectItem>
-                    <SelectItem value="threshold_topup">门槛补差</SelectItem>
-                    <SelectItem value="box_pair_optimization">箱规与搭配优化</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>表达模板</Label>
-                <Select
-                  value={form.expression_template_id || "__none__"}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      expression_template_id: value === "__none__" ? "" : value,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">请选择</SelectItem>
-                    {expressionTemplates.map((item) => (
-                      <SelectItem
-                        key={item.expression_template_id}
-                        value={item.expression_template_id}
-                      >
-                        {item.expression_template_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <MultiSelectChecklist
-              label="目标经销商"
-              options={dealerOptions}
-              selected={form.target_dealer_ids}
-              onChange={(target_dealer_ids) =>
-                setForm((prev) => ({ ...prev, target_dealer_ids }))
-              }
-              searchPlaceholder="搜索经销商"
-            />
-            <MultiSelectChecklist
-              label="目标分群"
-              options={segmentOptions}
-              selected={form.dealer_segment_ids}
-              onChange={(dealer_segment_ids) =>
-                setForm((prev) => ({ ...prev, dealer_segment_ids }))
-              }
-              searchPlaceholder="搜索分群"
-            />
-            <MultiSelectChecklist
-              label="商品池"
-              options={poolOptions}
-              selected={form.product_pool_ids}
-              onChange={(product_pool_ids) =>
-                setForm((prev) => ({ ...prev, product_pool_ids }))
-              }
-              searchPlaceholder="搜索商品池"
-            />
-            <MultiSelectChecklist
-              label="活动"
-              options={campaignOptions}
-              selected={form.campaign_ids}
-              onChange={(campaign_ids) => setForm((prev) => ({ ...prev, campaign_ids }))}
-              searchPlaceholder="搜索活动"
-            />
-            <MultiSelectChecklist
-              label="候选 SKU"
-              options={productOptions}
-              selected={form.candidate_sku_ids}
-              onChange={(candidate_sku_ids) =>
-                setForm((prev) => ({ ...prev, candidate_sku_ids }))
-              }
-              searchPlaceholder="搜索候选 SKU"
-            />
-
-            <div className="space-y-2 rounded-xl border border-slate-200 p-3">
-              <div className="flex items-center justify-between">
-                <Label>参考建议项</Label>
-                <Button size="sm" type="button" variant="outline" onClick={addReferenceItem}>
-                  <Plus className="h-3.5 w-3.5" />
-                  添加建议项
-                </Button>
-              </div>
-              <div className="space-y-3">
-                {form.reference_items.map((item, index) => (
-                  <div
-                    key={`${item.sku_id}-${index}`}
-                    className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
-                  >
-                    <div className="grid gap-2 md:grid-cols-[1fr_100px_auto]">
-                      <Select
-                        value={item.sku_id || "__none__"}
-                        onValueChange={(value) =>
-                          updateReferenceItem(index, {
-                            sku_id: value === "__none__" ? "" : value,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择 SKU" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">请选择 SKU</SelectItem>
-                          {products.map((product) => (
-                            <SelectItem key={product.sku_id} value={product.sku_id}>
-                              {product.sku_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        type="number"
-                        value={item.qty}
-                        onChange={(event) =>
-                          updateReferenceItem(index, {
-                            qty: Number(event.target.value || "1"),
-                          })
-                        }
-                      />
-                      <Button
-                        variant="outline"
-                        type="button"
-                        onClick={() => removeReferenceItem(index)}
-                      >
-                        删除
-                      </Button>
-                    </div>
-                    <Input
-                      value={item.reason}
-                      onChange={(event) =>
-                        updateReferenceItem(index, { reason: event.target.value })
-                      }
-                      placeholder="建议理由"
-                    />
-                    <TokenEditor
-                      label={`理由标签 #${index + 1}`}
-                      value={item.reason_tags}
-                      onChange={(reason_tags) => updateReferenceItem(index, { reason_tags })}
-                      placeholder="输入理由标签"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="space-y-1">
-              <Label>业务说明</Label>
-              <Textarea
-                value={form.business_notes}
+              <Label>优先级</Label>
+              <Input
+                type="number"
+                value={form.priority}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, business_notes: event.target.value }))
+                  setForm((prev) => ({
+                    ...prev,
+                    priority: Number(event.target.value || "1"),
+                  }))
                 }
               />
             </div>
-
-            <Select
-              value={form.status}
-              onValueChange={(value) =>
-                setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+          </div>
+          <div className="space-y-1">
+            <Label>策略名称</Label>
+            <Input
+              value={form.strategy_name}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, strategy_name: event.target.value }))
               }
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">启用</SelectItem>
-                <SelectItem value="inactive">停用</SelectItem>
-              </SelectContent>
-            </Select>
+            />
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label>发布场景</Label>
+              <Select
+                value={form.scene}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    scene: value as RecommendationStrategyScene,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hot_sale_bundle">热销组货</SelectItem>
+                  <SelectItem value="replenishment_bundle">补货组货</SelectItem>
+                  <SelectItem value="campaign_bundle">活动组货</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>表达模板</Label>
+              <Select
+                value={form.expression_template_id || "__none__"}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    expression_template_id: value === "__none__" ? "" : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">请选择</SelectItem>
+                  {expressionTemplates.map((item) => (
+                    <SelectItem
+                      key={item.expression_template_id}
+                      value={item.expression_template_id}
+                    >
+                      {item.expression_template_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-            <div className="flex gap-2">
-              {editingId ? (
-                <Button onClick={submitUpdate}>
-                  <Save className="h-4 w-4" />
-                  保存更新
-                </Button>
-              ) : (
-                <Button onClick={submitCreate}>
-                  <Plus className="h-4 w-4" />
-                  创建
-                </Button>
-              )}
-              <Button variant="outline" onClick={resetForm}>
-                重置
+          <MultiSelectChecklist
+            label="目标经销商"
+            options={dealerOptions}
+            selected={form.target_dealer_ids}
+            onChange={(target_dealer_ids) =>
+              setForm((prev) => ({ ...prev, target_dealer_ids }))
+            }
+            searchPlaceholder="搜索经销商"
+          />
+          <MultiSelectChecklist
+            label="目标分群"
+            options={segmentOptions}
+            selected={form.dealer_segment_ids}
+            onChange={(dealer_segment_ids) =>
+              setForm((prev) => ({ ...prev, dealer_segment_ids }))
+            }
+            searchPlaceholder="搜索分群"
+          />
+          <MultiSelectChecklist
+            label="商品池"
+            options={poolOptions}
+            selected={form.product_pool_ids}
+            onChange={(product_pool_ids) =>
+              setForm((prev) => ({ ...prev, product_pool_ids }))
+            }
+            searchPlaceholder="搜索商品池"
+          />
+          <MultiSelectChecklist
+            label="活动"
+            options={campaignOptions}
+            selected={form.campaign_ids}
+            onChange={(campaign_ids) => setForm((prev) => ({ ...prev, campaign_ids }))}
+            searchPlaceholder="搜索活动"
+          />
+          <MultiSelectChecklist
+            label="候选 SKU"
+            options={productOptions}
+            selected={form.candidate_sku_ids}
+            onChange={(candidate_sku_ids) =>
+              setForm((prev) => ({ ...prev, candidate_sku_ids }))
+            }
+            searchPlaceholder="搜索候选 SKU"
+          />
+
+          <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+            <div className="flex items-center justify-between">
+              <Label>参考建议项</Label>
+              <Button size="sm" type="button" variant="outline" onClick={addReferenceItem}>
+                <Plus className="h-3.5 w-3.5" />
+                添加建议项
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      </section>
+            <div className="space-y-3">
+              {form.reference_items.map((item, index) => (
+                <div
+                  key={`${item.sku_id}-${index}`}
+                  className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3"
+                >
+                  <div className="grid gap-2 md:grid-cols-[1fr_100px_auto]">
+                    <Select
+                      value={item.sku_id || "__none__"}
+                      onValueChange={(value) =>
+                        updateReferenceItem(index, {
+                          sku_id: value === "__none__" ? "" : value,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择 SKU" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">请选择 SKU</SelectItem>
+                        {products.map((product) => (
+                          <SelectItem key={product.sku_id} value={product.sku_id}>
+                            {product.sku_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      value={item.qty}
+                      onChange={(event) =>
+                        updateReferenceItem(index, {
+                          qty: Number(event.target.value || "1"),
+                        })
+                      }
+                    />
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => removeReferenceItem(index)}
+                    >
+                      删除
+                    </Button>
+                  </div>
+                  <Input
+                    value={item.reason}
+                    onChange={(event) =>
+                      updateReferenceItem(index, { reason: event.target.value })
+                    }
+                    placeholder="建议理由"
+                  />
+                  <TokenEditor
+                    label={`理由标签 #${index + 1}`}
+                    value={item.reason_tags}
+                    onChange={(reason_tags) => updateReferenceItem(index, { reason_tags })}
+                    placeholder="输入理由标签"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label>业务说明</Label>
+            <Textarea
+              value={form.business_notes}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, business_notes: event.target.value }))
+              }
+            />
+          </div>
+
+          <Select
+            value={form.status}
+            onValueChange={(value) =>
+              setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+            }
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">启用</SelectItem>
+              <SelectItem value="inactive">停用</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex gap-2">
+            {editingId ? (
+              <Button onClick={submitUpdate}>
+                <Save className="h-4 w-4" />
+                保存更新
+              </Button>
+            ) : (
+              <Button onClick={submitCreate}>
+                <Plus className="h-4 w-4" />
+                创建
+              </Button>
+            )}
+            <Button variant="outline" onClick={resetForm}>
+              重置
+            </Button>
+          </div>
+        </div>
+      </AdminDrawer>
+
+      <AdminConfirmDialog
+        open={Boolean(pendingDisable)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDisable(null);
+          }
+        }}
+        title="确认停用推荐策略"
+        description={`停用后该策略将不再参与后续任务生成。${
+          pendingDisable ? `\n策略：${pendingDisable.strategy_name}` : ""
+        }`}
+        confirmLabel="确认停用"
+        onConfirm={async () => {
+          if (!pendingDisable) {
+            return;
+          }
+          await softDelete(pendingDisable.strategy_id);
+        }}
+      />
     </AdminPageFrame>
   );
 }

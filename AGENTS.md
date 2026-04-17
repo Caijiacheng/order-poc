@@ -60,11 +60,27 @@ The implementation must cover three surfaces:
 
 ### Demo UI Routes
 
-- `/`
-- `/procurement`
-- `/catalog`
-- `/basket`
-- `/checkout`
+- `/` -> `/purchase`
+- `/purchase`
+- `/order-submit`
+
+### Demo UI Contract (`/purchase`)
+
+- Keep exactly 4 core blocks:
+  - three bundle template cards (`热销补货` / `缺货补货` / `活动备货`)
+  - activity zone
+  - product catalog zone
+  - right procurement summary
+- Remove all legacy frontstage modules and legacy per-item primary actions
+- `快速下单` must mean:
+  - add selected template/activity items to cart
+  - then navigate to `/order-submit`
+  - never silently submit order
+- `/api/frontstage/published-suggestions` frontstage contract must be:
+  - `bundleTemplates[]`
+  - `activityHighlights[]`
+  - `cartSummary`
+  - no `dailyRecommendations` / `weeklyFocusRecommendations` payload for frontstage consumption
 
 ### Admin Routes
 
@@ -198,7 +214,7 @@ This POC should look intentionally designed, not like a default admin starter.
 When building UI:
 
 - keep the demo UI and admin UI visually distinct
-- prioritize clarity of recommendation cards and optimization panels
+- prioritize clarity of bundle templates, activity zone, and optimization panels
 - keep report views readable and queryable
 - prefer practical, information-dense layouts over decorative complexity
 
@@ -208,7 +224,7 @@ Agents should work in this order unless the user requests otherwise:
 
 1. align canonical IA and route contracts with the PRD
 2. refactor runtime in-memory model and shared domain rules
-3. implement frontstage procurement behavior on canonical routes
+3. implement frontstage purchase/order-submit behavior on canonical routes
 4. implement operations/admin workflows (config, generation, publish, review)
 5. complete observability, audit, and recovery flow integration
 6. update tests and run verification (lint, typecheck, unit/e2e smoke)
@@ -241,7 +257,7 @@ Primary checks for this scaffold stage:
 
 Manual route smoke check targets:
 
-- `/`, `/procurement`, `/catalog`, `/basket`, `/checkout`
+- `/`, `/purchase`, `/order-submit`
 - `/admin/workbench/overview`
 - `/admin/master-data/products`
 - `/admin/master-data/dealers`

@@ -6,6 +6,15 @@ export type SuggestionScene =
   | "threshold_topup"
   | "box_pair_optimization";
 
+export type RecommendationStrategyScene =
+  | "hot_sale_bundle"
+  | "replenishment_bundle"
+  | "campaign_bundle";
+
+export type FrontstageCanonicalPageName = "/purchase" | "/order-submit";
+
+export type FrontstagePageName = FrontstageCanonicalPageName;
+
 export type ProductEntity = {
   sku_id: string;
   sku_name: string;
@@ -52,6 +61,46 @@ export type TemplateReferenceItem = {
   sort_order: number;
 };
 
+export type BundleTemplateType =
+  | "hot_sale_restock"
+  | "stockout_restock"
+  | "campaign_stockup";
+
+export type BundleTemplateItem = {
+  recommendation_item_id?: string;
+  sku_id: string;
+  sku_name: string;
+  suggested_qty: number;
+  reason: string;
+  reason_tags: string[];
+  priority: number;
+  action_type?: "add_to_cart" | "adjust_qty" | "replace_item";
+  unit_price: number;
+  line_amount: number;
+};
+
+export type BundleTemplate = {
+  template_id: string;
+  template_type: BundleTemplateType;
+  template_name: "热销补货" | "缺货补货" | "活动备货";
+  template_subtitle: string;
+  source: "published_recommendation" | "fallback_catalog";
+  estimated_amount: number;
+  items: BundleTemplateItem[];
+};
+
+export type ActivityHighlight = {
+  activity_id: string;
+  activity_name: string;
+  week_id: string;
+  promo_type: string;
+  promo_threshold: number;
+  activity_notes: string[];
+  sku_ids: string[];
+  estimated_amount: number;
+  items: BundleTemplateItem[];
+};
+
 export type DealerSegmentEntity = {
   segment_id: string;
   segment_name: string;
@@ -87,7 +136,7 @@ export type ProductPoolEntity = {
 export type RecommendationStrategyEntity = {
   strategy_id: string;
   strategy_name: string;
-  scene: SuggestionScene;
+  scene: RecommendationStrategyScene;
   target_dealer_ids: string[];
   dealer_segment_ids: string[];
   product_pool_ids: string[];
@@ -103,15 +152,16 @@ export type RecommendationStrategyEntity = {
 };
 
 export type ExpressionTemplateType =
-  | "recommendation"
-  | "cart_optimization"
-  | "explanation";
+  | "bundle_explanation"
+  | "topup_explanation";
+
+export type ExpressionTemplateScene = "all" | "bundle" | "topup";
 
 export type ExpressionTemplateEntity = {
   expression_template_id: string;
   expression_template_name: string;
   template_type: ExpressionTemplateType;
-  scene: SuggestionScene | "all";
+  scene: ExpressionTemplateScene;
   tone: string;
   avoid: string[];
   reason_limit: number;
@@ -218,20 +268,6 @@ export type RecoverySnapshotRecord = {
   created_at: string;
   updated_at: string;
   applied_at?: string;
-};
-
-export type DealerSuggestionTemplateEntity = {
-  template_id: string;
-  customer_id: string;
-  template_name: string;
-  scene: SuggestionScene;
-  reference_items: TemplateReferenceItem[];
-  business_notes: string;
-  style_hint: string;
-  priority: number;
-  enabled: boolean;
-  created_at: string;
-  updated_at: string;
 };
 
 export type CampaignEntity = {
@@ -346,12 +382,10 @@ export type RecommendationRunRecord = {
   customer_id: string;
   customer_name: string;
   scene: SuggestionScene;
-  page_name: "/procurement" | "/catalog" | "/basket";
+  page_name: FrontstagePageName;
   trigger_source: "auto" | "manual" | "assistant";
   strategy_id?: string;
   expression_template_id?: string;
-  template_id?: string;
-  template_name?: string;
   prompt_version?: string;
   prompt_snapshot: string;
   candidate_sku_ids: string[];
@@ -428,6 +462,39 @@ export type CartSummary = {
   threshold_reached: boolean;
 };
 
+export type PublishedSuggestionsCartSummary = {
+  source: "customer_cart" | "template_projection";
+  sku_count: number;
+  item_count: number;
+  total_amount: number;
+  threshold_amount: number;
+  gap_to_threshold: number;
+  threshold_reached: boolean;
+};
+
+export type CartOptimizationBarType = "threshold" | "box_adjustment" | "pairing";
+
+export type CartOptimizationBarItem = {
+  recommendation_item_id?: string;
+  sku_id: string;
+  sku_name: string;
+  action_type: "add_to_cart" | "adjust_qty";
+  suggested_qty: number;
+  from_qty?: number;
+  to_qty?: number;
+};
+
+export type CartOptimizationRecommendationBar = {
+  bar_id: string;
+  bar_type: CartOptimizationBarType;
+  headline: string;
+  value_message: string;
+  action_label: string;
+  combo_id: string;
+  items: CartOptimizationBarItem[];
+  explanation: string;
+};
+
 export type CartSession = {
   session_id: string;
   customer_id?: string;
@@ -457,10 +524,7 @@ export type AuditLogEvent = {
     | "global_rule"
     | "generation_job"
     | "recommendation_batch"
-    | "recovery_snapshot"
-    | "suggestion_template"
-    | "rule"
-    | "prompt";
+    | "recovery_snapshot";
   entity_id: string;
   action: "create" | "update" | "delete" | "toggle" | "apply";
   summary: string;
@@ -484,8 +548,6 @@ export type AppMemoryStore = {
   recommendationItems: RecommendationItemRecord[];
   cartSessions: Record<string, CartSession>;
   auditLogs: AuditLogEvent[];
-  // Legacy compatibility adapters for Stage 2 transition.
-  suggestionTemplates: DealerSuggestionTemplateEntity[];
   rules: RuleConfigEntity;
   promptConfig: PromptConfigEntity;
 };

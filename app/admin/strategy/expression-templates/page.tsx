@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
+import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { AdminPageFrame } from "@/components/admin/page-frame";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
 import { TokenEditor } from "@/components/admin/token-editor";
@@ -52,7 +54,7 @@ type TemplateForm = {
 const EMPTY_FORM: TemplateForm = {
   expression_template_id: "",
   expression_template_name: "",
-  template_type: "recommendation",
+  template_type: "bundle_explanation",
   scene: "all",
   tone: "",
   avoid: [],
@@ -64,17 +66,14 @@ const EMPTY_FORM: TemplateForm = {
 };
 
 const TYPE_LABELS: Record<ExpressionTemplateEntity["template_type"], string> = {
-  recommendation: "推荐生成",
-  cart_optimization: "凑单优化",
-  explanation: "解释说明",
+  bundle_explanation: "组货说明",
+  topup_explanation: "凑单说明",
 };
 
 const SCENE_LABELS: Record<ExpressionTemplateEntity["scene"], string> = {
   all: "全场景",
-  daily_recommendation: "日常补货",
-  weekly_focus: "周活动备货",
-  threshold_topup: "门槛补差",
-  box_pair_optimization: "箱规与搭配优化",
+  bundle: "组货场景",
+  topup: "凑单场景",
 };
 
 export default function ExpressionTemplatesPage() {
@@ -91,6 +90,10 @@ export default function ExpressionTemplatesPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<TemplateForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingDisable, setPendingDisable] = useState<ExpressionTemplateEntity | null>(
+    null,
+  );
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -145,6 +148,7 @@ export default function ExpressionTemplatesPage() {
       style_hint: item.style_hint,
       status: item.status,
     });
+    setDrawerOpen(true);
   };
 
   const payloadFromForm = () => ({ ...form });
@@ -158,6 +162,7 @@ export default function ExpressionTemplatesPage() {
         body: JSON.stringify(payloadFromForm()),
       });
       setSuccessMessage("表达模板创建成功");
+      setDrawerOpen(false);
       resetForm();
       await loadTemplates();
     } catch (error) {
@@ -182,6 +187,7 @@ export default function ExpressionTemplatesPage() {
         },
       );
       setSuccessMessage("表达模板更新成功");
+      setDrawerOpen(false);
       resetForm();
       await loadTemplates();
     } catch (error) {
@@ -207,6 +213,8 @@ export default function ExpressionTemplatesPage() {
       await loadTemplates();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "停用失败");
+    } finally {
+      setPendingDisable(null);
     }
   };
 
@@ -220,7 +228,13 @@ export default function ExpressionTemplatesPage() {
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             刷新
           </Button>
-          <Button className="rounded-full" onClick={resetForm}>
+          <Button
+            className="rounded-full"
+            onClick={() => {
+              resetForm();
+              setDrawerOpen(true);
+            }}
+          >
             <Plus className="h-4 w-4" />
             新建模板
           </Button>
@@ -304,7 +318,7 @@ export default function ExpressionTemplatesPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <section>
         <Card>
           <CardContent className="p-0">
             <Table>
@@ -341,7 +355,7 @@ export default function ExpressionTemplatesPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => softDelete(item.expression_template_id)}
+                          onClick={() => setPendingDisable(item)}
                           disabled={item.status === "inactive"}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -362,177 +376,201 @@ export default function ExpressionTemplatesPage() {
             </Table>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardContent className="space-y-3 p-4">
-            <p className="text-sm font-semibold text-slate-900">
-              {editingId ? `编辑模板: ${editingId}` : "创建模板"}
-            </p>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>模板编码</Label>
-                <Input
-                  value={form.expression_template_id}
-                  disabled={Boolean(editingId)}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      expression_template_id: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>模板名称</Label>
-                <Input
-                  value={form.expression_template_name}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      expression_template_name: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>模板类型</Label>
-                <Select
-                  value={form.template_type}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      template_type: value as ExpressionTemplateEntity["template_type"],
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recommendation">推荐生成</SelectItem>
-                    <SelectItem value="cart_optimization">凑单优化</SelectItem>
-                    <SelectItem value="explanation">解释说明</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>适用场景</Label>
-                <Select
-                  value={form.scene}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      scene: value as ExpressionTemplateEntity["scene"],
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全场景</SelectItem>
-                    <SelectItem value="daily_recommendation">日常补货</SelectItem>
-                    <SelectItem value="weekly_focus">周活动备货</SelectItem>
-                    <SelectItem value="threshold_topup">门槛补差</SelectItem>
-                    <SelectItem value="box_pair_optimization">箱规与搭配优化</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>语气</Label>
-                <Input
-                  value={form.tone}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, tone: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>理由数量上限</Label>
-                <Input
-                  type="number"
-                  value={form.reason_limit}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      reason_limit: Number(event.target.value || "1"),
-                    }))
-                  }
-                />
-              </div>
-            </div>
-            <TokenEditor
-              label="禁用词"
-              value={form.avoid}
-              onChange={(avoid) => setForm((prev) => ({ ...prev, avoid }))}
-              placeholder="输入禁用词"
-            />
-            <div className="space-y-1">
-              <Label>系统角色</Label>
-              <Textarea
-                value={form.system_role}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, system_role: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>指令模板</Label>
-              <Textarea
-                value={form.instruction}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, instruction: event.target.value }))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>风格提示</Label>
-              <Textarea
-                value={form.style_hint}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, style_hint: event.target.value }))
-                }
-              />
-            </div>
-
-            <Select
-              value={form.status}
-              onValueChange={(value) =>
-                setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
-              }
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">启用</SelectItem>
-                <SelectItem value="inactive">停用</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <div className="flex gap-2">
-              {editingId ? (
-                <Button onClick={submitUpdate}>
-                  <Save className="h-4 w-4" />
-                  保存更新
-                </Button>
-              ) : (
-                <Button onClick={submitCreate}>
-                  <Plus className="h-4 w-4" />
-                  创建
-                </Button>
-              )}
-              <Button variant="outline" onClick={resetForm}>
-                重置
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </section>
+
+      <AdminDrawer
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        title={editingId ? `编辑模板: ${editingId}` : "创建模板"}
+        description="维护表达模板结构化字段。"
+      >
+        <div className="space-y-3">
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label>模板编码</Label>
+              <Input
+                value={form.expression_template_id}
+                disabled={Boolean(editingId)}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    expression_template_id: event.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>模板名称</Label>
+              <Input
+                value={form.expression_template_name}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    expression_template_name: event.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label>模板类型</Label>
+              <Select
+                value={form.template_type}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    template_type: value as ExpressionTemplateEntity["template_type"],
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bundle_explanation">组货说明</SelectItem>
+                  <SelectItem value="topup_explanation">凑单说明</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>适用场景</Label>
+              <Select
+                value={form.scene}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    scene: value as ExpressionTemplateEntity["scene"],
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全场景</SelectItem>
+                  <SelectItem value="bundle">组货场景</SelectItem>
+                  <SelectItem value="topup">凑单场景</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label>语气</Label>
+              <Input
+                value={form.tone}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, tone: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>理由数量上限</Label>
+              <Input
+                type="number"
+                value={form.reason_limit}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    reason_limit: Number(event.target.value || "1"),
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <TokenEditor
+            label="禁用词"
+            value={form.avoid}
+            onChange={(avoid) => setForm((prev) => ({ ...prev, avoid }))}
+            placeholder="输入禁用词"
+          />
+          <div className="space-y-1">
+            <Label>系统角色</Label>
+            <Textarea
+              value={form.system_role}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, system_role: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>指令模板</Label>
+            <Textarea
+              value={form.instruction}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, instruction: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>风格提示</Label>
+            <Textarea
+              value={form.style_hint}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, style_hint: event.target.value }))
+              }
+            />
+          </div>
+
+          <Select
+            value={form.status}
+            onValueChange={(value) =>
+              setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+            }
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">启用</SelectItem>
+              <SelectItem value="inactive">停用</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex gap-2">
+            {editingId ? (
+              <Button onClick={submitUpdate}>
+                <Save className="h-4 w-4" />
+                保存更新
+              </Button>
+            ) : (
+              <Button onClick={submitCreate}>
+                <Plus className="h-4 w-4" />
+                创建
+              </Button>
+            )}
+            <Button variant="outline" onClick={resetForm}>
+              重置
+            </Button>
+          </div>
+        </div>
+      </AdminDrawer>
+
+      <AdminConfirmDialog
+        open={Boolean(pendingDisable)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDisable(null);
+          }
+        }}
+        title="确认停用表达模板"
+        description={`停用后模板将不再参与策略渲染。${
+          pendingDisable ? `\n模板：${pendingDisable.expression_template_name}` : ""
+        }`}
+        confirmLabel="确认停用"
+        onConfirm={async () => {
+          if (!pendingDisable) {
+            return;
+          }
+          await softDelete(pendingDisable.expression_template_id);
+        }}
+      />
     </AdminPageFrame>
   );
 }

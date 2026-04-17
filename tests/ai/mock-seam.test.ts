@@ -76,19 +76,22 @@ describe("AI SDK mock seam", () => {
     const optimization = await generateCartOptimization({
       prompt: "stage5 optimization",
       fallbackOutput: {
-        thresholdSuggestion: {
-          sku_id: "cb_chicken_essence_200",
-          suggested_qty: 1,
-          reason: "fallback threshold",
-          effect: "达到门槛金额",
-        },
-        boxAdjustments: [],
-        pairSuggestions: [],
+        decisions: [
+          {
+            bar_type: "threshold",
+            combo_id: "threshold_combo_1",
+            explanation: "fallback threshold",
+          },
+        ],
       },
       functionId: "stage5.cart",
       telemetryMetadata: { scene: "box_pair_optimization" },
     });
-    expect(optimization.output.thresholdSuggestion?.sku_id).toBe("cb_chicken_essence_200");
+    expect(optimization.output.decisions[0]).toEqual({
+      bar_type: "threshold",
+      combo_id: "threshold_combo_1",
+      explanation: "fallback threshold",
+    });
 
     const explanation = await generateExplanation({
       prompt: "stage5 explanation",

@@ -9,33 +9,14 @@ export const recommendationItemSchema = z.object({
   action_type: z.enum(["add_to_cart", "adjust_qty", "replace_item"]).default("add_to_cart"),
 });
 
-export const thresholdSuggestionSchema = z
-  .object({
-    sku_id: z.string().min(1),
-    suggested_qty: z.number().int().positive(),
-    reason: z.string().min(1),
-    effect: z.string().min(1),
-  })
-  .nullable()
-  .default(null);
-
-export const boxAdjustmentSchema = z.object({
-  sku_id: z.string().min(1),
-  from_qty: z.number().int().nonnegative(),
-  to_qty: z.number().int().positive(),
-  reason: z.string().min(1),
-});
-
-export const pairSuggestionSchema = z.object({
-  sku_id: z.string().min(1),
-  suggested_qty: z.number().int().positive(),
-  reason: z.string().min(1),
+export const cartOptimizationDecisionSchema = z.object({
+  bar_type: z.enum(["threshold", "box_adjustment", "pairing"]),
+  combo_id: z.string().min(1),
+  explanation: z.string().min(1),
 });
 
 export const cartOptimizationSchema = z.object({
-  thresholdSuggestion: thresholdSuggestionSchema,
-  boxAdjustments: z.array(boxAdjustmentSchema).default([]),
-  pairSuggestions: z.array(pairSuggestionSchema).default([]),
+  decisions: z.array(cartOptimizationDecisionSchema).default([]),
 });
 
 export const explanationItemSchema = z.object({

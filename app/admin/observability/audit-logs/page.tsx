@@ -29,14 +29,11 @@ const ENTITY_LABELS: Record<AuditLogEvent["entity_type"], string> = {
   product_pool: "商品池",
   recommendation_strategy: "推荐策略",
   expression_template: "表达模板",
-  suggestion_template: "推荐策略",
   campaign: "活动策略",
   global_rule: "全局规则",
   generation_job: "生成任务",
   recommendation_batch: "建议单批次",
   recovery_snapshot: "恢复快照",
-  rule: "全局规则",
-  prompt: "表达模板",
 };
 
 const ACTION_LABELS: Record<AuditLogEvent["action"], string> = {

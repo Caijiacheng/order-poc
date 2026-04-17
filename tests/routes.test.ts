@@ -9,13 +9,8 @@ import {
 
 describe("required route coverage", () => {
   it("includes all frontstage routes", () => {
-    expect(FRONTSTAGE_ROUTES).toEqual([
-      "/procurement",
-      "/catalog",
-      "/basket",
-      "/checkout",
-    ]);
-    expect(FRONTSTAGE_ROUTES).toHaveLength(4);
+    expect(FRONTSTAGE_ROUTES).toEqual(["/purchase", "/order-submit"]);
+    expect(FRONTSTAGE_ROUTES).toHaveLength(2);
   });
 
   it("includes all admin routes", () => {
@@ -54,7 +49,7 @@ describe("required route coverage", () => {
       ...FRONTSTAGE_ROUTES,
       ...ADMIN_ROUTES,
     ]);
-    expect(REQUIRED_ROUTES).toHaveLength(22);
+    expect(REQUIRED_ROUTES).toHaveLength(20);
     expect(new Set(REQUIRED_ROUTES).size).toBe(REQUIRED_ROUTES.length);
   });
 });
