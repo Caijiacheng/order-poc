@@ -132,3 +132,28 @@ export async function withSpan<T>(
     }
   });
 }
+
+export async function withChildSpan<T>(
+  name: string,
+  attributes: Attributes,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const tracer = trace.getTracer(TRACER_NAME);
+  return tracer.startActiveSpan(name, async (span) => {
+    span.setAttributes(attributes);
+    try {
+      const result = await fn();
+      span.setStatus({ code: SpanStatusCode.OK });
+      return result;
+    } catch (error) {
+      span.recordException(error as Error);
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error instanceof Error ? error.message : "unknown error",
+      });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}

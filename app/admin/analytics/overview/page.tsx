@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { requestJson } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
+import type { CopilotDraft, CopilotJob, CopilotMetricsStore, CopilotRun } from "@/lib/copilot/types";
 import type { RecommendationBatchRecord, RecommendationRunRecord } from "@/lib/memory/types";
 
 type QueryState = {
@@ -34,6 +35,16 @@ type AnalyticsData = {
   records: RecommendationRunRecord[];
 };
 
+type CopilotOverviewData = {
+  metrics: CopilotMetricsStore;
+  total: number;
+  rows: Array<{
+    run: CopilotRun;
+    job: CopilotJob | null;
+    draft: CopilotDraft | null;
+  }>;
+};
+
 const SCENE_LABELS: Record<string, string> = {
   daily_recommendation: "日常补货",
   weekly_focus: "周活动备货",
@@ -44,6 +55,20 @@ const SCENE_LABELS: Record<string, string> = {
 const EMPTY_DATA: AnalyticsData = {
   batches: [],
   records: [],
+};
+
+const EMPTY_COPILOT_DATA: CopilotOverviewData = {
+  metrics: {
+    copilot_usage_count: 0,
+    copilot_autofill_start_count: 0,
+    copilot_preview_success_rate: 0,
+    copilot_apply_to_cart_success_rate: 0,
+    copilot_campaign_topup_success_rate: 0,
+    copilot_checkout_conversion_rate: 0,
+    copilot_avg_latency_ms: 0,
+  },
+  total: 0,
+  rows: [],
 };
 
 function getDefaultRange() {
@@ -65,6 +90,10 @@ function toIso(value: string) {
   return Number.isNaN(date.valueOf()) ? "" : date.toISOString();
 }
 
+function formatRate(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 export default function AnalyticsOverviewPage() {
   const defaultRange = getDefaultRange();
   const [query, setQuery] = useState<QueryState>({
@@ -73,6 +102,7 @@ export default function AnalyticsOverviewPage() {
     customerId: "",
   });
   const [data, setData] = useState<AnalyticsData>(EMPTY_DATA);
+  const [copilotData, setCopilotData] = useState<CopilotOverviewData>(EMPTY_COPILOT_DATA);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -107,12 +137,20 @@ export default function AnalyticsOverviewPage() {
         recordParams.set("customerId", nextQuery.customerId.trim());
       }
 
-      const [batchData, recordData] = await Promise.all([
+      const [batchData, recordData, copilotOverview] = await Promise.all([
         requestJson<ListResult<RecommendationBatchRecord>>(
           `/api/admin/recommendation-batches?${batchParams.toString()}`,
         ),
         requestJson<ListResult<RecommendationRunRecord>>(
           `/api/admin/recommendation-records?${recordParams.toString()}`,
+        ),
+        requestJson<CopilotOverviewData>(
+          `/api/admin/copilot/overview?${new URLSearchParams({
+            limit: "80",
+            dateFrom: dateFromIso,
+            dateTo: dateToIso,
+            customerId: nextQuery.customerId.trim(),
+          }).toString()}`,
         ),
       ]);
 
@@ -120,6 +158,7 @@ export default function AnalyticsOverviewPage() {
         batches: batchData.items,
         records: recordData.items,
       });
+      setCopilotData(copilotOverview);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载经营总览失败");
     } finally {
@@ -270,6 +309,63 @@ export default function AnalyticsOverviewPage() {
           </CardContent>
         </Card>
       </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Copilot 核心指标（最小集）</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">Copilot 使用次数</p>
+              <p className="kpi-value mt-1 text-xl">{copilotData.metrics.copilot_usage_count}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">一键做单发起数</p>
+              <p className="kpi-value mt-1 text-xl">
+                {copilotData.metrics.copilot_autofill_start_count}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">预览成功率</p>
+              <p className="kpi-value mt-1 text-xl">
+                {formatRate(copilotData.metrics.copilot_preview_success_rate)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">应用成功率</p>
+              <p className="kpi-value mt-1 text-xl">
+                {formatRate(copilotData.metrics.copilot_apply_to_cart_success_rate)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">活动补齐成功率</p>
+              <p className="kpi-value mt-1 text-xl">
+                {formatRate(copilotData.metrics.copilot_campaign_topup_success_rate)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">辅助结算转化率</p>
+              <p className="kpi-value mt-1 text-xl">
+                {formatRate(copilotData.metrics.copilot_checkout_conversion_rate)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">平均耗时</p>
+              <p className="kpi-value mt-1 text-xl">
+                {copilotData.metrics.copilot_avg_latency_ms}ms
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm text-slate-500">Copilot 运行数</p>
+              <p className="kpi-value mt-1 text-xl">{copilotData.total}</p>
+            </div>
+          </section>
+          <p className="text-xs text-slate-500">
+            指标来自内存态 Copilot 事件汇总，用于当前 POC 运行监控与演示复盘。
+          </p>
+        </CardContent>
+      </Card>
 
       <section className="grid gap-4 xl:grid-cols-2">
         <Card>

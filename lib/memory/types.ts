@@ -1,3 +1,12 @@
+import type {
+  CopilotDraft,
+  CopilotJob,
+  CopilotMetricEvent,
+  CopilotMetricsStore,
+  CopilotRun,
+  CopilotStep,
+} from "@/lib/copilot/types";
+
 export type EntityStatus = "active" | "inactive";
 
 export type SuggestionScene =
@@ -18,6 +27,8 @@ export type FrontstagePageName = FrontstageCanonicalPageName;
 export type ProductEntity = {
   sku_id: string;
   sku_name: string;
+  alias_names?: string[];
+  search_terms?: string[];
   brand: string;
   category: string;
   spec: string;
@@ -546,6 +557,12 @@ export type AppMemoryStore = {
   metrics: MetricsStore;
   recommendationRuns: RecommendationRunRecord[];
   recommendationItems: RecommendationItemRecord[];
+  copilotRuns: CopilotRun[];
+  copilotJobs: CopilotJob[];
+  copilotSteps: CopilotStep[];
+  copilotDrafts: CopilotDraft[];
+  copilotMetricEvents: CopilotMetricEvent[];
+  copilotMetrics: CopilotMetricsStore;
   cartSessions: Record<string, CartSession>;
   auditLogs: AuditLogEvent[];
   rules: RuleConfigEntity;

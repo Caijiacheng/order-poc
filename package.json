@@ -9,11 +9,14 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e:mock": "E2E_MODE=mock playwright test --config=playwright.config.ts --project=mock",
-    "test:e2e:live": "E2E_MODE=live playwright test --config=playwright.config.ts --project=live"
+    "test:e2e:mock": "node scripts/run-playwright-e2e.mjs mock",
+    "test:e2e:live": "node scripts/run-playwright-e2e.mjs live"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
+    "@ai-sdk/react": "^3.0.170",
+    "@assistant-ui/react": "^0.12.25",
+    "@assistant-ui/react-ai-sdk": "^1.3.19",
     "@langfuse/otel": "^5.1.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/sdk-node": "^0.214.0",

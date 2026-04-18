@@ -30,11 +30,27 @@ import {
 import { buildLangfuseTraceUrl } from "@/lib/frontstage/api";
 import { requestJsonWithMeta } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
+import type { CopilotDraft, CopilotJob, CopilotRun } from "@/lib/copilot/types";
 import type { RecommendationItemRecord, RecommendationRunRecord } from "@/lib/memory/types";
 
 type RecommendationDetail = {
   run: RecommendationRunRecord;
   items: RecommendationItemRecord[];
+};
+
+type CopilotOverviewData = {
+  total: number;
+  rows: Array<{
+    run: CopilotRun;
+    job: CopilotJob | null;
+    draft: CopilotDraft | null;
+  }>;
+};
+
+type CopilotFilterState = {
+  pageName: "all" | "/purchase" | "/order-submit";
+  status: "all" | "running" | "succeeded" | "blocked" | "failed";
+  runType: "all" | "autofill_order" | "explain_order";
 };
 
 type QueryState = {
@@ -98,6 +114,13 @@ const STATUS_LABELS: Record<string, string> = {
   expired: "已失效",
 };
 
+const COPILOT_STATUS_LABELS: Record<string, string> = {
+  running: "运行中",
+  succeeded: "成功",
+  blocked: "阻塞",
+  failed: "失败",
+};
+
 function toSearchParams(query: QueryState) {
   const params = new URLSearchParams();
   params.set("page", String(query.page));
@@ -142,7 +165,45 @@ export default function RecommendationRecordsPage() {
   const [langfuseBaseUrl, setLangfuseBaseUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingCopilot, setLoadingCopilot] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [copilotFilter, setCopilotFilter] = useState<CopilotFilterState>({
+    pageName: "all",
+    status: "all",
+    runType: "all",
+  });
+  const [copilotData, setCopilotData] = useState<CopilotOverviewData>({
+    total: 0,
+    rows: [],
+  });
+
+  const loadCopilotRuns = async (
+    nextQuery = query,
+    nextFilter = copilotFilter,
+  ) => {
+    setLoadingCopilot(true);
+    try {
+      const result = await requestJsonWithMeta<CopilotOverviewData>(
+        `/api/admin/copilot/overview?${new URLSearchParams({
+          limit: "30",
+          customerId: nextQuery.customerId,
+          dateFrom: nextQuery.dateFrom ? new Date(nextQuery.dateFrom).toISOString() : "",
+          dateTo: nextQuery.dateTo ? new Date(nextQuery.dateTo).toISOString() : "",
+          pageName: nextFilter.pageName === "all" ? "" : nextFilter.pageName,
+          status: nextFilter.status === "all" ? "" : nextFilter.status,
+          runType: nextFilter.runType === "all" ? "" : nextFilter.runType,
+        }).toString()}`,
+      );
+      setCopilotData(result.data);
+    } catch {
+      setCopilotData({
+        total: 0,
+        rows: [],
+      });
+    } finally {
+      setLoadingCopilot(false);
+    }
+  };
 
   const loadRecords = async (nextQuery = query) => {
     setLoading(true);
@@ -154,6 +215,7 @@ export default function RecommendationRecordsPage() {
       setRecords(result.data.items);
       setTotal(result.data.total);
       setLangfuseBaseUrl(getLangfuseBaseUrl(result.meta));
+      void loadCopilotRuns(nextQuery, copilotFilter);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载建议单记录失败");
     } finally {
@@ -337,6 +399,125 @@ export default function RecommendationRecordsPage() {
               <Filter className="h-4 w-4" />
               查询
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-900">Copilot 运行视角</p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/observability/traces">查看 Copilot 链路页</Link>
+            </Button>
+          </div>
+          <div className="grid gap-2 md:grid-cols-4">
+            <Select
+              value={copilotFilter.pageName}
+              onValueChange={(value) =>
+                setCopilotFilter((prev) => ({
+                  ...prev,
+                  pageName: value as CopilotFilterState["pageName"],
+                }))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部页面</SelectItem>
+                <SelectItem value="/purchase">/purchase</SelectItem>
+                <SelectItem value="/order-submit">/order-submit</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={copilotFilter.status}
+              onValueChange={(value) =>
+                setCopilotFilter((prev) => ({
+                  ...prev,
+                  status: value as CopilotFilterState["status"],
+                }))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部状态</SelectItem>
+                <SelectItem value="running">运行中</SelectItem>
+                <SelectItem value="succeeded">成功</SelectItem>
+                <SelectItem value="blocked">阻塞</SelectItem>
+                <SelectItem value="failed">失败</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={copilotFilter.runType}
+              onValueChange={(value) =>
+                setCopilotFilter((prev) => ({
+                  ...prev,
+                  runType: value as CopilotFilterState["runType"],
+                }))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部类型</SelectItem>
+                <SelectItem value="autofill_order">autofill_order</SelectItem>
+                <SelectItem value="explain_order">explain_order</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              onClick={() => void loadCopilotRuns(query, copilotFilter)}
+              disabled={loadingCopilot}
+            >
+              {loadingCopilot ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Filter className="h-4 w-4" />}
+              刷新 Copilot 视图
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {copilotData.rows.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">
+                当前筛选下暂无 Copilot 运行记录。
+              </p>
+            ) : (
+              copilotData.rows.slice(0, 6).map((row) => {
+                const traceUrl = buildLangfuseTraceUrl(row.run.trace_id, langfuseBaseUrl);
+                return (
+                  <div
+                    key={row.run.run_id}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-mono text-xs text-slate-700">{row.run.run_id}</p>
+                      <Badge variant="outline">
+                        {COPILOT_STATUS_LABELS[row.run.status] ?? row.run.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {row.run.page_name} · {row.run.run_type} · {new Date(row.run.created_at).toLocaleString("zh-CN")}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {row.job?.status ? `job=${row.job.status}` : "job=-"} ·{" "}
+                      {row.draft?.status ? `draft=${row.draft.status}` : "draft=-"}
+                    </p>
+                    {traceUrl ? (
+                      <a
+                        href={traceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-700 underline underline-offset-2"
+                      >
+                        打开 Langfuse 链路
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    ) : null}
+                  </div>
+                );
+              })
+            )}
           </div>
         </CardContent>
       </Card>

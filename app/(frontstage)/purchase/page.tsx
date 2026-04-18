@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { Loader2, ShoppingCart, X } from "lucide-react";
 
+import { PurchaseCopilotPanel } from "@/components/frontstage/copilot/purchase-copilot-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -706,6 +707,18 @@ export default function PurchasePage() {
           </div>
         ) : null}
       </ReasonDrawer>
+
+      <PurchaseCopilotPanel
+        customerId={dealerId}
+        customerName={currentDealer?.customer_name}
+        cartSummary={displaySummary}
+        activityHighlights={activityHighlights}
+        onCartReload={reloadCart}
+        onApplySuccess={() => {
+          setSuccessMessage("Copilot 已应用预览草稿并刷新采购清单。");
+          setErrorMessage("");
+        }}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import type { CopilotMetricEvent, CopilotMetricsStore } from "@/lib/copilot/types";
 import type {
   AppMemoryStore,
   CampaignEntity,
@@ -27,6 +28,45 @@ function loadJsonFile<T>(filename: string): T {
   const fullPath = path.join(process.cwd(), "data", filename);
   const raw = readFileSync(fullPath, "utf-8");
   return JSON.parse(raw) as T;
+}
+
+function normalizeToken(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[\s\-_./，。！？、【】（）()]/g, "")
+    .trim();
+}
+
+function dedupe(values: string[]) {
+  return Array.from(new Set(values));
+}
+
+function normalizeProductSearchFields(product: ProductEntity): ProductEntity {
+  const skuShort = product.sku_id.replace(/^cb_/, "");
+  const aliasNames = dedupe([
+    ...(product.alias_names ?? []),
+    product.sku_name.replace(product.brand, "").trim(),
+    skuShort,
+    ...product.tags,
+  ]).filter(Boolean);
+
+  const searchTerms = dedupe([
+    ...(product.search_terms ?? []),
+    ...aliasNames,
+    product.sku_name,
+    product.sku_id,
+    product.brand,
+    product.category,
+    product.spec,
+  ])
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return {
+    ...product,
+    alias_names: aliasNames,
+    search_terms: dedupe([...searchTerms, ...searchTerms.map(normalizeToken)]),
+  };
 }
 
 function loadJsonFileOptional<T>(filename: string): T | null {
@@ -528,8 +568,26 @@ function createSeedRecoverySnapshots(): RecoverySnapshotRecord[] {
   ];
 }
 
+function createSeedCopilotMetricEvents(): CopilotMetricEvent[] {
+  return [];
+}
+
+function createSeedCopilotMetrics(): CopilotMetricsStore {
+  return {
+    copilot_usage_count: 0,
+    copilot_autofill_start_count: 0,
+    copilot_preview_success_rate: 0,
+    copilot_apply_to_cart_success_rate: 0,
+    copilot_campaign_topup_success_rate: 0,
+    copilot_checkout_conversion_rate: 0,
+    copilot_avg_latency_ms: 0,
+  };
+}
+
 export function loadSeedStore(): AppMemoryStore {
-  const products = loadJsonFile<ProductEntity[]>("products.json");
+  const products = loadJsonFile<ProductEntity[]>("products.json").map(
+    normalizeProductSearchFields,
+  );
   const dealers = loadJsonFile<DealerEntity[]>("dealers.json");
   const campaigns = loadJsonFile<CampaignEntity[]>("campaigns.json");
   const recommendationStrategies = loadJsonFile<RecommendationStrategyEntity[]>(
@@ -559,6 +617,8 @@ export function loadSeedStore(): AppMemoryStore {
 
   const recommendationRuns = createSeedRecommendationRuns();
   const recommendationItems = createSeedRecommendationItems();
+  const copilotMetricEvents = createSeedCopilotMetricEvents();
+  const copilotMetrics = createSeedCopilotMetrics();
   const promptConfig = toPromptConfig(expressionTemplates);
   const rules = toRuleConfig(globalRules);
 
@@ -606,6 +666,12 @@ export function loadSeedStore(): AppMemoryStore {
     metrics,
     recommendationRuns,
     recommendationItems,
+    copilotRuns: [],
+    copilotJobs: [],
+    copilotSteps: [],
+    copilotDrafts: [],
+    copilotMetricEvents,
+    copilotMetrics,
     cartSessions: {},
     auditLogs: [],
     rules,
