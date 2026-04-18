@@ -1,6 +1,8 @@
 "use client";
 
 import { requestJson, requestJsonWithMeta } from "@/lib/admin/client";
+import type { CopilotSummarizeResultOutput } from "@/lib/copilot/schemas";
+import type { CopilotDraft, CopilotJob, CopilotRun, CopilotStep } from "@/lib/copilot/types";
 import type { ListResult } from "@/lib/admin/types";
 import type {
   ActivityHighlight,
@@ -108,6 +110,44 @@ export type RecommendationRunDetail = {
 
 export type LangfuseMeta = {
   langfuseBaseUrl: string;
+};
+
+export type CopilotAutofillResponse = {
+  run: CopilotRun;
+  job: CopilotJob;
+  draft: CopilotDraft;
+  steps: CopilotStep[];
+  summary: CopilotSummarizeResultOutput;
+};
+
+export type CopilotJobDetailResponse = {
+  job: CopilotJob;
+  run: CopilotRun | null;
+  draft: CopilotDraft | null;
+  steps: CopilotStep[];
+};
+
+export type CopilotApplyDraftResponse = {
+  run: CopilotRun;
+  job: CopilotJob;
+  draft: CopilotDraft;
+  steps: CopilotStep[];
+  cart: CartSession;
+  optimization: {
+    recommendationBars: CartOptimizationRecommendationBar[];
+    summary: {
+      trace_id?: string;
+      recommendation_run_id: string;
+      cart: CartSession["summary"];
+    };
+  };
+};
+
+export type CopilotChatResponse = {
+  run: CopilotRun;
+  reply: string;
+  summary: CopilotSummarizeResultOutput;
+  steps: CopilotStep[];
 };
 
 function getMetaString(meta: Record<string, unknown>, key: string) {
@@ -285,6 +325,65 @@ export async function fetchRecommendationRuns(query: URLSearchParams) {
 export async function fetchRecommendationRunDetail(id: string) {
   const result = await requestJsonWithMeta<RecommendationRunDetail>(
     `/api/admin/recommendation-records/${id}`,
+  );
+  return {
+    ...result.data,
+    ...normalizeLangfuseMeta(result.meta),
+  };
+}
+
+export async function requestCopilotAutofill(input: {
+  customerId: string;
+  message: string;
+  pageName?: FrontstagePageName;
+}) {
+  const result = await requestJsonWithMeta<CopilotAutofillResponse>("/api/copilot/autofill", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return {
+    ...result.data,
+    ...normalizeLangfuseMeta(result.meta),
+  };
+}
+
+export async function requestCopilotChat(input: {
+  customerId: string;
+  message: string;
+  pageName?: FrontstagePageName;
+}) {
+  const result = await requestJsonWithMeta<CopilotChatResponse>("/api/copilot/chat", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return {
+    ...result.data,
+    ...normalizeLangfuseMeta(result.meta),
+  };
+}
+
+export async function fetchCopilotJobDetail(jobId: string) {
+  const result = await requestJsonWithMeta<CopilotJobDetailResponse>(
+    `/api/copilot/jobs/${encodeURIComponent(jobId)}`,
+  );
+  return {
+    ...result.data,
+    ...normalizeLangfuseMeta(result.meta),
+  };
+}
+
+export async function applyCopilotDraftToCart(input: {
+  draftId: string;
+  customerId?: string;
+}) {
+  const result = await requestJsonWithMeta<CopilotApplyDraftResponse>(
+    `/api/copilot/drafts/${encodeURIComponent(input.draftId)}/apply`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        customerId: input.customerId,
+      }),
+    },
   );
   return {
     ...result.data,

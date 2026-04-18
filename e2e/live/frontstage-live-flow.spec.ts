@@ -119,6 +119,33 @@ type RecommendationRecordDetailResponse = {
   }>;
 };
 
+type CopilotAutofillResponse = {
+  run: {
+    run_id: string;
+    trace_id?: string;
+    page_name: "/purchase" | "/order-submit";
+  };
+  draft: {
+    draft_id: string;
+    status: "preview" | "applied" | "blocked";
+  };
+};
+
+type CopilotApplyDraftResponse = {
+  run: {
+    run_id: string;
+    trace_id?: string;
+    page_name: "/purchase" | "/order-submit";
+  };
+  draft: {
+    draft_id: string;
+    status: "preview" | "applied" | "blocked";
+  };
+  cart: {
+    items: Array<{ sku_id: string }>;
+  };
+};
+
 async function expectEnvelope<TData>(response: APIResponse | Response) {
   expect(response.ok()).toBe(true);
   const payload = (await response.json()) as ApiEnvelope<TData>;
@@ -510,5 +537,159 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   await expectLangfuseTraceNameIfAvailable({
     traceId: submitTraceId,
     expectedName: "confirm.submit-order",
+  });
+});
+
+test("live copilot flow keeps preview/apply discipline and validates copilot Langfuse traces", async ({
+  page,
+}) => {
+  test.setTimeout(420_000);
+
+  const skipReason = getLiveSkipReason();
+  test.skip(!hasRequiredLiveEnv(), skipReason);
+  expect(process.env.LLM_MOCK_MODE).not.toBe("true");
+
+  await clearCart(page);
+
+  const dealersPayload = await expectEnvelope<ListResult<DealerSummary>>(
+    await page.request.get(
+      "/api/admin/dealers?page=1&pageSize=20&status=active&sortBy=customer_name&sortOrder=asc",
+    ),
+  );
+  const dealer = dealersPayload.data.items[0];
+  if (!dealer) {
+    throw new Error("缺少 active 经销商，无法执行 Copilot live e2e。");
+  }
+
+  await page.goto("/purchase");
+  await expect(page).toHaveURL(/\/purchase$/);
+  await expect(page.getByTestId("purchase-workbench")).toBeVisible();
+  await selectDealer(page, dealer.customer_name);
+
+  const cartBeforePreviewPayload = await expectEnvelope<CartApiResponse>(
+    await page.request.get("/api/cart"),
+  );
+  const cartBeforePreviewCount = cartBeforePreviewPayload.data.items.length;
+
+  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
+  await expect(page.getByRole("button", { name: "一键做单" })).toBeVisible({
+    timeout: 90_000,
+  });
+  await expect(page.getByRole("button", { name: "活动补齐" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "解释这单" })).toBeVisible();
+
+  const purchaseAutofillResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().includes("/api/copilot/autofill"),
+  );
+  await page.getByRole("button", { name: "一键做单" }).click();
+  const purchaseAutofillPayload = await expectEnvelope<CopilotAutofillResponse>(
+    await purchaseAutofillResponsePromise,
+  );
+  const purchaseAutofillTraceId = getTraceId(
+    purchaseAutofillPayload.meta,
+    purchaseAutofillPayload.data.run.trace_id,
+  );
+  const purchaseAutofillRunId = purchaseAutofillPayload.data.run.run_id;
+
+  expect(purchaseAutofillPayload.data.run.page_name).toBe("/purchase");
+  expect(purchaseAutofillPayload.data.draft.status).toBe("preview");
+  await expect(page.getByRole("button", { name: "确认应用到采购清单" })).toBeVisible({
+    timeout: 90_000,
+  });
+
+  const cartAfterPreviewPayload = await expectEnvelope<CartApiResponse>(
+    await page.request.get("/api/cart"),
+  );
+  expect(cartAfterPreviewPayload.data.items.length).toBe(cartBeforePreviewCount);
+
+  const applyDraftResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      /\/api\/copilot\/drafts\/[^/]+\/apply/.test(response.url()),
+  );
+  await page.getByRole("button", { name: "确认应用到采购清单" }).click();
+  const applyDraftPayload = await expectEnvelope<CopilotApplyDraftResponse>(
+    await applyDraftResponsePromise,
+  );
+  expect(applyDraftPayload.data.draft.status).toBe("applied");
+
+  const cartAfterApplyPayload = await expectEnvelope<CartApiResponse>(
+    await page.request.get("/api/cart"),
+  );
+  expect(cartAfterApplyPayload.data.items.length).toBeGreaterThan(
+    cartAfterPreviewPayload.data.items.length,
+  );
+
+  await expect(page.getByRole("link", { name: "去结算页继续提交" })).toBeVisible({
+    timeout: 90_000,
+  });
+  await page.getByRole("link", { name: "去结算页继续提交" }).click();
+  await expect(page).toHaveURL(/\/order-submit$/);
+  await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
+
+  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
+  await expect(page.getByRole("button", { name: "解释当前优化" })).toBeVisible({
+    timeout: 90_000,
+  });
+  await expect(page.getByRole("button", { name: "继续安全补齐" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "去提交" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "一键做单" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "活动补齐" })).toHaveCount(0);
+
+  const explainChatResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().includes("/api/copilot/chat"),
+  );
+  await page.getByRole("button", { name: "解释当前优化" }).click();
+  const explainChatResponse = await explainChatResponsePromise;
+  expect(explainChatResponse.ok()).toBe(true);
+
+  const explainTraceId =
+    (await explainChatResponse.headerValue("x-copilot-trace-id")) ?? "";
+  const explainRunId = (await explainChatResponse.headerValue("x-copilot-run-id")) ?? "";
+  expect(explainRunId).not.toEqual("");
+
+  const submitResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().includes("/api/cart/submit"),
+  );
+  await page.getByRole("button", { name: "提交订单" }).click();
+  const submitPayload = await expectEnvelope<SubmitCartResponse>(await submitResponsePromise);
+  expect(submitPayload.data.order.order_id).toMatch(/^order_/);
+  await expect(page.getByText("订单提交成功。")).toBeVisible({ timeout: 90_000 });
+
+  await page.goto("/admin/observability/traces");
+  await expect(page).toHaveURL(/\/admin\/observability\/traces$/);
+  await expect(
+    page.locator('[data-slot="card-title"]', { hasText: /^Copilot 链路$/ }).first(),
+  ).toBeVisible({ timeout: 90_000 });
+  await page.getByRole("button", { name: "刷新 Copilot" }).click();
+
+  const copilotRow = page.locator("tbody tr", { hasText: purchaseAutofillRunId }).first();
+  await expect(copilotRow).toBeVisible({ timeout: 90_000 });
+  await copilotRow.click();
+
+  if (purchaseAutofillTraceId) {
+    await expect(page.getByText(`trace=${purchaseAutofillTraceId} ·`, { exact: false })).toBeVisible({
+      timeout: 90_000,
+    });
+  }
+
+  const langfuseDrilldown = page.getByRole("link", { name: "在 Langfuse 打开链路" });
+  if ((await langfuseDrilldown.count()) > 0) {
+    await expect(langfuseDrilldown.first()).toBeVisible();
+  }
+
+  await expectLangfuseTraceNameIfAvailable({
+    traceId: purchaseAutofillTraceId,
+    expectedName: "copilot.autofill-order",
+  });
+  await expectLangfuseTraceNameIfAvailable({
+    traceId: explainTraceId,
+    expectedName: "copilot.explain-order",
   });
 });

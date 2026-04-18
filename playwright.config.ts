@@ -39,8 +39,8 @@ function loadLocalEnvFile(filename: string) {
 
 loadLocalEnvFile(".env.local");
 
-const PORT = 3000;
-const BASE_URL = `http://localhost:${PORT}`;
+const PORT = Number(process.env.PLAYWRIGHT_PORT ?? "3000");
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
 const E2E_MODE = process.env.E2E_MODE ?? "mock";
 const IS_LIVE_MODE = E2E_MODE === "live";
 

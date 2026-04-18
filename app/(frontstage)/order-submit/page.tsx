@@ -5,6 +5,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, ShoppingCart, X } from "lucide-react";
 
+import { OrderSubmitCopilotPanel } from "@/components/frontstage/copilot/order-submit-copilot-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +22,7 @@ import {
   patchCartItem,
   removeCartItem,
   submitCart,
+  type CopilotApplyDraftResponse,
   type CartOptimizationResponse,
 } from "@/lib/frontstage/api";
 import type {
@@ -183,6 +185,7 @@ export default function OrderSubmitPage() {
     item_count: number;
   } | null>(null);
   const latestOptimizationToken = useRef(0);
+  const skipNextAutoOptimize = useRef(false);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -276,6 +279,10 @@ export default function OrderSubmitPage() {
     if (loadingPage || !cart) {
       return;
     }
+    if (skipNextAutoOptimize.current) {
+      skipNextAutoOptimize.current = false;
+      return;
+    }
     if (cart.items.length === 0) {
       setOptimization(null);
       return;
@@ -362,6 +369,7 @@ export default function OrderSubmitPage() {
       }
       await reloadCart();
       setOpenedBarId(null);
+      setQtyDraft({});
       setSuccessMessage(`已采纳推荐：${bar.headline}`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "应用推荐失败");
@@ -385,6 +393,18 @@ export default function OrderSubmitPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCopilotApplySuccess = (applied: CopilotApplyDraftResponse) => {
+    latestOptimizationToken.current = Date.now();
+    skipNextAutoOptimize.current = true;
+    setCart(applied.cart);
+    setOptimization(applied.optimization);
+    setOptimizing(false);
+    setOpenedBarId(null);
+    setQtyDraft({});
+    setSuccessMessage("Copilot 已应用预览补齐并同步结算推荐。");
+    setErrorMessage("");
   };
 
   const recommendationBars = optimization?.recommendationBars ?? [];
@@ -534,6 +554,7 @@ export default function OrderSubmitPage() {
                   <Link href="/purchase">返回继续选品</Link>
                 </Button>
                 <Button
+                  id="order-submit-primary-button"
                   className="flex-1"
                   onClick={() => void handleSubmitOrder()}
                   disabled={submitting || !cart || cart.items.length === 0}
@@ -739,6 +760,14 @@ export default function OrderSubmitPage() {
           </div>
         ) : null}
       </ReasonDrawer>
+
+      <OrderSubmitCopilotPanel
+        customerId={cart?.customer_id ?? ""}
+        customerName={currentDealer?.customer_name}
+        cart={cart}
+        optimization={optimization}
+        onApplySuccess={handleCopilotApplySuccess}
+      />
     </div>
   );
 }

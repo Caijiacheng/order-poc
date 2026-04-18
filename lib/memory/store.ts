@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { CopilotMetricEvent } from "@/lib/copilot/types";
 import { loadSeedStore } from "@/lib/memory/seed";
 import type { AppMemoryStore, AuditLogEvent, MetricEvent } from "@/lib/memory/types";
 
@@ -44,4 +45,16 @@ export function appendMetricEvent(event: Omit<MetricEvent, "id" | "timestamp">) 
     ...event,
   });
   store.metrics.latestEvents = store.metrics.latestEvents.slice(0, 200);
+}
+
+export function appendCopilotMetricEvent(
+  event: Omit<CopilotMetricEvent, "id" | "timestamp">,
+) {
+  const store = getMemoryStore();
+  store.copilotMetricEvents.unshift({
+    id: randomUUID(),
+    timestamp: nowIso(),
+    ...event,
+  });
+  store.copilotMetricEvents = store.copilotMetricEvents.slice(0, 400);
 }

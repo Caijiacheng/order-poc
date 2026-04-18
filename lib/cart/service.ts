@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { recordCopilotMetricEvent } from "@/lib/copilot/metrics";
 import { findBoxAdjustments, findPairSuggestions, findThresholdTopupCandidates, computeCartSummary } from "@/lib/domain/cart-rules";
 import { BusinessError } from "@/lib/domain/errors";
 import {
@@ -54,6 +55,17 @@ export function getOrCreateCartSession(sessionId: string): CartSession {
 
 export function setCartCustomer(sessionId: string, customerId: string) {
   const session = getOrCreateCartSession(sessionId);
+  if (
+    session.customer_id &&
+    session.customer_id !== customerId &&
+    session.items.length > 0
+  ) {
+    throw new BusinessError(
+      "CONFLICT",
+      "当前购物车已绑定其他经销商且存在商品，请先清空购物车后再切换客户。",
+      409,
+    );
+  }
   session.customer_id = customerId;
   session.updated_at = nowIso();
   return session;
@@ -371,6 +383,33 @@ export async function submitCart(sessionId: string) {
         session_id: sessionId,
         submitted_sku_ids: submittedSkuIds,
       });
+
+      const appliedDraft = [...store.copilotDrafts]
+        .filter(
+          (draft) =>
+            draft.status === "applied" &&
+            draft.session_id === sessionId &&
+            draft.customer_id === session.customer_id,
+        )
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0];
+      if (appliedDraft) {
+        const run = store.copilotRuns.find((item) => item.run_id === appliedDraft.run_id);
+        if (run && !run.order_submitted) {
+          run.reached_checkout = true;
+          run.order_submitted = true;
+          run.updated_at = nowIso();
+          recordCopilotMetricEvent({
+            run_id: run.run_id,
+            job_id: run.job_id,
+            customer_id: run.customer_id,
+            event_type: "copilot_checkout_converted",
+            payload: {
+              session_id: sessionId,
+              order_id: order.order_id,
+            },
+          });
+        }
+      }
 
       if (session.summary.threshold_reached) {
         store.metrics.thresholdReachedCount += 1;

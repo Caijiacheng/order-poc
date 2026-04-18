@@ -30,11 +30,21 @@ import {
 import { buildLangfuseTraceUrl } from "@/lib/frontstage/api";
 import { requestJsonWithMeta } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
+import type { CopilotDraft, CopilotJob, CopilotRun } from "@/lib/copilot/types";
 import type { RecommendationItemRecord, RecommendationRunRecord } from "@/lib/memory/types";
 
 type TraceDetail = {
   run: RecommendationRunRecord;
   items: RecommendationItemRecord[];
+};
+
+type CopilotOverviewData = {
+  total: number;
+  rows: Array<{
+    run: CopilotRun;
+    job: CopilotJob | null;
+    draft: CopilotDraft | null;
+  }>;
 };
 
 type QueryState = {
@@ -84,6 +94,13 @@ const STATUS_LABELS: Record<string, string> = {
   expired: "已失效",
 };
 
+const COPILOT_STATUS_LABELS: Record<string, string> = {
+  running: "运行中",
+  succeeded: "成功",
+  blocked: "阻塞",
+  failed: "失败",
+};
+
 function toSearchParams(query: QueryState) {
   const params = new URLSearchParams({
     page: String(query.page),
@@ -117,6 +134,16 @@ export default function TraceObservabilityPage() {
   const [rows, setRows] = useState<RecommendationRunRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<(TraceDetail & { langfuseBaseUrl: string }) | null>(null);
+  const [copilotRows, setCopilotRows] = useState<CopilotOverviewData["rows"]>([]);
+  const [copilotTotal, setCopilotTotal] = useState(0);
+  const [copilotDetail, setCopilotDetail] = useState<CopilotOverviewData["rows"][number] | null>(
+    null,
+  );
+  const [copilotPageFilter, setCopilotPageFilter] = useState<"all" | "/purchase" | "/order-submit">("all");
+  const [copilotStatusFilter, setCopilotStatusFilter] = useState<
+    "all" | "running" | "succeeded" | "blocked" | "failed"
+  >("all");
+  const [loadingCopilot, setLoadingCopilot] = useState(false);
   const [langfuseBaseUrl, setLangfuseBaseUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -164,6 +191,33 @@ export default function TraceObservabilityPage() {
     }
   };
 
+  const loadCopilotTraces = async (nextQuery = query) => {
+    setLoadingCopilot(true);
+    try {
+      const result = await requestJsonWithMeta<CopilotOverviewData>(
+        `/api/admin/copilot/overview?${new URLSearchParams({
+          limit: "80",
+          customerId: nextQuery.customerId,
+          dateFrom: nextQuery.dateFrom ? new Date(nextQuery.dateFrom).toISOString() : "",
+          dateTo: nextQuery.dateTo ? new Date(nextQuery.dateTo).toISOString() : "",
+          pageName: copilotPageFilter === "all" ? "" : copilotPageFilter,
+          status: copilotStatusFilter === "all" ? "" : copilotStatusFilter,
+        }).toString()}`,
+      );
+      setCopilotRows(result.data.rows);
+      setCopilotTotal(result.data.total);
+      setCopilotDetail((prev) =>
+        result.data.rows.find((row) => row.run.run_id === prev?.run.run_id) ?? null,
+      );
+    } catch {
+      setCopilotRows([]);
+      setCopilotTotal(0);
+      setCopilotDetail(null);
+    } finally {
+      setLoadingCopilot(false);
+    }
+  };
+
   useEffect(() => {
     const nextQuery = {
       ...INITIAL_QUERY,
@@ -171,6 +225,7 @@ export default function TraceObservabilityPage() {
     };
     setQuery(nextQuery);
     void loadTraces(nextQuery);
+    void loadCopilotTraces(nextQuery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -179,7 +234,14 @@ export default function TraceObservabilityPage() {
       title="执行过程"
       action={
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void loadTraces()} disabled={loading}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              void loadTraces();
+              void loadCopilotTraces();
+            }}
+            disabled={loading || loadingCopilot}
+          >
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             刷新
           </Button>
@@ -291,7 +353,11 @@ export default function TraceObservabilityPage() {
             <Button
               variant="outline"
               className="w-full"
-              onClick={() => void loadTraces({ ...query, page: 1 })}
+              onClick={() => {
+                const next = { ...query, page: 1 };
+                void loadTraces(next);
+                void loadCopilotTraces(next);
+              }}
             >
               <Filter className="h-4 w-4" />
               查询
@@ -465,6 +531,179 @@ export default function TraceObservabilityPage() {
                 下一页
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card>
+          <CardHeader className="space-y-3">
+            <CardTitle className="text-lg">Copilot 链路</CardTitle>
+            <div className="grid gap-2 md:grid-cols-3">
+              <Select
+                value={copilotPageFilter}
+                onValueChange={(value) =>
+                  setCopilotPageFilter(value as typeof copilotPageFilter)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部页面</SelectItem>
+                  <SelectItem value="/purchase">/purchase</SelectItem>
+                  <SelectItem value="/order-submit">/order-submit</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={copilotStatusFilter}
+                onValueChange={(value) =>
+                  setCopilotStatusFilter(value as typeof copilotStatusFilter)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="running">运行中</SelectItem>
+                  <SelectItem value="succeeded">成功</SelectItem>
+                  <SelectItem value="blocked">阻塞</SelectItem>
+                  <SelectItem value="failed">失败</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                onClick={() => void loadCopilotTraces(query)}
+                disabled={loadingCopilot}
+              >
+                {loadingCopilot ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Filter className="h-4 w-4" />}
+                刷新 Copilot
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>时间</TableHead>
+                  <TableHead>Run</TableHead>
+                  <TableHead>页面</TableHead>
+                  <TableHead>类型</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="text-right">Langfuse</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loadingCopilot ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-slate-500">
+                      加载中...
+                    </TableCell>
+                  </TableRow>
+                ) : copilotRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-slate-500">
+                      暂无 Copilot 链路
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  copilotRows.slice(0, 30).map((row) => {
+                    const traceUrl = buildLangfuseTraceUrl(row.run.trace_id, langfuseBaseUrl);
+                    return (
+                      <TableRow
+                        key={row.run.run_id}
+                        className="cursor-pointer"
+                        onClick={() => setCopilotDetail(row)}
+                      >
+                        <TableCell className="font-mono text-xs">
+                          {new Date(row.run.created_at).toLocaleString("zh-CN")}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{row.run.run_id}</TableCell>
+                        <TableCell>{row.run.page_name}</TableCell>
+                        <TableCell className="font-mono text-xs">{row.run.run_type}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {COPILOT_STATUS_LABELS[row.run.status] ?? row.run.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {traceUrl ? (
+                            <a
+                              href={traceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-medium text-indigo-700 underline underline-offset-2"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              Langfuse
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400">不可用</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Copilot 链路详情</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {!copilotDetail ? (
+              <p className="text-sm text-slate-500">点击左侧 Copilot 链路查看详情。</p>
+            ) : (
+              <>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <p className="font-mono text-xs">{copilotDetail.run.run_id}</p>
+                  <p className="mt-1">
+                    {copilotDetail.run.page_name} · {copilotDetail.run.run_type}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    状态：{COPILOT_STATUS_LABELS[copilotDetail.run.status] ?? copilotDetail.run.status}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    customer={copilotDetail.run.customer_id} · session={copilotDetail.run.session_id}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    trace={copilotDetail.run.trace_id ?? "暂无"} · latency={copilotDetail.run.total_latency_ms ?? 0}ms
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    job={copilotDetail.job?.status ?? "-"} · draft={copilotDetail.draft?.status ?? "-"}
+                  </p>
+                  {copilotDetail.run.blocked_reason ? (
+                    <p className="mt-1 text-xs text-amber-700">
+                      blocked_reason: {copilotDetail.run.blocked_reason}
+                    </p>
+                  ) : null}
+                  {buildLangfuseTraceUrl(copilotDetail.run.trace_id, langfuseBaseUrl) ? (
+                    <a
+                      href={buildLangfuseTraceUrl(copilotDetail.run.trace_id, langfuseBaseUrl)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-indigo-700 underline underline-offset-2"
+                    >
+                      在 Langfuse 打开链路
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-400">未配置 Langfuse 链路入口</p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs text-slate-500">用户输入</p>
+                  <p className="mt-1 text-sm text-slate-700">{copilotDetail.run.user_message}</p>
+                </div>
+              </>
+            )}
+            <p className="text-xs text-slate-500">当前 Copilot 链路总数：{copilotTotal}</p>
           </CardContent>
         </Card>
       </section>
