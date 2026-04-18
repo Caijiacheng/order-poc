@@ -1,4 +1,6 @@
 import type {
+  BundleTemplateItem,
+  BundleTemplateType,
   CampaignEntity,
   DealerEntity,
   ExpressionTemplateEntity,
@@ -11,6 +13,24 @@ import type {
 
 function stringify(value: unknown) {
   return JSON.stringify(value, null, 2);
+}
+
+function buildDealerPromptProfile(dealer: DealerEntity) {
+  return {
+    customer_id: dealer.customer_id,
+    customer_name: dealer.customer_name,
+    city: dealer.city,
+    customer_type: dealer.customer_type,
+    channel_type: dealer.channel_type,
+    order_frequency: dealer.order_frequency,
+    last_order_days_ago: dealer.last_order_days_ago,
+    price_sensitivity: dealer.price_sensitivity,
+    new_product_acceptance: dealer.new_product_acceptance,
+    preferred_categories: dealer.preferred_categories,
+    business_traits: dealer.business_traits,
+    frequent_items: dealer.frequent_items,
+    forbidden_items: dealer.forbidden_items,
+  };
 }
 
 type StrategyPromptReference = Pick<
@@ -59,8 +79,8 @@ export function buildRecommendationPrompt(input: {
     `原因条数上限：${promptConfig.global_style.reason_limit}`,
     `场景：${scene}`,
     `指令：${promptConfig.recommendation_prompt.instruction}`,
-    "经销商画像：",
-    stringify(dealer),
+    "经销商经营信息：",
+    stringify(buildDealerPromptProfile(dealer)),
     "规则配置：",
     stringify(rules),
     "当前活动：",
@@ -81,11 +101,14 @@ export function buildRecommendationPrompt(input: {
     ),
     strategyReferenceBlock(strategy, scene),
     "输出要求：",
-    "1. 只返回 JSON 数组，不要 Markdown 代码块，不要额外说明。",
-    "2. 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。",
-    "3. action_type 只能使用 add_to_cart / adjust_qty / replace_item。",
-    "4. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。",
-    "请输出结构化数组。",
+    "1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。",
+    '2. 对象字段固定为 elements；elements 必须是数组。',
+    "3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。",
+    "4. sku_id 只能从候选商品中选择；不得自造 sku_id。",
+    "5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。",
+    "6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。",
+    '7. 若没有合适商品，返回 {"elements": []}。',
+    "请输出结构化对象 elements。",
   ].join("\n\n");
 }
 
@@ -93,10 +116,19 @@ export function buildCartOptimizationPrompt(input: {
   dealer: DealerEntity;
   rules: RuleConfigEntity;
   promptConfig: PromptConfigEntity;
+  cartItems: Array<{
+    sku_id: string;
+    sku_name: string;
+    qty: number;
+    price_per_case: number;
+    line_amount: number;
+  }>;
   cartSummary: {
     total_amount: number;
     threshold_amount: number;
     gap_to_threshold: number;
+    cart_target_amount: number;
+    gap_to_cart_target: number;
   };
   thresholdCombos: Array<{
     combo_id: string;
@@ -125,6 +157,7 @@ export function buildCartOptimizationPrompt(input: {
     dealer,
     rules,
     promptConfig,
+    cartItems,
     cartSummary,
     thresholdCombos,
     boxAdjustmentCombos,
@@ -136,8 +169,10 @@ export function buildCartOptimizationPrompt(input: {
     `系统角色：${promptConfig.cart_opt_prompt.system_role}`,
     `写作风格：${promptConfig.global_style.tone}`,
     `指令：${promptConfig.cart_opt_prompt.instruction}`,
-    "经销商画像：",
-    stringify(dealer),
+    "经销商经营信息：",
+    stringify(buildDealerPromptProfile(dealer)),
+    "当前购物车商品：",
+    stringify(cartItems),
     "规则配置：",
     stringify(rules),
     "购物车摘要：",
@@ -154,7 +189,9 @@ export function buildCartOptimizationPrompt(input: {
     "2. 对象字段固定为 decisions，数组元素字段必须包含：bar_type, combo_id, explanation。",
     "3. bar_type 只能使用 threshold / box_adjustment / pairing。",
     "4. combo_id 只能从提供的候选组合中挑选；不得自造 combo_id。",
-    "5. 不得修改 SKU、数量、箱规方向和金额计算，只做选择与解释。",
+    "5. 对每个有候选项的 bar_type，必须且只能返回一条 decision；没有候选项的 bar_type 不要返回。",
+    "6. 如果三个候选桶都为空，返回 {\"decisions\": []}。",
+    "7. 不得修改 SKU、数量、箱规方向和金额计算，只做选择与解释。",
     "请输出一个结构化对象。",
   ].join("\n\n");
 }
@@ -178,14 +215,95 @@ export function buildExplanationPrompt(input: {
     `写作风格：${promptConfig.global_style.tone}`,
     `指令：${promptConfig.explain_prompt.instruction}`,
     `场景：${scene}`,
-    "经销商画像：",
-    stringify(dealer),
+    "经销商经营信息：",
+    stringify(buildDealerPromptProfile(dealer)),
     "目标建议项：",
     stringify(targetItems),
     strategyReferenceBlock(strategy, scene),
     "输出要求：",
     "1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。",
     "2. 对象字段固定为 explanations，每条包含 sku_id 和 explanation。",
+    "3. sku_id 只能从目标建议项中选择；不得自造 sku_id。",
     "请输出结构化对象 explanations。",
+  ].join("\n\n");
+}
+
+function describeBundleTemplate(templateType: BundleTemplateType) {
+  if (templateType === "hot_sale_restock") {
+    return "热销补货：优先补走得快、周转快的商品。";
+  }
+  if (templateType === "stockout_restock") {
+    return "缺货补货：优先补门店常带、容易断货的基础货。";
+  }
+  return "活动备货：优先补当前活动或周推相关商品。";
+}
+
+export function buildBundleRefinementPrompt(input: {
+  templateType: BundleTemplateType;
+  dealer: DealerEntity;
+  rules: RuleConfigEntity;
+  campaigns: CampaignEntity[];
+  promptConfig: PromptConfigEntity;
+  userNeed: string;
+  currentItems: BundleTemplateItem[];
+  candidates: ProductEntity[];
+}) {
+  const {
+    templateType,
+    dealer,
+    rules,
+    campaigns,
+    promptConfig,
+    userNeed,
+    currentItems,
+    candidates,
+  } = input;
+
+  return [
+    `系统角色：${promptConfig.recommendation_prompt.system_role}`,
+    `写作风格：${promptConfig.global_style.tone}`,
+    `避免内容：${promptConfig.global_style.avoid.join(" / ")}`,
+    `指令：请根据经销商这次补充的一句需求，重新整理当前这组进货建议。`,
+    `模板类型：${describeBundleTemplate(templateType)}`,
+    `经销商这次补充的需求：${userNeed}`,
+    "经销商经营信息：",
+    stringify(buildDealerPromptProfile(dealer)),
+    "规则配置：",
+    stringify(rules),
+    "当前活动：",
+    stringify(campaigns),
+    "当前这组原建议：",
+    stringify(
+      currentItems.map((item) => ({
+        sku_id: item.sku_id,
+        sku_name: item.sku_name,
+        suggested_qty: item.suggested_qty,
+        reason: item.reason,
+      })),
+    ),
+    "可重组选项（只能从这里选）：",
+    stringify(
+      candidates.map((item) => ({
+        sku_id: item.sku_id,
+        sku_name: item.sku_name,
+        category: item.category,
+        spec: item.spec,
+        price_per_case: item.price_per_case,
+        box_multiple: item.box_multiple,
+        tags: item.tags,
+        pair_items: item.pair_items,
+        is_weekly_focus: item.is_weekly_focus,
+        is_new_product: item.is_new_product,
+      })),
+    ),
+    "输出要求：",
+    "1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。",
+    '2. 对象字段固定为 elements；elements 必须是数组。',
+    "3. 只保留 2 到 5 个最适合本次需求的商品。",
+    "4. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。",
+    "5. sku_id 只能从可重组选项中选择；不得自造 sku_id。",
+    "6. action_type 统一返回 add_to_cart。",
+    "7. reason 要直接说明为什么这次该带这款货，不要写系统口吻。",
+    "请输出结构化对象 elements。",
   ].join("\n\n");
 }

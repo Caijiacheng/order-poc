@@ -22,6 +22,7 @@ type CreateRunInput = {
   expression_template_id?: string;
   prompt_version?: string;
   prompt_snapshot: string;
+  response_snapshot?: string;
   candidate_sku_ids: string[];
   returned_sku_ids: string[];
   cart_amount_before?: number;

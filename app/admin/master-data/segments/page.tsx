@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
+import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
 import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
 import { AdminPageFrame } from "@/components/admin/page-frame";
@@ -42,7 +44,6 @@ const EMPTY_FORM: SegmentForm = {
 export default function SegmentsPage() {
   const [items, setItems] = useState<DealerSegmentEntity[]>([]);
   const [dealers, setDealers] = useState<DealerEntity[]>([]);
-  const [total, setTotal] = useState(0);
   const [query, setQuery] = useState({
     page: 1,
     pageSize: 10,
@@ -54,6 +55,8 @@ export default function SegmentsPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<SegmentForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingDisable, setPendingDisable] = useState<DealerSegmentEntity | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -83,7 +86,6 @@ export default function SegmentsPage() {
         `/api/admin/segments?${queryString}`,
       );
       setItems(data.items);
-      setTotal(data.total);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载分群失败");
     } finally {
@@ -130,6 +132,11 @@ export default function SegmentsPage() {
     setEditingId(null);
   };
 
+  const openCreateDrawer = () => {
+    resetForm();
+    setDrawerOpen(true);
+  };
+
   const pickForEdit = (item: DealerSegmentEntity) => {
     setEditingId(item.segment_id);
     setForm({
@@ -142,6 +149,7 @@ export default function SegmentsPage() {
       dealer_ids: item.dealer_ids,
       status: item.status,
     });
+    setDrawerOpen(true);
   };
 
   const submitCreate = async () => {
@@ -153,6 +161,7 @@ export default function SegmentsPage() {
         body: JSON.stringify(form),
       });
       setSuccessMessage("分群创建成功");
+      setDrawerOpen(false);
       resetForm();
       await loadSegments();
     } catch (error) {
@@ -174,6 +183,7 @@ export default function SegmentsPage() {
         body: JSON.stringify(form),
       });
       setSuccessMessage("分群更新成功");
+      setDrawerOpen(false);
       resetForm();
       await loadSegments();
     } catch (error) {
@@ -202,10 +212,10 @@ export default function SegmentsPage() {
 
   return (
     <AdminPageFrame
-      title="经销商分群"
-      description="按城市、客户类型、渠道和指定经销商构建运营分群，用于策略投放与批量生成。"
+      title="维护门店分组"
+      description="按城市、类型、渠道和指定门店分组，方便批量生成和投放。"
       action={
-        <Button className="rounded-full" onClick={resetForm}>
+        <Button className="rounded-full" onClick={openCreateDrawer}>
           <Plus className="h-4 w-4" />
           新建分群
         </Button>
@@ -291,172 +301,195 @@ export default function SegmentsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>分群名称</TableHead>
+                <TableHead>范围</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.length === 0 ? (
                 <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>分群名称</TableHead>
-                  <TableHead>范围</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableCell colSpan={5} className="text-center text-slate-500">
+                    {loading ? "加载中..." : "暂无分群"}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-slate-500">
-                      {loading ? "加载中..." : "暂无分群"}
+              ) : (
+                items.map((item) => (
+                  <TableRow key={item.segment_id}>
+                    <TableCell className="font-mono text-xs">{item.segment_id}</TableCell>
+                    <TableCell>
+                      <p className="font-medium text-slate-800">{item.segment_name}</p>
+                      <p className="text-xs text-slate-500">{item.description || "无描述"}</p>
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-600">
+                      城市 {item.city_list.length} · 客户类型 {item.customer_types.length} ·
+                      指定经销商 {item.dealer_ids.length}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={item.status === "active" ? "secondary" : "outline"}>
+                        {item.status === "active" ? "启用" : "停用"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
+                          编辑
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-rose-600"
+                          onClick={() => setPendingDisable(item)}
+                          disabled={item.status === "inactive"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          停用
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  items.map((item) => (
-                    <TableRow key={item.segment_id}>
-                      <TableCell className="font-mono text-xs">{item.segment_id}</TableCell>
-                      <TableCell>
-                        <p className="font-medium text-slate-800">{item.segment_name}</p>
-                        <p className="text-xs text-slate-500">{item.description || "无描述"}</p>
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-600">
-                        城市 {item.city_list.length} · 客户类型 {item.customer_types.length} ·
-                        指定经销商 {item.dealer_ids.length}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={item.status === "active" ? "secondary" : "outline"}>
-                          {item.status === "active" ? "启用" : "停用"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
-                            编辑
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-rose-600"
-                            onClick={() => softDelete(item.segment_id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            停用
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="space-y-4 p-4">
-            <p className="text-sm font-semibold text-slate-900">
-              {editingId ? `编辑分群: ${editingId}` : "创建分群"}
-            </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>分群编码</Label>
-                <Input
-                  value={form.segment_id}
-                  disabled={Boolean(editingId)}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, segment_id: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>分群名称</Label>
-                <Input
-                  value={form.segment_name}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, segment_name: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>分群说明</Label>
-              <Input
-                value={form.description}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-              />
-            </div>
-
-            <MultiSelectChecklist
-              label="城市范围"
-              options={cityOptions}
-              selected={form.city_list}
-              onChange={(city_list) => setForm((prev) => ({ ...prev, city_list }))}
-              searchPlaceholder="搜索城市"
-            />
-            <MultiSelectChecklist
-              label="客户类型"
-              options={typeOptions}
-              selected={form.customer_types}
-              onChange={(customer_types) => setForm((prev) => ({ ...prev, customer_types }))}
-              searchPlaceholder="搜索客户类型"
-            />
-            <MultiSelectChecklist
-              label="渠道类型"
-              options={channelOptions}
-              selected={form.channel_types}
-              onChange={(channel_types) => setForm((prev) => ({ ...prev, channel_types }))}
-              searchPlaceholder="搜索渠道类型"
-            />
-            <MultiSelectChecklist
-              label="指定经销商"
-              options={dealerOptions}
-              selected={form.dealer_ids}
-              onChange={(dealer_ids) => setForm((prev) => ({ ...prev, dealer_ids }))}
-              searchPlaceholder="搜索经销商"
-            />
-
-            <div className="space-y-2">
-              <Label>状态</Label>
-              <Select
-                value={form.status}
-                onValueChange={(value) =>
-                  setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">启用</SelectItem>
-                  <SelectItem value="inactive">停用</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2">
-              {editingId ? (
-                <Button className="rounded-full" onClick={submitUpdate}>
-                  <Save className="h-4 w-4" />
-                  保存修改
-                </Button>
-              ) : (
-                <Button className="rounded-full" onClick={submitCreate}>
-                  <Plus className="h-4 w-4" />
-                  创建分群
-                </Button>
+                ))
               )}
-              <Button variant="outline" onClick={resetForm}>
-                重置
-              </Button>
-            </div>
-            <p className="text-xs text-slate-500">
-              共 {total} 条记录，当前第 {query.page} 页。
-            </p>
-          </CardContent>
-        </Card>
-      </section>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <AdminDrawer
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        title={editingId ? `编辑分群: ${editingId}` : "新建分群"}
+        description="设置分组范围，方便按门店分批投放建议。"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDrawerOpen(false);
+                resetForm();
+              }}
+            >
+              取消
+            </Button>
+            <Button onClick={() => void (editingId ? submitUpdate() : submitCreate())}>
+              {editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {editingId ? "保存更新" : "创建分群"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>分群编码</Label>
+            <Input
+              value={form.segment_id}
+              disabled={Boolean(editingId)}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, segment_id: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>分群名称</Label>
+            <Input
+              value={form.segment_name}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, segment_name: event.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>分群说明</Label>
+          <Input
+            value={form.description}
+            onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+          />
+        </div>
+
+        <MultiSelectChecklist
+          label="城市范围"
+          options={cityOptions}
+          selected={form.city_list}
+          onChange={(city_list) => setForm((prev) => ({ ...prev, city_list }))}
+          searchPlaceholder="搜索城市"
+        />
+        <MultiSelectChecklist
+          label="客户类型"
+          options={typeOptions}
+          selected={form.customer_types}
+          onChange={(customer_types) => setForm((prev) => ({ ...prev, customer_types }))}
+          searchPlaceholder="搜索客户类型"
+        />
+        <MultiSelectChecklist
+          label="渠道类型"
+          options={channelOptions}
+          selected={form.channel_types}
+          onChange={(channel_types) => setForm((prev) => ({ ...prev, channel_types }))}
+          searchPlaceholder="搜索渠道类型"
+        />
+        <MultiSelectChecklist
+          label="指定经销商"
+          options={dealerOptions}
+          selected={form.dealer_ids}
+          onChange={(dealer_ids) => setForm((prev) => ({ ...prev, dealer_ids }))}
+          searchPlaceholder="搜索经销商"
+        />
+
+        <div className="space-y-2">
+          <Label>状态</Label>
+          <Select
+            value={form.status}
+            onValueChange={(value) =>
+              setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">启用</SelectItem>
+              <SelectItem value="inactive">停用</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </AdminDrawer>
+
+      <AdminConfirmDialog
+        open={Boolean(pendingDisable)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDisable(null);
+          }
+        }}
+        title="确认停用分群"
+        description={
+          pendingDisable
+            ? `停用后该分群不会继续参与生成任务。确认停用 ${pendingDisable.segment_name} 吗？`
+            : "停用后该分群不会继续参与生成任务。"
+        }
+        confirmLabel="确认停用"
+        onConfirm={async () => {
+          if (!pendingDisable) {
+            return;
+          }
+          await softDelete(pendingDisable.segment_id);
+          setPendingDisable(null);
+          setDrawerOpen(false);
+        }}
+      />
     </AdminPageFrame>
   );
 }

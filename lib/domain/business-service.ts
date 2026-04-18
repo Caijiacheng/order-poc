@@ -1,4 +1,5 @@
 import {
+  buildBundleRefinementPrompt,
   buildCartOptimizationPrompt,
   buildExplanationPrompt,
   buildRecommendationPrompt,
@@ -27,12 +28,16 @@ import {
 } from "@/lib/domain/recommendation-rules";
 import { appendMetricEvent, getMemoryStore, nowIso } from "@/lib/memory/store";
 import type {
+  BundleTemplateItem,
+  BundleTemplateType,
+  CampaignEntity,
   CartOptimizationBarType,
   CartOptimizationRecommendationBar,
   DealerEntity,
   FrontstagePageName,
   ProductEntity,
   RecommendationStrategyEntity,
+  RuleConfigEntity,
   SuggestionScene,
 } from "@/lib/memory/types";
 import { withSpan } from "@/lib/tracing/telemetry";
@@ -50,6 +55,11 @@ type NormalizedRecommendationItem = {
 type RecommendationResponseItem = NormalizedRecommendationItem & {
   recommendation_item_id?: string;
 };
+
+type RuntimeRecommendationScene = Extract<
+  SuggestionScene,
+  "daily_recommendation" | "weekly_focus"
+>;
 
 function findDealer(customerId: string): DealerEntity {
   const store = getMemoryStore();
@@ -161,7 +171,37 @@ function findStrategy(dealer: DealerEntity, scene: SuggestionScene) {
   };
 }
 
-function buildFallbackRecommendationItems(
+function toRecommendationFunctionId(scene: RuntimeRecommendationScene) {
+  return scene === "daily_recommendation"
+    ? "ai.generate-daily-recommendation"
+    : "ai.generate-weekly-focus-recommendation";
+}
+
+function toRecommendationEffectType(scene: RuntimeRecommendationScene) {
+  return scene === "daily_recommendation" ? "replenishment" : "weekly_focus";
+}
+
+function buildRecommendationCandidates(input: {
+  scene: RuntimeRecommendationScene;
+  store: ReturnType<typeof getMemoryStore>;
+  dealer: DealerEntity;
+}) {
+  if (input.scene === "daily_recommendation") {
+    return selectDailyRecommendationCandidates({
+      products: input.store.products,
+      dealer: input.dealer,
+      rules: input.store.rules,
+    });
+  }
+  return selectWeeklyFocusCandidates({
+    products: input.store.products,
+    campaigns: input.store.campaigns,
+    dealer: input.dealer,
+    rules: input.store.rules,
+  });
+}
+
+function buildMockRecommendationItems(
   candidates: ProductEntity[],
 ): RecommendationItemOutput[] {
   return candidates.slice(0, 3).map((item, index) => ({
@@ -174,6 +214,129 @@ function buildFallbackRecommendationItems(
   }));
 }
 
+function containsAnyKeyword(text: string, keywords: string[]) {
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function scoreBundleRefinementCandidate(input: {
+  product: ProductEntity;
+  dealer: DealerEntity;
+  templateType: BundleTemplateType;
+  currentSkuIds: Set<string>;
+  userNeed: string;
+}) {
+  const { product, dealer, templateType, currentSkuIds, userNeed } = input;
+  let score = currentSkuIds.has(product.sku_id) ? 220 : 0;
+
+  if (templateType === "hot_sale_restock") {
+    if (product.tags.some((tag) => tag.includes("高频") || tag.includes("动销"))) {
+      score += 70;
+    }
+    if (dealer.frequent_items.includes(product.sku_id)) {
+      score += 60;
+    }
+  } else if (templateType === "stockout_restock") {
+    if (dealer.frequent_items.includes(product.sku_id)) {
+      score += 90;
+    }
+    if (product.tags.some((tag) => tag.includes("常购"))) {
+      score += 35;
+    }
+  } else {
+    if (product.is_weekly_focus || product.tags.some((tag) => tag.includes("活动"))) {
+      score += 90;
+    }
+  }
+
+  if (containsAnyKeyword(userNeed, ["小包装", "小规格", "便利"])) {
+    if (
+      product.sku_name.includes("小包装") ||
+      product.spec.includes("250") ||
+      product.spec.includes("230")
+    ) {
+      score += 120;
+    }
+  }
+
+  if (containsAnyKeyword(userNeed, ["大包装", "餐饮", "档口", "大桶"])) {
+    if (
+      product.sku_name.includes("大包装") ||
+      product.spec.includes("1kg") ||
+      product.spec.includes("2270")
+    ) {
+      score += 120;
+    }
+  }
+
+  if (containsAnyKeyword(userNeed, ["活动", "推广", "冲量"])) {
+    if (product.is_weekly_focus || product.tags.some((tag) => tag.includes("活动"))) {
+      score += 120;
+    }
+  }
+
+  if (containsAnyKeyword(userNeed, ["新品", "上新"])) {
+    if (product.is_new_product) {
+      score += 90;
+    }
+  }
+
+  if (containsAnyKeyword(userNeed, ["搭配", "顺带"])) {
+    if (product.pair_items.length > 0) {
+      score += 60;
+    }
+  }
+
+  return score;
+}
+
+function buildBundleRefinementMockItems(input: {
+  candidates: ProductEntity[];
+  dealer: DealerEntity;
+  templateType: BundleTemplateType;
+  currentItems: BundleTemplateItem[];
+  userNeed: string;
+}): RecommendationItemOutput[] {
+  const currentQtyMap = new Map(
+    input.currentItems.map((item) => [item.sku_id, item.suggested_qty]),
+  );
+  const currentSkuIds = new Set(input.currentItems.map((item) => item.sku_id));
+  const count = Math.min(5, Math.max(2, input.currentItems.length || 3));
+
+  return [...input.candidates]
+    .sort((left, right) => {
+      const leftScore = scoreBundleRefinementCandidate({
+        product: left,
+        dealer: input.dealer,
+        templateType: input.templateType,
+        currentSkuIds,
+        userNeed: input.userNeed,
+      });
+      const rightScore = scoreBundleRefinementCandidate({
+        product: right,
+        dealer: input.dealer,
+        templateType: input.templateType,
+        currentSkuIds,
+        userNeed: input.userNeed,
+      });
+      if (leftScore !== rightScore) {
+        return rightScore - leftScore;
+      }
+      return left.display_order - right.display_order;
+    })
+    .slice(0, count)
+    .map((product, index) => ({
+      sku_id: product.sku_id,
+      suggested_qty: Math.max(
+        1,
+        currentQtyMap.get(product.sku_id) ?? product.box_multiple,
+      ),
+      reason: `${product.sku_name}更贴近这次“${input.userNeed.trim()}”的带货方向。`,
+      reason_tags: ["补充需求", "AI组货"],
+      priority: index + 1,
+      action_type: "add_to_cart",
+    }));
+}
+
 function normalizeRecommendationItems(input: {
   rawItems: RecommendationItemOutput[];
   candidates: ProductEntity[];
@@ -184,8 +347,20 @@ function normalizeRecommendationItems(input: {
 
   for (const raw of input.rawItems) {
     const product = candidateMap.get(raw.sku_id);
-    if (!product) continue;
-    if (dedup.has(raw.sku_id)) continue;
+    if (!product) {
+      throw new BusinessError(
+        "LLM_INVALID_OUTPUT",
+        `模型返回了不在候选集中的 sku_id: ${raw.sku_id}`,
+        502,
+      );
+    }
+    if (dedup.has(raw.sku_id)) {
+      throw new BusinessError(
+        "LLM_INVALID_OUTPUT",
+        `模型返回了重复的 sku_id: ${raw.sku_id}`,
+        502,
+      );
+    }
     dedup.add(raw.sku_id);
     normalized.push({
       sku_id: raw.sku_id,
@@ -198,14 +373,201 @@ function normalizeRecommendationItems(input: {
     });
   }
 
-  if (normalized.length === 0) {
-    return buildFallbackRecommendationItems(input.candidates).map((item) => ({
-      ...item,
-      sku_name: candidateMap.get(item.sku_id)?.sku_name ?? item.sku_id,
-    }));
+  return normalized.sort((left, right) => left.priority - right.priority);
+}
+
+function buildBundleRefinementCandidates(input: {
+  products: ProductEntity[];
+  dealer: DealerEntity;
+  templateType: BundleTemplateType;
+  rules: RuleConfigEntity;
+  campaigns: CampaignEntity[];
+  currentItems: BundleTemplateItem[];
+  userNeed: string;
+}) {
+  const baseCandidates =
+    input.templateType === "campaign_stockup"
+      ? selectWeeklyFocusCandidates({
+          products: input.products,
+          campaigns: input.campaigns,
+          dealer: input.dealer,
+          rules: input.rules,
+        })
+      : selectDailyRecommendationCandidates({
+          products: input.products,
+          dealer: input.dealer,
+          rules: input.rules,
+        });
+
+  const userNeedText = input.userNeed.trim().toLowerCase();
+  const currentSkuIds = new Set(input.currentItems.map((item) => item.sku_id));
+  const needMatches = input.products.filter((product) => {
+    if (product.status !== "active") {
+      return false;
+    }
+    if (input.dealer.forbidden_items.includes(product.sku_id)) {
+      return false;
+    }
+    if (!input.rules.allow_new_product_recommendation && product.is_new_product) {
+      return false;
+    }
+    if (containsAnyKeyword(userNeedText, ["小包装", "小规格", "便利"])) {
+      return product.sku_name.includes("小包装") || product.spec.includes("250");
+    }
+    if (containsAnyKeyword(userNeedText, ["大包装", "餐饮", "档口", "大桶"])) {
+      return product.sku_name.includes("大包装") || product.spec.includes("1kg");
+    }
+    if (containsAnyKeyword(userNeedText, ["活动", "推广", "冲量"])) {
+      return product.is_weekly_focus;
+    }
+    if (containsAnyKeyword(userNeedText, ["新品", "上新"])) {
+      return product.is_new_product;
+    }
+    return currentSkuIds.has(product.sku_id);
+  });
+
+  return Array.from(
+    new Map(
+      [...input.currentItems.map((item) => item.sku_id), ...baseCandidates.map((item) => item.sku_id), ...needMatches.map((item) => item.sku_id)]
+        .map((skuId) => input.products.find((product) => product.sku_id === skuId))
+        .filter((item): item is ProductEntity => Boolean(item))
+        .map((item) => [item.sku_id, item]),
+    ).values(),
+  ).slice(0, 14);
+}
+
+export async function refineBundleTemplateForCustomer(input: {
+  customer_id: string;
+  template_type: BundleTemplateType;
+  current_items: BundleTemplateItem[];
+  user_need: string;
+}) {
+  const store = getMemoryStore();
+  const userNeed = input.user_need.trim();
+  if (!userNeed) {
+    throw new BusinessError("VALIDATION_ERROR", "请先补一句这次需求", 400);
   }
 
-  return normalized.sort((left, right) => left.priority - right.priority);
+  return withSpan(
+    "purchase.refine-bundle",
+    {
+      "customer.id": input.customer_id,
+      "bundle.type": input.template_type,
+    },
+    async (traceId) => {
+      const dealer = findDealer(input.customer_id);
+      const candidates = buildBundleRefinementCandidates({
+        products: store.products,
+        dealer,
+        templateType: input.template_type,
+        rules: store.rules,
+        campaigns: store.campaigns,
+        currentItems: input.current_items,
+        userNeed,
+      });
+
+      const prompt = buildBundleRefinementPrompt({
+        templateType: input.template_type,
+        dealer,
+        rules: store.rules,
+        campaigns: store.campaigns,
+        promptConfig: store.promptConfig,
+        userNeed,
+        currentItems: input.current_items,
+        candidates,
+      });
+
+      const aiResult = await generateRecommendationItems({
+        prompt,
+        mockItems: buildBundleRefinementMockItems({
+          candidates,
+          dealer,
+          templateType: input.template_type,
+          currentItems: input.current_items,
+          userNeed,
+        }),
+        functionId: "ai.refine-bundle-template",
+        telemetryMetadata: {
+          trace_id: traceId,
+          customer_id: dealer.customer_id,
+          template_type: input.template_type,
+        },
+      });
+
+      updateModelMetrics(aiResult.meta);
+
+      const normalizedItems = normalizeRecommendationItems({
+        rawItems: aiResult.items,
+        candidates,
+      });
+
+      if (normalizedItems.length === 0) {
+        throw new BusinessError("LLM_INVALID_OUTPUT", "AI 组货未返回可用商品", 502);
+      }
+
+      const currentQtyMap = new Map(
+        input.current_items.map((item) => [item.sku_id, item.suggested_qty]),
+      );
+      const items = normalizedItems.slice(0, 5).map((item) => {
+        const product = candidates.find((candidate) => candidate.sku_id === item.sku_id);
+        if (!product) {
+          throw new BusinessError(
+            "LLM_INVALID_OUTPUT",
+            `AI 组货返回了无效 sku_id: ${item.sku_id}`,
+            502,
+          );
+        }
+        const suggestedQty = Math.max(
+          1,
+          currentQtyMap.get(item.sku_id) ?? item.suggested_qty ?? product.box_multiple,
+        );
+        return {
+          recommendation_item_id: undefined,
+          sku_id: item.sku_id,
+          sku_name: product.sku_name,
+          suggested_qty: suggestedQty,
+          reason: item.reason,
+          reason_tags: item.reason_tags,
+          priority: item.priority,
+          action_type: "add_to_cart" as const,
+          unit_price: product.price_per_case,
+          line_amount: product.price_per_case * suggestedQty,
+        } satisfies BundleTemplateItem;
+      });
+
+      return {
+        trace_id: traceId,
+        summary: `已按“${userNeed}”重新组货，这组现在会更贴近你这次的补货方向。`,
+        items,
+      };
+    },
+  );
+}
+
+function validateExplanationOutput(input: {
+  explanations: ExplanationOutput["explanations"];
+  targetItems: Array<{ sku_id: string }>;
+}) {
+  const targetSkuIds = new Set(input.targetItems.map((item) => item.sku_id));
+  const seen = new Set<string>();
+
+  for (const item of input.explanations) {
+    if (!targetSkuIds.has(item.sku_id)) {
+      throw new BusinessError(
+        "LLM_INVALID_OUTPUT",
+        `模型返回了不在目标集合中的 explanation sku_id: ${item.sku_id}`,
+        502,
+      );
+    }
+    if (seen.has(item.sku_id)) {
+      throw new BusinessError(
+        "LLM_INVALID_OUTPUT",
+        `模型返回了重复的 explanation sku_id: ${item.sku_id}`,
+        502,
+      );
+    }
+    seen.add(item.sku_id);
+  }
 }
 
 function attachRecommendationItemIds(input: {
@@ -235,6 +597,111 @@ function attachRecommendationItemIds(input: {
       recommendation_item_id: recommendationItemId,
     };
   });
+}
+
+async function generateRecommendationScene(input: {
+  traceId: string;
+  session_id: string;
+  customer_id: string;
+  dealer: DealerEntity;
+  scene: RuntimeRecommendationScene;
+  trigger_source: "auto" | "manual" | "assistant";
+  page_name: FrontstagePageName;
+}) {
+  const store = getMemoryStore();
+  setCartCustomer(input.session_id, input.dealer.customer_id);
+
+  const candidates = buildRecommendationCandidates({
+    scene: input.scene,
+    store,
+    dealer: input.dealer,
+  });
+  expireOpenItemsForScene({
+    customer_id: input.dealer.customer_id,
+    scene: input.scene,
+  });
+
+  const strategy = findStrategy(input.dealer, input.scene);
+  const prompt = buildRecommendationPrompt({
+    scene: input.scene,
+    dealer: input.dealer,
+    rules: store.rules,
+    campaigns: store.campaigns,
+    candidates,
+    promptConfig: store.promptConfig,
+    strategy,
+  });
+
+  const aiResult = await generateRecommendationItems({
+    prompt,
+    mockItems: buildMockRecommendationItems(candidates),
+    functionId: toRecommendationFunctionId(input.scene),
+    telemetryMetadata: {
+      trace_id: input.traceId,
+      customer_id: input.dealer.customer_id,
+      scene: input.scene,
+      session_id: input.session_id,
+    },
+  });
+
+  updateModelMetrics(aiResult.meta);
+
+  const normalizedItems = normalizeRecommendationItems({
+    rawItems: aiResult.items,
+    candidates,
+  });
+  const run = createRecommendationRun({
+    session_id: input.session_id,
+    trace_id: input.traceId,
+    function_id: toRecommendationFunctionId(input.scene),
+    telemetry_metadata: {
+      scene: input.scene,
+      generated_at: nowIso(),
+    },
+    customer_id: input.dealer.customer_id,
+    customer_name: input.dealer.customer_name,
+    scene: input.scene,
+    page_name: input.page_name,
+    trigger_source: input.trigger_source,
+    strategy_id: strategy?.strategy_id,
+    expression_template_id: strategy?.expression_template_id,
+    prompt_version: "runtime",
+    prompt_snapshot: prompt,
+    response_snapshot: JSON.stringify({ elements: aiResult.items }, null, 2),
+    candidate_sku_ids: candidates.map((item) => item.sku_id),
+    returned_sku_ids: normalizedItems.map((item) => item.sku_id),
+    model_name: aiResult.meta.model_name,
+    model_latency_ms: aiResult.meta.model_latency_ms,
+    input_tokens: aiResult.meta.input_tokens,
+    output_tokens: aiResult.meta.output_tokens,
+  });
+  const records = createRecommendationItems(
+    run,
+    normalizedItems.map((item, index) => ({
+      ...item,
+      suggested_rank: index + 1,
+      effect_type: toRecommendationEffectType(input.scene),
+    })),
+  );
+
+  if (input.scene === "daily_recommendation") {
+    store.metrics.recommendationRequests += 1;
+  } else {
+    store.metrics.weeklyFocusRequests += 1;
+  }
+  store.metrics.customerSceneBreakdown[
+    `${input.dealer.customer_id}_${input.scene}`
+  ] = (store.metrics.customerSceneBreakdown[
+    `${input.dealer.customer_id}_${input.scene}`
+  ] ?? 0) + 1;
+
+  return {
+    run,
+    items: attachRecommendationItemIds({
+      items: normalizedItems,
+      records,
+    }),
+  };
 }
 
 function updateModelMetrics(input: {
@@ -346,8 +813,8 @@ function buildThresholdCombos(input: {
     combos.push({
       bar_type: "threshold",
       combo_id: `threshold_combo_${index + 1}`,
-      headline: `门槛补差推荐：${candidate.sku_name}`,
-      value_message: `预计补入 ${formatCny(lineAmount)}，快速贴近门槛差额 ${formatCny(
+      headline: `凑单推荐：${candidate.sku_name}`,
+      value_message: `预计补入 ${formatCny(lineAmount)}，帮助贴近当前凑单差额 ${formatCny(
         input.gap,
       )}。`,
       action_label: "一键加入",
@@ -541,7 +1008,6 @@ export async function generateRecommendationsForCustomer(input: {
 }) {
   const triggerSource = input.trigger_source ?? "manual";
   const pageName = input.page_name ?? "/purchase";
-  const store = getMemoryStore();
 
   return withSpan(
     "homepage.generate-recommendations",
@@ -551,180 +1017,74 @@ export async function generateRecommendationsForCustomer(input: {
     },
     async (traceId) => {
       const dealer = findDealer(input.customer_id);
-      setCartCustomer(input.session_id, dealer.customer_id);
-
-      const dailyCandidates = selectDailyRecommendationCandidates({
-        products: store.products,
-        dealer,
-        rules: store.rules,
-      });
-      const weeklyCandidates = selectWeeklyFocusCandidates({
-        products: store.products,
-        campaigns: store.campaigns,
-        dealer,
-        rules: store.rules,
-      });
-
-      expireOpenItemsForScene({
-        customer_id: dealer.customer_id,
-        scene: "daily_recommendation",
-      });
-      expireOpenItemsForScene({
-        customer_id: dealer.customer_id,
-        scene: "weekly_focus",
-      });
-
-      const dailyStrategy = findStrategy(dealer, "daily_recommendation");
-      const weeklyStrategy = findStrategy(dealer, "weekly_focus");
-
-      const dailyPrompt = buildRecommendationPrompt({
-        scene: "daily_recommendation",
-        dealer,
-        rules: store.rules,
-        campaigns: store.campaigns,
-        candidates: dailyCandidates,
-        promptConfig: store.promptConfig,
-        strategy: dailyStrategy,
-      });
-      const weeklyPrompt = buildRecommendationPrompt({
-        scene: "weekly_focus",
-        dealer,
-        rules: store.rules,
-        campaigns: store.campaigns,
-        candidates: weeklyCandidates,
-        promptConfig: store.promptConfig,
-        strategy: weeklyStrategy,
-      });
-
-      const [dailyAi, weeklyAi] = await Promise.all([
-        generateRecommendationItems({
-          prompt: dailyPrompt,
-          fallbackItems: buildFallbackRecommendationItems(dailyCandidates),
-          functionId: "ai.generate-daily-recommendation",
-          telemetryMetadata: {
-            trace_id: traceId,
-            customer_id: dealer.customer_id,
-            scene: "daily_recommendation",
-            session_id: input.session_id,
-          },
+      const [dailyResult, weeklyResult] = await Promise.all([
+        generateRecommendationScene({
+          traceId,
+          session_id: input.session_id,
+          customer_id: input.customer_id,
+          dealer,
+          scene: "daily_recommendation",
+          trigger_source: triggerSource,
+          page_name: pageName,
         }),
-        generateRecommendationItems({
-          prompt: weeklyPrompt,
-          fallbackItems: buildFallbackRecommendationItems(weeklyCandidates),
-          functionId: "ai.generate-weekly-focus-recommendation",
-          telemetryMetadata: {
-            trace_id: traceId,
-            customer_id: dealer.customer_id,
-            scene: "weekly_focus",
-            session_id: input.session_id,
-          },
+        generateRecommendationScene({
+          traceId,
+          session_id: input.session_id,
+          customer_id: input.customer_id,
+          dealer,
+          scene: "weekly_focus",
+          trigger_source: triggerSource,
+          page_name: pageName,
         }),
       ]);
 
-      updateModelMetrics(dailyAi.meta);
-      updateModelMetrics(weeklyAi.meta);
-
-      const dailyItems = normalizeRecommendationItems({
-        rawItems: dailyAi.items,
-        candidates: dailyCandidates,
-      });
-      const weeklyItems = normalizeRecommendationItems({
-        rawItems: weeklyAi.items,
-        candidates: weeklyCandidates,
-      });
-
-      const dailyRun = createRecommendationRun({
-        session_id: input.session_id,
-        trace_id: traceId,
-        function_id: "ai.generate-daily-recommendation",
-        telemetry_metadata: {
-          scene: "daily_recommendation",
-          generated_at: nowIso(),
+      return {
+        dailyRecommendations: dailyResult.items,
+        weeklyFocusRecommendations: weeklyResult.items,
+        summary: {
+          trace_id: traceId,
+          daily_run_id: dailyResult.run.recommendation_run_id,
+          weekly_run_id: weeklyResult.run.recommendation_run_id,
         },
-        customer_id: dealer.customer_id,
-        customer_name: dealer.customer_name,
-        scene: "daily_recommendation",
-        page_name: pageName,
-        trigger_source: triggerSource,
-        strategy_id: dailyStrategy?.strategy_id,
-        expression_template_id: dailyStrategy?.expression_template_id,
-        prompt_version: "runtime",
-        prompt_snapshot: dailyPrompt,
-        candidate_sku_ids: dailyCandidates.map((item) => item.sku_id),
-        returned_sku_ids: dailyItems.map((item) => item.sku_id),
-        model_name: dailyAi.meta.model_name,
-        model_latency_ms: dailyAi.meta.model_latency_ms,
-        input_tokens: dailyAi.meta.input_tokens,
-        output_tokens: dailyAi.meta.output_tokens,
-      });
-      const dailyRecords = createRecommendationItems(
-        dailyRun,
-        dailyItems.map((item, index) => ({
-          ...item,
-          suggested_rank: index + 1,
-          effect_type: "replenishment",
-        })),
-      );
+      };
+    },
+  );
+}
 
-      const weeklyRun = createRecommendationRun({
+export async function generateRecommendationSceneForCustomer(input: {
+  session_id: string;
+  customer_id: string;
+  scene: RuntimeRecommendationScene;
+  trigger_source?: "auto" | "manual" | "assistant";
+  page_name?: FrontstagePageName;
+}) {
+  const triggerSource = input.trigger_source ?? "assistant";
+  const pageName = input.page_name ?? "/purchase";
+
+  return withSpan(
+    "recommendation.generate-scene",
+    {
+      "customer.id": input.customer_id,
+      "session.id": input.session_id,
+      "recommendation.scene": input.scene,
+    },
+    async (traceId) => {
+      const dealer = findDealer(input.customer_id);
+      const result = await generateRecommendationScene({
+        traceId,
         session_id: input.session_id,
-        trace_id: traceId,
-        function_id: "ai.generate-weekly-focus-recommendation",
-        telemetry_metadata: {
-          scene: "weekly_focus",
-          generated_at: nowIso(),
-        },
-        customer_id: dealer.customer_id,
-        customer_name: dealer.customer_name,
-        scene: "weekly_focus",
-        page_name: pageName,
+        customer_id: input.customer_id,
+        dealer,
+        scene: input.scene,
         trigger_source: triggerSource,
-        strategy_id: weeklyStrategy?.strategy_id,
-        expression_template_id: weeklyStrategy?.expression_template_id,
-        prompt_version: "runtime",
-        prompt_snapshot: weeklyPrompt,
-        candidate_sku_ids: weeklyCandidates.map((item) => item.sku_id),
-        returned_sku_ids: weeklyItems.map((item) => item.sku_id),
-        model_name: weeklyAi.meta.model_name,
-        model_latency_ms: weeklyAi.meta.model_latency_ms,
-        input_tokens: weeklyAi.meta.input_tokens,
-        output_tokens: weeklyAi.meta.output_tokens,
-      });
-      const weeklyRecords = createRecommendationItems(
-        weeklyRun,
-        weeklyItems.map((item, index) => ({
-          ...item,
-          suggested_rank: index + 1,
-          effect_type: "weekly_focus",
-        })),
-      );
-
-      store.metrics.recommendationRequests += 1;
-      store.metrics.weeklyFocusRequests += 1;
-      store.metrics.customerSceneBreakdown[
-        `${dealer.customer_id}_daily_recommendation`
-      ] = (store.metrics.customerSceneBreakdown[
-        `${dealer.customer_id}_daily_recommendation`
-      ] ?? 0) + 1;
-      store.metrics.customerSceneBreakdown[`${dealer.customer_id}_weekly_focus`] =
-        (store.metrics.customerSceneBreakdown[`${dealer.customer_id}_weekly_focus`] ?? 0) + 1;
-
-      const dailyRecommendations = attachRecommendationItemIds({
-        items: dailyItems,
-        records: dailyRecords,
-      });
-      const weeklyFocusRecommendations = attachRecommendationItemIds({
-        items: weeklyItems,
-        records: weeklyRecords,
+        page_name: pageName,
       });
 
       return {
-        dailyRecommendations,
-        weeklyFocusRecommendations,
+        recommendations: result.items,
         summary: {
           trace_id: traceId,
-          daily_run_id: dailyRun.recommendation_run_id,
-          weekly_run_id: weeklyRun.recommendation_run_id,
+          run_id: result.run.recommendation_run_id,
         },
       };
     },
@@ -753,14 +1113,21 @@ export async function generateCartOptimizationForSession(input: {
         setCartCustomer(input.session_id, input.customer_id);
       }
 
-      const { session, dealer, thresholdCandidates, boxAdjustments, pairSuggestions } =
+      const {
+        session,
+        dealer,
+        thresholdGap,
+        thresholdCandidates,
+        boxAdjustments,
+        pairSuggestions,
+      } =
         buildDeterministicCartInsights(input.session_id, input.customer_id);
       const productMap = new Map(store.products.map((item) => [item.sku_id, item]));
 
       const thresholdCombos = buildThresholdCombos({
         candidates: thresholdCandidates,
         productMap,
-        gap: session.summary.gap_to_threshold,
+        gap: thresholdGap,
         dealer,
       }).slice(0, 3);
       const boxAdjustmentCombos = buildBoxAdjustmentCombos({
@@ -783,10 +1150,19 @@ export async function generateCartOptimizationForSession(input: {
         dealer,
         rules: store.rules,
         promptConfig: store.promptConfig,
+        cartItems: session.items.map((item) => ({
+          sku_id: item.sku_id,
+          sku_name: item.sku_name,
+          qty: item.qty,
+          price_per_case: item.price_per_case,
+          line_amount: item.qty * item.price_per_case,
+        })),
         cartSummary: {
           total_amount: session.summary.total_amount,
           threshold_amount: session.summary.threshold_amount,
           gap_to_threshold: session.summary.gap_to_threshold,
+          cart_target_amount: store.rules.cart_target_amount,
+          gap_to_cart_target: thresholdGap,
         },
         thresholdCombos: thresholdCombos.map((combo) => ({
           combo_id: combo.combo_id,
@@ -822,7 +1198,7 @@ export async function generateCartOptimizationForSession(input: {
         strategy,
       });
 
-      const fallbackOutput: CartOptimizationOutput = {
+      const mockOutput: CartOptimizationOutput = {
         decisions: CART_BAR_ORDER.flatMap((barType) => {
           const firstCombo = combosByType[barType][0];
           if (!firstCombo) {
@@ -836,35 +1212,20 @@ export async function generateCartOptimizationForSession(input: {
         }),
       };
 
-      let selectedOutput = fallbackOutput;
-      let modelMeta: {
-        model_name: string;
-        model_latency_ms: number;
-        input_tokens?: number;
-        output_tokens?: number;
-      } = {
-        model_name: "deterministic-fallback",
-        model_latency_ms: 0,
-      };
-
-      try {
-        const aiResult = await generateCartOptimization({
-          prompt,
-          fallbackOutput,
-          functionId: "ai.generate-cart-optimization",
-          telemetryMetadata: {
-            trace_id: traceId,
-            customer_id: dealer.customer_id,
-            scene: "box_pair_optimization",
-            session_id: input.session_id,
-          },
-        });
-        selectedOutput = aiResult.output;
-        modelMeta = aiResult.meta;
-        updateModelMetrics(aiResult.meta);
-      } catch {
-        selectedOutput = fallbackOutput;
-      }
+      const aiResult = await generateCartOptimization({
+        prompt,
+        mockOutput,
+        functionId: "ai.generate-cart-optimization",
+        telemetryMetadata: {
+          trace_id: traceId,
+          customer_id: dealer.customer_id,
+          scene: "box_pair_optimization",
+          session_id: input.session_id,
+        },
+      });
+      const selectedOutput = aiResult.output;
+      const modelMeta = aiResult.meta;
+      updateModelMetrics(aiResult.meta);
 
       const decisionByType = new Map<
         CartOptimizationBarType,
@@ -875,12 +1236,36 @@ export async function generateCartOptimizationForSession(input: {
       >();
       for (const decision of selectedOutput.decisions) {
         if (decisionByType.has(decision.bar_type)) {
-          continue;
+          throw new BusinessError(
+            "LLM_INVALID_OUTPUT",
+            `模型为 ${decision.bar_type} 返回了重复 decision`,
+            502,
+          );
+        }
+        const matchedCombo = combosByType[decision.bar_type].find(
+          (item) => item.combo_id === decision.combo_id,
+        );
+        if (!matchedCombo) {
+          throw new BusinessError(
+            "LLM_INVALID_OUTPUT",
+            `模型为 ${decision.bar_type} 返回了无效 combo_id: ${decision.combo_id}`,
+            502,
+          );
         }
         decisionByType.set(decision.bar_type, {
           combo_id: decision.combo_id,
-          explanation: decision.explanation,
+          explanation: decision.explanation.trim(),
         });
+      }
+
+      const requiredBarTypes = CART_BAR_ORDER.filter((barType) => combosByType[barType].length > 0);
+      const missingBarTypes = requiredBarTypes.filter((barType) => !decisionByType.has(barType));
+      if (missingBarTypes.length > 0) {
+        throw new BusinessError(
+          "LLM_INVALID_OUTPUT",
+          `模型未为以下 bar_type 返回 decision: ${missingBarTypes.join(", ")}`,
+          502,
+        );
       }
 
       const selectedBars = CART_BAR_ORDER.flatMap((barType) => {
@@ -890,15 +1275,29 @@ export async function generateCartOptimizationForSession(input: {
         }
 
         const decision = decisionByType.get(barType);
-        const selectedCombo =
-          candidates.find((item) => item.combo_id === decision?.combo_id) ?? candidates[0];
-        const explanation =
-          decision?.explanation?.trim() || selectedCombo.deterministic_explanation;
+        if (!decision) {
+          return [];
+        }
+        const selectedCombo = candidates.find((item) => item.combo_id === decision.combo_id);
+        if (!selectedCombo) {
+          throw new BusinessError(
+            "LLM_INVALID_OUTPUT",
+            `模型为 ${barType} 返回了未定义的 combo_id: ${decision.combo_id}`,
+            502,
+          );
+        }
+        if (!decision.explanation) {
+          throw new BusinessError(
+            "LLM_INVALID_OUTPUT",
+            `模型为 ${barType} 返回了空 explanation`,
+            502,
+          );
+        }
 
         return {
           bar_type: barType,
           combo: selectedCombo,
-          explanation,
+          explanation: decision.explanation,
         };
       }).slice(0, 3);
 
@@ -928,6 +1327,7 @@ export async function generateCartOptimizationForSession(input: {
         expression_template_id: strategy?.expression_template_id,
         prompt_version: "runtime",
         prompt_snapshot: prompt,
+        response_snapshot: JSON.stringify(selectedOutput, null, 2),
         candidate_sku_ids: candidateSkuIds,
         returned_sku_ids: returnedSkuIds,
         cart_amount_before: session.summary.total_amount,
@@ -979,7 +1379,16 @@ export async function generateCartOptimizationForSession(input: {
 
       const createdRunItems = createRecommendationItems(
         run,
-        runItems.map(({ item_key: _itemKey, ...item }) => item),
+        runItems.map((item) => ({
+          sku_id: item.sku_id,
+          sku_name: item.sku_name,
+          suggested_qty: item.suggested_qty,
+          suggested_rank: item.suggested_rank,
+          reason: item.reason,
+          reason_tags: item.reason_tags,
+          action_type: item.action_type,
+          effect_type: item.effect_type,
+        })),
       );
       const recommendationItemIdByKey = new Map<string, string>();
       runItems.forEach((item, index) => {
@@ -1083,7 +1492,7 @@ export async function generateExplanationForItems(input: {
         strategy,
       });
 
-      const fallback: ExplanationOutput = {
+      const mockOutput: ExplanationOutput = {
         explanations: updatedItems.map((item) => ({
           sku_id: item.sku_id,
           explanation: `${item.sku_name}：${item.reason}`,
@@ -1092,7 +1501,7 @@ export async function generateExplanationForItems(input: {
 
       const aiResult = await generateExplanation({
         prompt,
-        fallbackOutput: fallback,
+        mockOutput,
         functionId: "recommendation.explain",
         telemetryMetadata: {
           trace_id: traceId,
@@ -1102,6 +1511,10 @@ export async function generateExplanationForItems(input: {
         },
       });
       updateModelMetrics(aiResult.meta);
+      validateExplanationOutput({
+        explanations: aiResult.output.explanations,
+        targetItems: updatedItems,
+      });
 
       store.metrics.explanationRequests += 1;
       appendMetricEvent({

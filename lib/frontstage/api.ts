@@ -50,6 +50,12 @@ export type PublishedSuggestionsResponse = {
   };
 };
 
+export type BundleRefineResponse = {
+  trace_id?: string;
+  summary: string;
+  items: BundleTemplate["items"];
+};
+
 export type ExplainResponse = {
   title: string;
   content: string;
@@ -171,6 +177,25 @@ export async function createRecommendations(input: {
 export async function fetchPublishedSuggestions(customerId: string) {
   const result = await requestJsonWithMeta<PublishedSuggestionsResponse>(
     `/api/frontstage/published-suggestions?customerId=${encodeURIComponent(customerId)}`,
+  );
+  return {
+    ...result.data,
+    ...normalizeLangfuseMeta(result.meta),
+  };
+}
+
+export async function refineBundleTemplate(input: {
+  customerId: string;
+  templateType: BundleTemplate["template_type"];
+  currentItems: BundleTemplate["items"];
+  userNeed: string;
+}) {
+  const result = await requestJsonWithMeta<BundleRefineResponse>(
+    "/api/frontstage/bundle-refine",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
   );
   return {
     ...result.data,

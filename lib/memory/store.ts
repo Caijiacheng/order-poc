@@ -14,6 +14,11 @@ export function getMemoryStore(): AppMemoryStore {
   return globalThis.__ORDER_POC_MEMORY_STORE__;
 }
 
+export function resetMemoryStoreToSeed(): AppMemoryStore {
+  globalThis.__ORDER_POC_MEMORY_STORE__ = loadSeedStore();
+  return globalThis.__ORDER_POC_MEMORY_STORE__;
+}
+
 export function nowIso(): string {
   return new Date().toISOString();
 }

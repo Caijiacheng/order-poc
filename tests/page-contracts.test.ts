@@ -55,9 +55,10 @@ describe("frontstage canonical source contract", () => {
     expect(purchaseSource).not.toMatch(/一键复购/);
     expect(purchaseSource).not.toMatch(/采纳\/改量/);
     expect(purchaseSource).not.toMatch(/忽略/);
-    expect(purchaseSource).toMatch(/查看原因/);
+    expect(purchaseSource).toMatch(/查看详情/);
     expect(purchaseSource).toMatch(/purchase-reason-drawer/);
-    expect(purchaseSource).toMatch(/组货后去结算/);
+    expect(purchaseSource).toMatch(/本页建议摘要/);
+    expect(purchaseSource).toMatch(/去结算/);
     expect(purchaseSource).not.toMatch(/生成建议/);
 
     const frontstageApiSource = readSource("lib/frontstage/api.ts");
@@ -72,8 +73,8 @@ describe("frontstage canonical source contract", () => {
   it("keeps /order-submit recommendation-bar contract without legacy optimization panel", () => {
     const orderSubmitSource = readSource("app/(frontstage)/order-submit/page.tsx");
     expect(orderSubmitSource).toMatch(/\boptimizeCart\b/);
-    expect(orderSubmitSource).toMatch(/顺手补货推荐/);
-    expect(orderSubmitSource).toMatch(/为什么推荐/);
+    expect(orderSubmitSource).toMatch(/凑单推荐/);
+    expect(orderSubmitSource).toMatch(/查看依据/);
     expect(orderSubmitSource).toMatch(/order-submit-reason-drawer/);
     expect(orderSubmitSource).toMatch(/recommendationBars/);
     expect(orderSubmitSource).not.toMatch(/生成优化建议/);
@@ -89,7 +90,7 @@ describe("admin canonical source contract", () => {
     expectTestIdContract(adminLayoutSource, "admin-secondary-nav");
 
     const workbenchSource = readSource("app/admin/workbench/overview/page.tsx");
-    expect(workbenchSource).toMatch(/title="运营工作台"/);
+    expect(workbenchSource).toMatch(/title="今日看板"/);
 
     const recommendationSource = readSource(
       "app/admin/analytics/recommendation-records/page.tsx",
@@ -103,6 +104,9 @@ describe("admin canonical source contract", () => {
 
   it("locks key CRUD pages to AdminDrawer + AdminConfirmDialog contract", () => {
     const keyPages = [
+      "app/admin/master-data/dealers/page.tsx",
+      "app/admin/master-data/segments/page.tsx",
+      "app/admin/master-data/product-pools/page.tsx",
       "app/admin/strategy/campaigns/page.tsx",
       "app/admin/strategy/recommendation-strategies/page.tsx",
       "app/admin/strategy/expression-templates/page.tsx",

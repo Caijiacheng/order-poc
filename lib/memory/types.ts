@@ -66,6 +66,11 @@ export type BundleTemplateType =
   | "stockout_restock"
   | "campaign_stockup";
 
+export type CampaignPromoType =
+  | "threshold_rebate"
+  | "combo_discount"
+  | "small_pack_push";
+
 export type BundleTemplateItem = {
   recommendation_item_id?: string;
   sku_id: string;
@@ -93,7 +98,7 @@ export type ActivityHighlight = {
   activity_id: string;
   activity_name: string;
   week_id: string;
-  promo_type: string;
+  promo_type: CampaignPromoType;
   promo_threshold: number;
   activity_notes: string[];
   sku_ids: string[];
@@ -179,6 +184,7 @@ export type GlobalRuleEntity = {
   replenishment_days_threshold: number;
   cart_gap_trigger_amount: number;
   threshold_amount: number;
+  cart_target_amount: number;
   prefer_frequent_items: boolean;
   prefer_pair_items: boolean;
   box_adjust_if_close: boolean;
@@ -277,7 +283,7 @@ export type CampaignEntity = {
   weekly_focus_items: string[];
   product_pool_ids?: string[];
   promo_threshold: number;
-  promo_type: string;
+  promo_type: CampaignPromoType;
   activity_notes: string[];
   target_dealer_ids?: string[];
   target_segment_ids?: string[];
@@ -291,6 +297,7 @@ export type RuleConfigEntity = {
   replenishment_days_threshold: number;
   cart_gap_trigger_amount: number;
   threshold_amount: number;
+  cart_target_amount: number;
   prefer_frequent_items: boolean;
   prefer_pair_items: boolean;
   box_adjust_if_close: boolean;
@@ -388,6 +395,7 @@ export type RecommendationRunRecord = {
   expression_template_id?: string;
   prompt_version?: string;
   prompt_snapshot: string;
+  response_snapshot?: string;
   candidate_sku_ids: string[];
   returned_sku_ids: string[];
   cart_amount_before?: number;

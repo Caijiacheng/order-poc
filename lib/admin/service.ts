@@ -9,11 +9,17 @@ import type {
   RecommendationBatchFilters,
   RecommendationRecordFilters,
 } from "@/lib/admin/types";
-import { generateRecommendationsForCustomer } from "@/lib/domain/business-service";
+import { getCartBySession } from "@/lib/cart/service";
+import {
+  generateCartOptimizationForSession,
+  generateRecommendationsForCustomer,
+  generateRecommendationSceneForCustomer,
+} from "@/lib/domain/business-service";
 import {
   appendAuditLog,
   getMemoryStore,
   nowIso,
+  resetMemoryStoreToSeed,
 } from "@/lib/memory/store";
 import type {
   ActivityHighlight,
@@ -133,6 +139,7 @@ function toRuleConfig(globalRules: GlobalRuleEntity): RuleConfigEntity {
     replenishment_days_threshold: globalRules.replenishment_days_threshold,
     cart_gap_trigger_amount: globalRules.cart_gap_trigger_amount,
     threshold_amount: globalRules.threshold_amount,
+    cart_target_amount: globalRules.cart_target_amount,
     prefer_frequent_items: globalRules.prefer_frequent_items,
     prefer_pair_items: globalRules.prefer_pair_items,
     box_adjust_if_close: globalRules.box_adjust_if_close,
@@ -1291,6 +1298,91 @@ export async function replayGenerationJob(id: string): Promise<GenerationJobActi
   });
 }
 
+export async function replayRecommendationRecord(id: string) {
+  const store = getMemoryStore();
+  const run = findById(
+    store.recommendationRuns,
+    (record) => record.recommendation_run_id === id,
+    "推荐记录不存在",
+  );
+  if (!run.customer_id) {
+    conflict("当前记录缺少经销商信息，无法补跑");
+  }
+
+  const sourceBatch = run.batch_id
+    ? store.recommendationBatches.find((record) => record.batch_id === run.batch_id)
+    : undefined;
+  const startedAt = nowIso();
+  const replaySessionId = `session_admin_record_${run.recommendation_run_id}_${Date.now()}`;
+  let generatedRunIds: string[] = [];
+  let traceId = "";
+  let summary = "";
+
+  if (run.scene === "daily_recommendation" || run.scene === "weekly_focus") {
+    const result = await generateRecommendationSceneForCustomer({
+      session_id: replaySessionId,
+      customer_id: run.customer_id,
+      scene: run.scene,
+      trigger_source: "assistant",
+      page_name: "/purchase",
+    });
+    generatedRunIds = [result.summary.run_id];
+    traceId = result.summary.trace_id ?? "";
+    summary = `已重新生成 ${run.customer_name} 的${
+      run.scene === "daily_recommendation" ? "日常补货建议" : "活动备货建议"
+    }`;
+  } else if (run.scene === "box_pair_optimization") {
+    const sourceSession = getCartBySession(run.session_id);
+    if (sourceSession.items.length === 0) {
+      conflict("当前凑单记录缺少购物车商品，无法补跑");
+    }
+    const result = await generateCartOptimizationForSession({
+      session_id: replaySessionId,
+      customer_id: run.customer_id,
+      cart_items: sourceSession.items.map((item) => ({
+        sku_id: item.sku_id,
+        qty: item.qty,
+      })),
+    });
+    generatedRunIds = [result.summary.recommendation_run_id];
+    traceId = result.summary.trace_id ?? "";
+    summary = `已重新生成 ${run.customer_name} 的凑单推荐`;
+  } else {
+    conflict("当前场景暂不支持单条补跑");
+  }
+  const finishedAt = nowIso();
+  const batch = createRecommendationBatch({
+    batch_id: createBatchId("batch_replay"),
+    batch_type: "manual_replay",
+    trigger_source: "admin",
+    session_id: replaySessionId,
+    job_id: sourceBatch?.job_id,
+    customer_id: run.customer_id,
+    scene: run.scene,
+    trace_id: traceId || undefined,
+    related_run_ids: generatedRunIds,
+    config_snapshot_id: pickConfigSnapshotId(),
+    started_at: startedAt,
+    finished_at: finishedAt,
+    status: "success",
+    publication_status: "ready",
+    fallback_used: false,
+  });
+
+  appendAudit({
+    entity_type: "recommendation_batch",
+    entity_id: batch.batch_id,
+    action: "create",
+    summary: `补跑单条建议：${run.customer_name} · ${run.scene}`,
+  });
+
+  return {
+    batch,
+    generated_run_ids: generatedRunIds,
+    summary,
+  };
+}
+
 export function publishGenerationJob(id: string): GenerationJobActionResult {
   const store = getMemoryStore();
   const job = findById(
@@ -1967,6 +2059,14 @@ export function listRecommendationRuns(
 ): ListResult<RecommendationRunRecord> {
   const store = getMemoryStore();
   let records = [...store.recommendationRuns];
+  const purchaseScenes = new Set<SuggestionScene>([
+    "daily_recommendation",
+    "weekly_focus",
+  ]);
+  const checkoutScenes = new Set<SuggestionScene>([
+    "box_pair_optimization",
+    "threshold_topup",
+  ]);
 
   if (filters.dateFrom) {
     records = records.filter((item) => item.created_at >= filters.dateFrom!);
@@ -1978,7 +2078,15 @@ export function listRecommendationRuns(
     records = records.filter((item) => item.customer_id === filters.customerId);
   }
   if (filters.scene) {
-    records = records.filter((item) => item.scene === filters.scene);
+    records = records.filter((item) => {
+      if (filters.scene === "purchase_bundle") {
+        return purchaseScenes.has(item.scene);
+      }
+      if (filters.scene === "checkout_optimization") {
+        return checkoutScenes.has(item.scene);
+      }
+      return item.scene === filters.scene;
+    });
   }
   if (filters.modelName) {
     const keyword = filters.modelName.toLowerCase();
@@ -2153,6 +2261,33 @@ export function applyRecoverySnapshot(id: string) {
     summary: `应用恢复快照 ${item.snapshot_name}`,
   });
   return item;
+}
+
+export function resetDemoData() {
+  const store = resetMemoryStoreToSeed();
+  const snapshot =
+    store.recoverySnapshots.find((item) => item.snapshot_id === "snapshot_seed_default") ??
+    store.recoverySnapshots[0] ??
+    null;
+  const appliedAt = nowIso();
+
+  if (snapshot) {
+    snapshot.status = "applied";
+    snapshot.applied_at = appliedAt;
+    snapshot.updated_at = appliedAt;
+  }
+
+  appendAuditLog({
+    entity_type: "recovery_snapshot",
+    entity_id: snapshot?.snapshot_id ?? "snapshot_seed_default",
+    action: "apply",
+    summary: "恢复演示基线数据",
+  });
+
+  return {
+    snapshot,
+    summary: "已恢复到演示初始数据，运行期改动已清空。",
+  };
 }
 
 export function getReportSummary() {

@@ -335,13 +335,25 @@ export default function GenerationJobsPage() {
 
   return (
     <AdminPageFrame
-      title="批量生成任务"
-      description="运营在此执行预检、试生成、正式发布和取消任务，形成每天建议单生产链路。"
+      title="生成建议单"
+      description="先设定生成范围，再到生成批次或门店建议里看结果。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={loadJobs} disabled={loading}>
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             刷新
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/admin/operations/recommendation-batches" className="gap-2">
+              查看生成批次
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/admin/analytics/recommendation-records" className="gap-2">
+              查看门店建议
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </Button>
           <Button
             className="rounded-full"
@@ -351,7 +363,7 @@ export default function GenerationJobsPage() {
             }}
           >
             <Plus className="h-4 w-4" />
-            新建任务
+            新建生成任务
           </Button>
         </div>
       }
@@ -362,7 +374,7 @@ export default function GenerationJobsPage() {
       <Card>
         <CardContent className="grid gap-3 p-4 md:grid-cols-5">
           <Input
-            placeholder="搜索任务 ID/名称"
+            placeholder="搜索任务编号/名称"
             value={query.q}
             onChange={(event) =>
               setQuery((prev) => ({ ...prev, q: event.target.value, page: 1 }))
@@ -410,12 +422,7 @@ export default function GenerationJobsPage() {
               <SelectItem value="50">50 / 页</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" asChild>
-            <Link href="/admin/operations/recommendation-batches" className="gap-2">
-              查看建议单批次
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
+          <div className="flex items-center text-xs text-slate-500">总数 {total}</div>
         </CardContent>
       </Card>
 
@@ -536,8 +543,8 @@ export default function GenerationJobsPage() {
             resetForm();
           }
         }}
-        title={editingId ? `编辑任务: ${editingId}` : "创建任务"}
-        description="维护任务范围与策略集合，执行动作仍在列表区操作。"
+        title={editingId ? `编辑生成任务: ${editingId}` : "创建生成任务"}
+        description="先设置要覆盖的门店和方案，生成动作仍在列表里执行。"
       >
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
@@ -609,11 +616,11 @@ export default function GenerationJobsPage() {
             searchPlaceholder="搜索分群"
           />
           <MultiSelectChecklist
-            label="执行策略"
+            label="执行方案"
             options={strategyOptions}
             selected={form.strategy_ids}
             onChange={(strategy_ids) => setForm((prev) => ({ ...prev, strategy_ids }))}
-            searchPlaceholder="搜索策略"
+            searchPlaceholder="搜索方案"
           />
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -649,8 +656,8 @@ export default function GenerationJobsPage() {
             setPendingCancel(null);
           }
         }}
-        title="确认取消生成任务"
-        description={`取消后该任务将标记为停用状态，不再参与后续发布。${
+        title="确认停用生成任务"
+        description={`停用后该任务将不再参与后续生成和发布。${
           pendingCancel ? `\n任务：${pendingCancel.job_name}` : ""
         }`}
         confirmLabel="确认取消"

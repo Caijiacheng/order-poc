@@ -48,7 +48,7 @@ describe("AI SDK mock seam", () => {
 
     const recommendation = await generateRecommendationItems({
       prompt: "stage5 recommendation",
-      fallbackItems: [
+      mockItems: [
         {
           sku_id: "cb_weijixian_500",
           suggested_qty: 2,
@@ -75,7 +75,7 @@ describe("AI SDK mock seam", () => {
 
     const optimization = await generateCartOptimization({
       prompt: "stage5 optimization",
-      fallbackOutput: {
+      mockOutput: {
         decisions: [
           {
             bar_type: "threshold",
@@ -95,7 +95,7 @@ describe("AI SDK mock seam", () => {
 
     const explanation = await generateExplanation({
       prompt: "stage5 explanation",
-      fallbackOutput: {
+      mockOutput: {
         explanations: [
           {
             sku_id: "cb_weijixian_500",

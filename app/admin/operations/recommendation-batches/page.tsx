@@ -122,7 +122,7 @@ export default function RecommendationBatchesPage() {
           : (data.items[0] ?? null),
       );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载批次失败");
+      setErrorMessage(error instanceof Error ? error.message : "加载生成批次失败");
     } finally {
       setLoading(false);
     }
@@ -135,8 +135,8 @@ export default function RecommendationBatchesPage() {
 
   return (
     <AdminPageFrame
-      title="建议单批次"
-      description="按批次查看生成结果，支持按任务、状态、场景、经销商查询并下钻记录与链路。"
+      title="生成批次"
+      description="先按批次看生成结果，再继续查看门店建议和执行过程。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadBatches()} disabled={loading}>
@@ -146,6 +146,12 @@ export default function RecommendationBatchesPage() {
           <Button asChild variant="outline">
             <Link href="/admin/operations/generation-jobs" className="gap-2">
               查看生成任务
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/analytics/recommendation-records" className="gap-2">
+              查看门店建议
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -358,7 +364,7 @@ export default function RecommendationBatchesPage() {
 
         <Card>
           <CardContent className="space-y-3 p-4">
-            <p className="text-sm font-semibold text-slate-900">批次详情</p>
+            <p className="text-sm font-semibold text-slate-900">这次生成详情</p>
             {!selected ? (
               <p className="text-sm text-slate-500">点击左侧批次查看详情。</p>
             ) : (
@@ -410,6 +416,19 @@ export default function RecommendationBatchesPage() {
                 </div>
 
                 <div className="grid gap-2">
+                  {selected.customer_id ? (
+                    <Button asChild variant="outline">
+                      <Link
+                        href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
+                          selected.batch_id,
+                        )}&customerId=${encodeURIComponent(selected.customer_id)}`}
+                        className="gap-2"
+                      >
+                        查看该经销商记录
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  ) : null}
                   <Button asChild variant="outline">
                     <Link
                       href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
@@ -417,7 +436,7 @@ export default function RecommendationBatchesPage() {
                       )}`}
                       className="gap-2"
                     >
-                      查看批次记录
+                      查看门店建议
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
@@ -428,7 +447,7 @@ export default function RecommendationBatchesPage() {
                       )}`}
                       className="gap-2"
                     >
-                      查看批次链路
+                      查看执行过程
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>

@@ -5,6 +5,7 @@ import path from "node:path";
 import type {
   AppMemoryStore,
   CampaignEntity,
+  CartSession,
   DealerEntity,
   DealerSegmentEntity,
   ExpressionTemplateEntity,
@@ -43,6 +44,7 @@ function toRuleConfig(globalRules: GlobalRuleEntity): RuleConfigEntity {
     replenishment_days_threshold: globalRules.replenishment_days_threshold,
     cart_gap_trigger_amount: globalRules.cart_gap_trigger_amount,
     threshold_amount: globalRules.threshold_amount,
+    cart_target_amount: globalRules.cart_target_amount,
     prefer_frequent_items: globalRules.prefer_frequent_items,
     prefer_pair_items: globalRules.prefer_pair_items,
     box_adjust_if_close: globalRules.box_adjust_if_close,
@@ -193,7 +195,38 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
       strategy_id: "tpl_xm_daily",
       expression_template_id: "expr_recommendation_default",
       prompt_version: "2026.04.15.a",
-      prompt_snapshot: "seed prompt snapshot for xm daily recommendation",
+      prompt_snapshot: [
+        "系统角色：你是经销商进货建议助手。",
+        "场景：daily_recommendation",
+        "经销商经营信息：厦门思明经销商 / 城区核心客户 / 餐饮+流通 / 5-7天进一次货",
+        "经营特征：动销快 / 有新品试销能力 / 接受活动引导",
+        "候选商品：厨邦味极鲜特级生抽 / 厨邦蚝油 / 厨邦鸡精",
+        "输出要求：返回 elements 结构化建议。",
+      ].join("\n"),
+      response_snapshot: JSON.stringify(
+        {
+          elements: [
+            {
+              sku_id: "cb_weijixian_500",
+              suggested_qty: 12,
+              reason: "门店常带且进入补货周期，建议优先补上。",
+              reason_tags: ["常带商品", "补货周期"],
+              priority: 1,
+              action_type: "add_to_cart",
+            },
+            {
+              sku_id: "cb_oyster_700",
+              suggested_qty: 8,
+              reason: "与当前进货节奏匹配，可降低常用品断货风险。",
+              reason_tags: ["常带商品", "缺货预防"],
+              priority: 2,
+              action_type: "add_to_cart",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
       candidate_sku_ids: [
         "cb_weijixian_500",
         "cb_oyster_700",
@@ -223,7 +256,34 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
       strategy_id: "tpl_cd_boxpair",
       expression_template_id: "expr_cart_opt_default",
       prompt_version: "2026.04.15.a",
-      prompt_snapshot: "seed prompt snapshot for cd cart optimization",
+      prompt_snapshot: [
+        "系统角色：你是购物车凑单优化助手。",
+        "场景：box_pair_optimization",
+        "经销商经营信息：成都餐饮批发经销商 / 餐饮批发客户 / 餐饮批发 / 7-10天进一次货",
+        "经营特征：偏重大包装 / 重视整箱配送 / 喜欢固定搭配采购",
+        "门店常购：厨邦蚝油 / 厨邦蒸鱼豉油 / 厨邦大包装蚝油 / 厨邦餐饮装鸡精",
+        "当前购物车商品：厨邦大包装蚝油 4箱 / 厨邦餐饮装鸡精 6箱",
+        "购物车金额：¥978，目标金额：¥1,000。",
+        "输出要求：为 threshold / pairing 返回结构化 decisions。",
+      ].join("\n"),
+      response_snapshot: JSON.stringify(
+        {
+          decisions: [
+            {
+              bar_type: "threshold",
+              combo_id: "threshold_combo_1",
+              explanation: "这组补上后能顺手凑够起订额，且都是门店常带货。",
+            },
+            {
+              bar_type: "pairing",
+              combo_id: "pair_combo_bundle_2",
+              explanation: "和当前已选餐饮大包装商品搭配度更高，适合一次带齐。",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
       candidate_sku_ids: ["cb_oyster_big_2270", "cb_chicken_restaurant_1kg"],
       returned_sku_ids: ["cb_oyster_big_2270", "cb_chicken_restaurant_1kg"],
       cart_amount_before: 978,
@@ -249,7 +309,30 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
       strategy_id: "tpl_xm_daily",
       expression_template_id: "expr_recommendation_default",
       prompt_version: "2026.04.15.a",
-      prompt_snapshot: "seed prompt snapshot for xm weekly focus",
+      prompt_snapshot: [
+        "系统角色：你是活动备货建议助手。",
+        "场景：weekly_focus",
+        "经销商经营信息：厦门思明经销商 / 城区核心客户 / 餐饮+流通 / 5-7天进一次货",
+        "经营特征：动销快 / 有新品试销能力 / 接受活动引导",
+        "活动：零添加试销冲刺周",
+        "输出要求：返回 elements 结构化建议。",
+      ].join("\n"),
+      response_snapshot: JSON.stringify(
+        {
+          elements: [
+            {
+              sku_id: "cb_zeroadd_shengchou_500",
+              suggested_qty: 12,
+              reason: "本周活动主推商品，适合先带上承接活动出货。",
+              reason_tags: ["活动主推", "周备货"],
+              priority: 1,
+              action_type: "add_to_cart",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
       candidate_sku_ids: ["cb_zeroadd_shengchou_500", "cb_zeroadd_head_500"],
       returned_sku_ids: ["cb_zeroadd_shengchou_500"],
       cart_amount_before: 843,
@@ -456,6 +539,54 @@ function createSeedEvents(): MetricEvent[] {
   ];
 }
 
+function createSeedCartSessions(thresholdAmount: number): Record<string, CartSession> {
+  const seedItems = [
+    {
+      sku_id: "cb_oyster_big_2270",
+      sku_name: "厨邦大包装蚝油",
+      qty: 2,
+      price_per_case: 186,
+      box_multiple: 4,
+      source: "manual" as const,
+      added_at: "2026-04-15T01:18:00.000Z",
+      updated_at: "2026-04-15T01:18:00.000Z",
+    },
+    {
+      sku_id: "cb_chicken_powder_combo",
+      sku_name: "厨邦鸡粉组合装",
+      qty: 3,
+      price_per_case: 208,
+      box_multiple: 6,
+      source: "manual" as const,
+      added_at: "2026-04-15T01:18:00.000Z",
+      updated_at: "2026-04-15T01:18:00.000Z",
+    },
+  ];
+  const totalAmount = seedItems.reduce(
+    (sum, item) => sum + item.qty * item.price_per_case,
+    0,
+  );
+
+  return {
+    session_seed_002: {
+      session_id: "session_seed_002",
+      customer_id: "dealer_cd_pf",
+      items: seedItems,
+      summary: {
+        item_count: seedItems.reduce((sum, item) => sum + item.qty, 0),
+        sku_count: seedItems.length,
+        total_amount: totalAmount,
+        threshold_amount: thresholdAmount,
+        gap_to_threshold: Math.max(0, thresholdAmount - totalAmount),
+        threshold_reached: totalAmount >= thresholdAmount,
+      },
+      submitted_orders: [],
+      created_at: "2026-04-15T01:18:00.000Z",
+      updated_at: "2026-04-15T01:23:00.000Z",
+    },
+  };
+}
+
 function createSeedGenerationJobs(): GenerationJobEntity[] {
   return [
     {
@@ -606,7 +737,7 @@ export function loadSeedStore(): AppMemoryStore {
     metrics,
     recommendationRuns,
     recommendationItems,
-    cartSessions: {},
+    cartSessions: createSeedCartSessions(rules.threshold_amount),
     auditLogs: [],
     rules,
     promptConfig,

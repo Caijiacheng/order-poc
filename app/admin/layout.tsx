@@ -27,13 +27,13 @@ export default function AdminLayout({
               <Radar className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs tracking-[0.12em] text-slate-500">B2B 运营后台</p>
-              <p className="font-semibold text-slate-900">运营配置台</p>
+              <p className="text-xs tracking-[0.12em] text-slate-500">OrchestraX运营后台</p>
+              <p className="font-semibold text-slate-900">运营后台</p>
             </div>
           </div>
 
           <nav className="space-y-3" data-testid="admin-primary-nav">
-            {ADMIN_NAV_TREE.map((group) => {
+            {ADMIN_NAV_TREE.filter((group) => !group.hidden).map((group) => {
               const isActiveGroup = current?.group.key === group.key;
               return (
                 <section key={group.key} className="space-y-1.5">
@@ -76,7 +76,7 @@ export default function AdminLayout({
           </nav>
 
           <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-            当前环境使用演示数据，所有配置变更仅保存在内存中，服务重启后会恢复默认种子。
+            当前是演示环境，所有改动只保存在内存里，服务重启后会恢复初始数据。
           </div>
         </aside>
 
@@ -84,10 +84,10 @@ export default function AdminLayout({
           <header className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm md:px-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
-                <p className="text-sm font-semibold text-slate-900">运营配置台</p>
+                <p className="text-sm font-semibold text-slate-900">运营后台</p>
                 <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
                   {breadcrumb.length === 0 ? (
-                    <span>工作台</span>
+                    <span>今日看板</span>
                   ) : (
                     breadcrumb.map((segment, index) => (
                       <span key={`${segment}-${index}`} className="inline-flex items-center gap-1">
@@ -107,7 +107,7 @@ export default function AdminLayout({
                   className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
                   <PanelLeftClose className="h-3.5 w-3.5" />
-                  前台预览
+                  查看经销商端
                 </Link>
               </div>
             </div>

@@ -35,8 +35,10 @@ import {
   requestJson,
 } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
+import { CAMPAIGN_PROMO_OPTIONS } from "@/lib/domain/campaigns";
 import type {
   CampaignEntity,
+  CampaignPromoType,
   DealerEntity,
   DealerSegmentEntity,
   ProductEntity,
@@ -50,7 +52,7 @@ type CampaignForm = {
   weekly_focus_items: string[];
   product_pool_ids: string[];
   promo_threshold: number;
-  promo_type: string;
+  promo_type: CampaignPromoType | "";
   activity_notes: string[];
   target_dealer_ids: string[];
   target_segment_ids: string[];
@@ -284,8 +286,8 @@ export default function CampaignsPage() {
 
   return (
     <AdminPageFrame
-      title="活动策略"
-      description="结构化维护活动商品与目标范围，禁止用逗号文本维护主数据关联。"
+      title="安排活动"
+      description="设置活动档期、活动商品和适用门店。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadCampaigns} disabled={loading}>
@@ -453,8 +455,8 @@ export default function CampaignsPage() {
             resetForm();
           }
         }}
-        title={editingId ? `编辑活动: ${editingId}` : "创建活动"}
-        description="结构化维护活动商品与目标范围。"
+        title={editingId ? `编辑活动安排: ${editingId}` : "创建活动安排"}
+        description="设置活动商品和适用门店范围。"
       >
         <div className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2">
@@ -505,12 +507,38 @@ export default function CampaignsPage() {
             </div>
             <div className="space-y-1">
               <Label>促销类型</Label>
-              <Input
-                value={form.promo_type}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, promo_type: event.target.value }))
+              <Select
+                value={form.promo_type || "placeholder"}
+                onValueChange={(value) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    promo_type:
+                      value === "placeholder" ? "" : (value as CampaignPromoType),
+                  }))
                 }
-              />
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="请选择活动玩法" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="placeholder" disabled>
+                    请选择活动玩法
+                  </SelectItem>
+                  {CAMPAIGN_PROMO_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.promo_type ? (
+                <p className="text-xs text-slate-500">
+                  {
+                    CAMPAIGN_PROMO_OPTIONS.find((option) => option.value === form.promo_type)
+                      ?.description
+                  }
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -606,7 +634,7 @@ export default function CampaignsPage() {
             setPendingDisable(null);
           }
         }}
-        title="确认停用活动"
+        title="确认停用活动安排"
         description={`停用后该活动将不再参与推荐生成。${
           pendingDisable ? `\n活动：${pendingDisable.campaign_name}` : ""
         }`}

@@ -118,7 +118,7 @@ export default function ExpressionTemplatesPage() {
       setItems(data.items);
       setTotal(data.total);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载表达模板失败");
+      setErrorMessage(error instanceof Error ? error.message : "加载推荐话术失败");
     } finally {
       setLoading(false);
     }
@@ -161,7 +161,7 @@ export default function ExpressionTemplatesPage() {
         method: "POST",
         body: JSON.stringify(payloadFromForm()),
       });
-      setSuccessMessage("表达模板创建成功");
+      setSuccessMessage("推荐话术创建成功");
       setDrawerOpen(false);
       resetForm();
       await loadTemplates();
@@ -169,7 +169,7 @@ export default function ExpressionTemplatesPage() {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
       } else {
-        setErrorMessage("表达模板创建失败");
+        setErrorMessage("推荐话术创建失败");
       }
     }
   };
@@ -186,7 +186,7 @@ export default function ExpressionTemplatesPage() {
           body: JSON.stringify(payloadFromForm()),
         },
       );
-      setSuccessMessage("表达模板更新成功");
+      setSuccessMessage("推荐话术更新成功");
       setDrawerOpen(false);
       resetForm();
       await loadTemplates();
@@ -194,7 +194,7 @@ export default function ExpressionTemplatesPage() {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
       } else {
-        setErrorMessage("表达模板更新失败");
+        setErrorMessage("推荐话术更新失败");
       }
     }
   };
@@ -206,7 +206,7 @@ export default function ExpressionTemplatesPage() {
       await requestJson<ExpressionTemplateEntity>(`/api/admin/expression-templates/${id}`, {
         method: "DELETE",
       });
-      setSuccessMessage("表达模板已停用");
+      setSuccessMessage("推荐话术已停用");
       if (editingId === id) {
         resetForm();
       }
@@ -220,8 +220,8 @@ export default function ExpressionTemplatesPage() {
 
   return (
     <AdminPageFrame
-      title="表达模板"
-      description="仅使用 canonical expression-templates 数据源维护表达策略。"
+      title="设置推荐话术"
+      description="维护推荐说明和补货依据的话术内容。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadTemplates} disabled={loading}>
@@ -236,7 +236,7 @@ export default function ExpressionTemplatesPage() {
             }}
           >
             <Plus className="h-4 w-4" />
-            新建模板
+            新建话术
           </Button>
         </div>
       }
@@ -247,7 +247,7 @@ export default function ExpressionTemplatesPage() {
       <Card>
         <CardContent className="grid gap-3 p-4 md:grid-cols-6">
           <Input
-            placeholder="搜索模板 ID/名称/类型"
+            placeholder="搜索话术编号/名称/类型"
             value={query.q}
             onChange={(event) =>
               setQuery((prev) => ({ ...prev, q: event.target.value, page: 1 }))
@@ -280,8 +280,8 @@ export default function ExpressionTemplatesPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="expression_template_name">模板名称</SelectItem>
-              <SelectItem value="template_type">模板类型</SelectItem>
+              <SelectItem value="expression_template_name">话术名称</SelectItem>
+              <SelectItem value="template_type">话术类型</SelectItem>
               <SelectItem value="updated_at">更新时间</SelectItem>
             </SelectContent>
           </Select>
@@ -325,7 +325,7 @@ export default function ExpressionTemplatesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
-                  <TableHead>模板</TableHead>
+                  <TableHead>话术</TableHead>
                   <TableHead>类型/场景</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -386,13 +386,13 @@ export default function ExpressionTemplatesPage() {
             resetForm();
           }
         }}
-        title={editingId ? `编辑模板: ${editingId}` : "创建模板"}
-        description="维护表达模板结构化字段。"
+        title={editingId ? `编辑话术: ${editingId}` : "创建话术"}
+        description="维护推荐说明生成时要用到的话术字段。"
       >
         <div className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2">
             <div className="space-y-1">
-              <Label>模板编码</Label>
+              <Label>话术编码</Label>
               <Input
                 value={form.expression_template_id}
                 disabled={Boolean(editingId)}
@@ -405,7 +405,7 @@ export default function ExpressionTemplatesPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label>模板名称</Label>
+              <Label>话术名称</Label>
               <Input
                 value={form.expression_template_name}
                 onChange={(event) =>
@@ -419,7 +419,7 @@ export default function ExpressionTemplatesPage() {
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             <div className="space-y-1">
-              <Label>模板类型</Label>
+              <Label>话术类型</Label>
               <Select
                 value={form.template_type}
                 onValueChange={(value) =>
@@ -500,7 +500,7 @@ export default function ExpressionTemplatesPage() {
             />
           </div>
           <div className="space-y-1">
-            <Label>指令模板</Label>
+            <Label>话术指令</Label>
             <Textarea
               value={form.instruction}
               onChange={(event) =>
@@ -559,9 +559,9 @@ export default function ExpressionTemplatesPage() {
             setPendingDisable(null);
           }
         }}
-        title="确认停用表达模板"
-        description={`停用后模板将不再参与策略渲染。${
-          pendingDisable ? `\n模板：${pendingDisable.expression_template_name}` : ""
+        title="确认停用推荐话术"
+        description={`停用后这套话术将不再参与推荐说明生成。${
+          pendingDisable ? `\n话术：${pendingDisable.expression_template_name}` : ""
         }`}
         confirmLabel="确认停用"
         onConfirm={async () => {

@@ -31,6 +31,12 @@ export function findThresholdTopupCandidates(input: {
   if (gapToThreshold <= 0) {
     return [];
   }
+  if (
+    rules.cart_gap_trigger_amount > 0 &&
+    gapToThreshold > rules.cart_gap_trigger_amount
+  ) {
+    return [];
+  }
 
   const activeProducts = products.filter((item) => {
     if (item.status !== "active") return false;
@@ -40,9 +46,12 @@ export function findThresholdTopupCandidates(input: {
   });
 
   const sorted = [...activeProducts].sort((left, right) => {
-    const leftScore = (dealer.frequent_items.includes(left.sku_id) ? 10 : 0) + left.price_per_case;
+    const leftScore =
+      (rules.prefer_frequent_items && dealer.frequent_items.includes(left.sku_id) ? 10 : 0) +
+      left.price_per_case;
     const rightScore =
-      (dealer.frequent_items.includes(right.sku_id) ? 10 : 0) + right.price_per_case;
+      (rules.prefer_frequent_items && dealer.frequent_items.includes(right.sku_id) ? 10 : 0) +
+      right.price_per_case;
     return rightScore - leftScore;
   });
 
@@ -50,8 +59,8 @@ export function findThresholdTopupCandidates(input: {
     sku_id: item.sku_id,
     sku_name: item.sku_name,
     suggested_qty: Math.max(1, Math.ceil(gapToThreshold / item.price_per_case)),
-    reason: `当前仍差 ¥${gapToThreshold} 达门槛，推荐补充 ${item.sku_name}。`,
-    effect: "达到门槛金额",
+    reason: `当前还差 ¥${gapToThreshold} 可补齐本次凑单目标，推荐补充 ${item.sku_name}。`,
+    effect: "贴近凑单目标",
   }));
 }
 
@@ -95,8 +104,12 @@ export function findPairSuggestions(input: {
   cartItems: CartItem[];
   products: ProductEntity[];
   dealer: DealerEntity;
+  rules: RuleConfigEntity;
 }) {
-  const { cartItems, products, dealer } = input;
+  const { cartItems, products, dealer, rules } = input;
+  if (!rules.prefer_pair_items) {
+    return [];
+  }
   const inCart = new Set(cartItems.map((item) => item.sku_id));
   const productMap = new Map(products.map((item) => [item.sku_id, item]));
   const suggestions: Array<{ sku_id: string; sku_name: string; suggested_qty: number; reason: string }> = [];
@@ -110,6 +123,7 @@ export function findPairSuggestions(input: {
       if (dealer.forbidden_items.includes(pairSku)) continue;
       const pairProduct = productMap.get(pairSku);
       if (!pairProduct || pairProduct.status !== "active") continue;
+      if (!rules.allow_new_product_recommendation && pairProduct.is_new_product) continue;
 
       inCart.add(pairSku);
       suggestions.push({

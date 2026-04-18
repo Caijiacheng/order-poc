@@ -24,6 +24,8 @@ import {
   listRecommendationStrategies,
   listExpressionTemplates,
   publishGenerationJob,
+  replayRecommendationRecord,
+  resetDemoData,
   softDeleteExpressionTemplate,
   updateCampaign,
   updateGenerationJob,
@@ -33,7 +35,12 @@ import {
 import type { ListQuery } from "../../lib/admin/list-query";
 import { validateCampaignInput } from "../../lib/admin/validation";
 import { getMemoryStore } from "../../lib/memory/store";
-import { resetRuntimeState } from "../helpers/runtime";
+import {
+  captureLlmEnv,
+  resetRuntimeState,
+  restoreLlmEnv,
+  setMockLlmEnv,
+} from "../helpers/runtime";
 
 const LIST_QUERY: ListQuery = {
   page: 1,
@@ -227,6 +234,7 @@ describe("admin service Stage 2 contracts", () => {
       replenishment_days_threshold: 7,
       cart_gap_trigger_amount: 28,
       threshold_amount: 1200,
+      cart_target_amount: 1200,
       prefer_frequent_items: true,
       prefer_pair_items: true,
       box_adjust_if_close: false,
@@ -236,6 +244,7 @@ describe("admin service Stage 2 contracts", () => {
     });
     expect(updatedGlobalRules.rule_version).toBe("stage2.contract.001");
     expect(getGlobalRules().threshold_amount).toBe(1200);
+    expect(getGlobalRules().cart_target_amount).toBe(1200);
 
     const createdJob = createGenerationJob({
       job_id: "job_stage2_new",
@@ -333,6 +342,22 @@ describe("admin service Stage 2 contracts", () => {
 
     const strategies = listRecommendationStrategies(LIST_QUERY);
     expect(strategies.items.length).toBeGreaterThan(0);
+  });
+
+  it("resets runtime data back to seed baseline", () => {
+    updateGlobalRules({
+      ...getGlobalRules(),
+      rule_version: "runtime.override",
+      threshold_amount: 1200,
+      cart_target_amount: 1400,
+    });
+
+    const result = resetDemoData();
+
+    expect(result.snapshot?.snapshot_id).toBe("snapshot_seed_default");
+    expect(getGlobalRules().rule_version).toBe("2026.04.seed");
+    expect(getGlobalRules().threshold_amount).toBe(1000);
+    expect(getGlobalRules().cart_target_amount).toBe(1000);
   });
 
   it("validates recommendation batch run references", () => {
@@ -564,5 +589,65 @@ describe("admin service Stage 2 contracts", () => {
       customerId: "dealer_xm_sm",
     }).items.find((item) => item.batch_id === createdBatch.batch_id);
     expect(persistedBatch?.publication_status).toBe("published");
+  });
+
+  it("replays a single daily recommendation record as the same scene only", async () => {
+    const envSnapshot = captureLlmEnv();
+    setMockLlmEnv("mock-admin-replay-daily");
+    try {
+      const result = await replayRecommendationRecord("reco_run_seed_001");
+      expect(result.generated_run_ids).toHaveLength(1);
+      expect(result.summary).toContain("日常补货建议");
+      expect(result.batch.scene).toBe("daily_recommendation");
+
+      const replayRun = getMemoryStore().recommendationRuns.find(
+        (item) => item.recommendation_run_id === result.generated_run_ids[0],
+      );
+      expect(replayRun?.scene).toBe("daily_recommendation");
+    } finally {
+      restoreLlmEnv(envSnapshot);
+    }
+  });
+
+  it("replays a single cart optimization record with seeded cart context", async () => {
+    const envSnapshot = captureLlmEnv();
+    setMockLlmEnv("mock-admin-replay-cart");
+    try {
+      const result = await replayRecommendationRecord("reco_run_seed_002");
+      expect(result.generated_run_ids).toHaveLength(1);
+      expect(result.summary).toContain("凑单推荐");
+      expect(result.batch.scene).toBe("box_pair_optimization");
+
+      const store = getMemoryStore();
+      const replayRun = store.recommendationRuns.find(
+        (item) => item.recommendation_run_id === result.generated_run_ids[0],
+      );
+      expect(replayRun?.scene).toBe("box_pair_optimization");
+      expect(store.cartSessions[result.batch.session_id ?? ""]?.items.length).toBeGreaterThan(0);
+    } finally {
+      restoreLlmEnv(envSnapshot);
+    }
+  });
+
+  it("supports purchase vs checkout record scopes", () => {
+    const purchaseRecords = listRecommendationRecords(REPORT_QUERY, {
+      scene: "purchase_bundle",
+    });
+    expect(
+      purchaseRecords.items.every(
+        (item) =>
+          item.scene === "daily_recommendation" || item.scene === "weekly_focus",
+      ),
+    ).toBe(true);
+
+    const checkoutRecords = listRecommendationRecords(REPORT_QUERY, {
+      scene: "checkout_optimization",
+    });
+    expect(
+      checkoutRecords.items.every(
+        (item) =>
+          item.scene === "box_pair_optimization" || item.scene === "threshold_topup",
+      ),
+    ).toBe(true);
   });
 });

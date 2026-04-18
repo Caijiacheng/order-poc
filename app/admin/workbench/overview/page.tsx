@@ -124,15 +124,15 @@ export default function WorkbenchOverviewPage() {
         requestJson<ListResult<AuditLogEvent>>(
           "/api/admin/audit-logs?page=1&pageSize=6&sortBy=timestamp&sortOrder=desc",
         ),
-        fetchHealthItem<ProductEntity>("商品档案", "/api/admin/products?"),
-        fetchHealthItem<DealerEntity>("经销商档案", "/api/admin/dealers?"),
+        fetchHealthItem<ProductEntity>("商品信息", "/api/admin/products?"),
+        fetchHealthItem<DealerEntity>("门店信息", "/api/admin/dealers?"),
         fetchHealthItem<RecommendationStrategyEntity>(
-          "推荐策略",
+          "推荐方案",
           "/api/admin/recommendation-strategies?",
         ),
-        fetchHealthItem<CampaignEntity>("活动策略", "/api/admin/campaigns?"),
+        fetchHealthItem<CampaignEntity>("活动安排", "/api/admin/campaigns?"),
         fetchHealthItem<ExpressionTemplateEntity>(
-          "表达模板",
+          "推荐话术",
           "/api/admin/expression-templates?",
         ),
       ]);
@@ -150,7 +150,7 @@ export default function WorkbenchOverviewPage() {
         ],
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载工作台失败");
+      setErrorMessage(error instanceof Error ? error.message : "加载今日看板失败");
     } finally {
       setLoading(false);
     }
@@ -188,11 +188,13 @@ export default function WorkbenchOverviewPage() {
           data.todayRecords.reduce((sum, item) => sum + item.model_latency_ms, 0) /
             data.todayRecords.length,
         );
+  const latestPublished = todayPublished[0] ?? null;
+  const latestLog = data.recentLogs[0] ?? null;
 
   return (
     <AdminPageFrame
-      title="运营工作台"
-      description="聚焦今日批量生成、异常批次、配置健康度、发布状态、最近变更和推荐效果。"
+      title="今日看板"
+      description="先确认今天有没有发布、有没有异常、门店有没有带货，再决定下一步。"
       action={
         <Button className="rounded-full" variant="outline" onClick={loadData} disabled={loading}>
           <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -202,14 +204,70 @@ export default function WorkbenchOverviewPage() {
     >
       <FeedbackBanner kind="error" message={errorMessage} />
 
-      <section className="grid gap-4 xl:grid-cols-2">
+      <section className="grid gap-4 xl:grid-cols-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">今日批量生成结果</CardTitle>
+            <CardTitle className="text-lg">今天已发布</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="kpi-value text-2xl">{todayPublished.length}</p>
+            <p className="text-slate-500">
+              {latestPublished
+                ? `最近发布：${latestPublished.batch_id}`
+                : "今天还没有发布任何建议批次。"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">待处理异常</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="kpi-value text-2xl">{abnormalBatches.length}</p>
+            <p className="text-slate-500">
+              {abnormalBatches.length === 0
+                ? "今天没有需要排查的异常批次。"
+                : "建议优先查看异常批次和执行过程。"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">门店采纳情况</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="kpi-value text-2xl">{toPercent(adoptionRate)}</p>
+            <p className="text-slate-500">
+              今天共有 {data.todayRecords.length} 条门店建议，其中 {adoptedCount} 条已被采纳。
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">平均模型耗时</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="kpi-value text-2xl">{avgLatency}ms</p>
+            <p className="text-slate-500">
+              {data.todayRecords.length === 0
+                ? "今天还没有实际门店建议耗时数据。"
+                : "用来判断今天的生成链路是否明显变慢。"}
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">今天生成进度</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm md:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">批次总数</p>
+              <p className="text-slate-500">今天共生成批次</p>
               <p className="kpi-value text-xl">{data.todayBatches.length}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -229,159 +287,155 @@ export default function WorkbenchOverviewPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">今日发布状态</CardTitle>
+            <CardTitle className="text-lg">建议下一步</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-              <p className="text-slate-500">已发布批次</p>
-              <p className="kpi-value text-xl">{todayPublished.length}</p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              {abnormalBatches.length > 0
+                ? `今天有 ${abnormalBatches.length} 个异常批次，建议先排查异常，再决定是否重新生成。`
+                : todayPublished.length === 0
+                  ? "今天还没有发布批次，建议先检查生成结果，再决定是否发布。"
+                  : "今天已有批次发布，可继续查看门店建议和采纳情况。"}
             </div>
-            <div className="space-y-2">
-              {todayPublished.length === 0 ? (
-                <p className="text-sm text-slate-500">今日暂无已发布批次。</p>
-              ) : (
-                todayPublished.slice(0, 4).map((item) => (
-                  <div
-                    key={item.batch_id}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
-                  >
-                    <p className="font-mono text-slate-700">{item.batch_id}</p>
-                    <p className="text-slate-500">{item.job_id ?? "无任务"} · {item.batch_type}</p>
-                  </div>
-                ))
-              )}
+            <div className="grid gap-2 md:grid-cols-2">
+              <Button asChild variant="outline">
+                <Link href="/admin/operations/recommendation-batches" className="gap-2">
+                  查看生成批次
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/admin/analytics/recommendation-records" className="gap-2">
+                  查看门店建议
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/admin/operations/generation-jobs" className="gap-2">
+                  继续生成建议单
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/admin/analytics/overview" className="gap-2">
+                  查看结果总览
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">待处理异常批次</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {abnormalBatches.length === 0 ? (
-              <p className="text-sm text-slate-500">今日无异常批次。</p>
-            ) : (
-              abnormalBatches.slice(0, 6).map((batch) => (
-                <div
-                  key={batch.batch_id}
-                  className="rounded-xl border border-amber-200 bg-amber-50 p-3"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-mono text-xs text-amber-900">{batch.batch_id}</p>
-                    <Badge variant="outline">{batch.status}</Badge>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">需要处理的异常批次</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {abnormalBatches.length === 0 ? (
+                <p className="text-sm text-slate-500">今日无异常批次。</p>
+              ) : (
+                abnormalBatches.slice(0, 6).map((batch) => (
+                  <div
+                    key={batch.batch_id}
+                    className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-mono text-xs text-amber-900">{batch.batch_id}</p>
+                      <Badge variant="outline">{batch.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-amber-800">
+                      {batch.error_summary || "无错误摘要"}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link
+                          href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
+                            batch.batch_id,
+                          )}`}
+                        >
+                          查看门店建议
+                        </Link>
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link
+                          href={`/admin/observability/traces?batchId=${encodeURIComponent(
+                            batch.batch_id,
+                          )}`}
+                        >
+                          查看执行过程
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-amber-800">{batch.error_summary || "无错误摘要"}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button asChild size="sm" variant="outline">
-                      <Link
-                        href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
-                          batch.batch_id,
-                        )}`}
-                      >
-                        查看记录
-                      </Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link
-                        href={`/admin/observability/traces?batchId=${encodeURIComponent(
-                          batch.batch_id,
-                        )}`}
-                      >
-                        查看链路
-                      </Link>
-                    </Button>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">最近改了什么</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {data.recentLogs.length === 0 ? (
+                <p className="text-sm text-slate-500">暂无配置变更记录。</p>
+              ) : (
+                data.recentLogs.map((log) => (
+                  <div key={log.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm text-slate-800">{log.summary}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {log.entity_type} · {log.action} ·{" "}
+                      {new Date(log.timestamp).toLocaleString("zh-CN")}
+                    </p>
                   </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">配置健康度</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 text-sm">
-            {data.configHealth.map((item) => {
-              const ratio = item.total === 0 ? 0 : (item.active / item.total) * 100;
-              return (
-                <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-slate-500">{item.label}</p>
-                  <p className="kpi-value text-xl">
-                    {item.active}/{item.total}
-                  </p>
-                  <p className="text-xs text-slate-500">启用率 {toPercent(ratio)}</p>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      </section>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">基础信息是否齐全</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm">
+              {data.configHealth.map((item) => {
+                const ratio = item.total === 0 ? 0 : (item.active / item.total) * 100;
+                return (
+                  <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-slate-500">{item.label}</p>
+                    <p className="kpi-value text-xl">
+                      {item.active}/{item.total}
+                    </p>
+                    <p className="text-xs text-slate-500">启用率 {toPercent(ratio)}</p>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">最近变更</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {data.recentLogs.length === 0 ? (
-              <p className="text-sm text-slate-500">暂无配置变更记录。</p>
-            ) : (
-              data.recentLogs.map((log) => (
-                <div key={log.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-sm text-slate-800">{log.summary}</p>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">今天最后一次动作</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              {latestLog ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-slate-800">{latestLog.summary}</p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {log.entity_type} · {log.action} ·{" "}
-                    {new Date(log.timestamp).toLocaleString("zh-CN")}
+                    {new Date(latestLog.timestamp).toLocaleString("zh-CN")}
                   </p>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">推荐效果摘要</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 text-sm md:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">今日推荐记录</p>
-                <p className="kpi-value text-xl">{data.todayRecords.length}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">已采纳记录</p>
-                <p className="kpi-value text-xl">{adoptedCount}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">采纳率</p>
-                <p className="kpi-value text-xl">{toPercent(adoptionRate)}</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">平均模型耗时</p>
-                <p className="kpi-value text-xl">{avgLatency}ms</p>
-              </div>
-            </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              <Button asChild variant="outline">
-                <Link href="/admin/operations/recommendation-batches" className="gap-2">
-                  批次中心
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/admin/analytics/recommendation-records" className="gap-2">
-                  记录复盘
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              ) : (
+                <p className="text-slate-500">今天还没有新的后台操作记录。</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </section>
     </AdminPageFrame>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, ShoppingCart, X } from "lucide-react";
 
@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   addCartItem,
   fetchActiveDealers,
+  fetchActiveProducts,
   fetchCart,
   formatMoney,
   optimizeCart,
@@ -23,18 +24,147 @@ import {
   type CartOptimizationResponse,
 } from "@/lib/frontstage/api";
 import type {
-  CartItem,
   CartOptimizationRecommendationBar,
   CartSession,
   DealerEntity,
+  ProductEntity,
 } from "@/lib/memory/types";
 
 function buildBarActionKey(bar: CartOptimizationRecommendationBar) {
   return `bar:${bar.bar_id}`;
 }
 
+function toDisplayNumber(index: number) {
+  return String(index + 1).padStart(2, "0");
+}
+
+function toBarTypeLabel(barType: CartOptimizationRecommendationBar["bar_type"]) {
+  if (barType === "threshold") {
+    return "凑够起订额";
+  }
+  if (barType === "box_adjustment") {
+    return "补齐整箱";
+  }
+  return "搭配补货";
+}
+
+function getBarAddedAmount(
+  bar: CartOptimizationRecommendationBar,
+  productMap: Map<string, ProductEntity>,
+) {
+  return bar.items.reduce((sum, item) => {
+    const product = productMap.get(item.sku_id);
+    if (!product) {
+      return sum;
+    }
+    const qty =
+      item.action_type === "adjust_qty"
+        ? Math.max(0, (item.to_qty ?? item.suggested_qty) - (item.from_qty ?? 0))
+        : item.suggested_qty;
+    return sum + qty * product.price_per_case;
+  }, 0);
+}
+
+function getPairingAnchorNames(input: {
+  bar: CartOptimizationRecommendationBar;
+  cart: CartSession | null;
+  productMap: Map<string, ProductEntity>;
+}) {
+  const { bar, cart, productMap } = input;
+  if (!cart || bar.bar_type !== "pairing") {
+    return [];
+  }
+  const suggestedSkuSet = new Set(bar.items.map((item) => item.sku_id));
+  const targetSkuIds = bar.items.map((item) => item.sku_id);
+  return cart.items
+    .filter((cartItem) => !suggestedSkuSet.has(cartItem.sku_id))
+    .filter((cartItem) => {
+      const product = productMap.get(cartItem.sku_id);
+      if (!product) {
+        return false;
+      }
+      return targetSkuIds.some((skuId) => product.pair_items.includes(skuId));
+    })
+    .map((cartItem) => cartItem.sku_name);
+}
+
+function buildBarCustomerSummary(input: {
+  bar: CartOptimizationRecommendationBar;
+  cart: CartSession | null;
+  dealer: DealerEntity | null;
+  productMap: Map<string, ProductEntity>;
+}) {
+  const { bar, cart, dealer, productMap } = input;
+  const addedAmount = getBarAddedAmount(bar, productMap);
+  const firstItem = bar.items[0];
+  const anchorNames = getPairingAnchorNames({ bar, cart, productMap });
+
+  if (bar.bar_type === "threshold") {
+    return `再带上这组约 ${formatMoney(addedAmount)}，这单更容易凑够起订额。`;
+  }
+  if (bar.bar_type === "box_adjustment") {
+    if (bar.items.length === 1 && firstItem?.action_type === "adjust_qty") {
+      const delta = Math.max(
+        0,
+        (firstItem.to_qty ?? firstItem.suggested_qty) - (firstItem.from_qty ?? 0),
+      );
+      return `${firstItem.sku_name} 再补 ${delta} 箱就正好整箱，收货更省事。`;
+    }
+    return "把这几款一起补到整箱，后续收货和出货都更省事。";
+  }
+  if (anchorNames.length > 0) {
+    return `你这单里已经有 ${anchorNames.slice(0, 2).join("、")}，这次一起补上更容易一次备齐。`;
+  }
+  if (dealer && firstItem && dealer.frequent_items.includes(firstItem.sku_id)) {
+    return `${firstItem.sku_name} 本身就是门店常带商品，这次一起补上更稳妥。`;
+  }
+  return `这款和你这单里的商品搭配更完整，一起补上能少跑一趟补货。`;
+}
+
+function buildBarEvidence(input: {
+  bar: CartOptimizationRecommendationBar;
+  cart: CartSession | null;
+  dealer: DealerEntity | null;
+  productMap: Map<string, ProductEntity>;
+}) {
+  const { bar, cart, dealer, productMap } = input;
+  const addedAmount = getBarAddedAmount(bar, productMap);
+  const anchorNames = getPairingAnchorNames({ bar, cart, productMap });
+  const frequentNames =
+    cart && dealer
+      ? cart.items
+          .filter((item) => dealer.frequent_items.includes(item.sku_id))
+          .map((item) => item.sku_name)
+      : [];
+
+  if (bar.bar_type === "threshold") {
+    return [
+      `当前这单金额 ${formatMoney(cart?.summary.total_amount ?? 0)}，离起订额还差 ${formatMoney(
+        cart?.summary.gap_to_threshold ?? 0,
+      )}`,
+      `这组建议预计再增加 ${formatMoney(addedAmount)}`,
+      dealer ? `按门店平时 ${dealer.order_frequency} 的进货节奏，这次一起带上更省一次补货。` : "",
+    ].filter(Boolean);
+  }
+
+  if (bar.bar_type === "box_adjustment") {
+    return bar.items.map((item) => {
+      const fromQty = item.from_qty ?? 0;
+      const toQty = item.to_qty ?? item.suggested_qty;
+      return `${item.sku_name} 当前 ${fromQty} 箱，补到 ${toQty} 箱正好整箱。`;
+    });
+  }
+
+  return [
+    anchorNames.length > 0 ? `你这单里已选：${anchorNames.slice(0, 3).join("、")}` : "",
+    frequentNames.length > 0 ? `门店常买：${frequentNames.slice(0, 3).join("、")}` : "",
+    `这次一起补约 ${formatMoney(addedAmount)}`,
+  ].filter(Boolean);
+}
+
 export default function OrderSubmitPage() {
   const [dealers, setDealers] = useState<DealerEntity[]>([]);
+  const [products, setProducts] = useState<ProductEntity[]>([]);
   const [cart, setCart] = useState<CartSession | null>(null);
   const [optimization, setOptimization] = useState<CartOptimizationResponse | null>(null);
   const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
@@ -58,14 +188,16 @@ export default function OrderSubmitPage() {
     const bootstrap = async () => {
       setLoadingPage(true);
       try {
-        const [dealerList, cartSession] = await Promise.all([
+        const [dealerList, productList, cartSession] = await Promise.all([
           fetchActiveDealers(),
+          fetchActiveProducts(),
           fetchCart(),
         ]);
         setDealers(dealerList);
+        setProducts(productList);
         setCart(cartSession);
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "加载购物车提交页失败");
+        setErrorMessage(error instanceof Error ? error.message : "加载确认下单页面失败");
       } finally {
         setLoadingPage(false);
       }
@@ -80,6 +212,11 @@ export default function OrderSubmitPage() {
     }
     return dealers.find((dealer) => dealer.customer_id === cart.customer_id) ?? null;
   }, [cart?.customer_id, dealers]);
+
+  const productMap = useMemo(
+    () => new Map(products.map((product) => [product.sku_id, product])),
+    [products],
+  );
 
   const cartSignature = useMemo(() => {
     if (!cart || cart.items.length === 0) {
@@ -97,41 +234,43 @@ export default function OrderSubmitPage() {
     return nextCart;
   };
 
-  const recomputeOptimization = async (options?: { silent?: boolean }) => {
-    if (!cart || cart.items.length === 0) {
-      setOptimization(null);
-      return;
-    }
-
-    const token = Date.now();
-    latestOptimizationToken.current = token;
-    setOptimizing(true);
-    if (!options?.silent) {
-      setErrorMessage("");
-      setSuccessMessage("");
-    }
-
-    try {
-      const result = await optimizeCart(cart.customer_id);
-      if (latestOptimizationToken.current !== token) {
+  const recomputeOptimization = useEffectEvent(
+    async (nextCart: CartSession, options?: { silent?: boolean }) => {
+      if (nextCart.items.length === 0) {
+        setOptimization(null);
         return;
       }
-      setOptimization(result);
+
+      const token = Date.now();
+      latestOptimizationToken.current = token;
+      setOptimizing(true);
       if (!options?.silent) {
-        setSuccessMessage("顺手补货推荐已按最新购物车自动刷新。");
+        setErrorMessage("");
+        setSuccessMessage("");
       }
-    } catch (error) {
-      if (latestOptimizationToken.current !== token) {
-        return;
+
+      try {
+        const result = await optimizeCart(nextCart.customer_id);
+        if (latestOptimizationToken.current !== token) {
+          return;
+        }
+        setOptimization(result);
+        if (!options?.silent) {
+          setSuccessMessage("补货建议已按最新购物车更新。");
+        }
+      } catch (error) {
+        if (latestOptimizationToken.current !== token) {
+          return;
+        }
+        setOptimization(null);
+        setErrorMessage(error instanceof Error ? error.message : "自动计算凑单推荐失败");
+      } finally {
+        if (latestOptimizationToken.current === token) {
+          setOptimizing(false);
+        }
       }
-      setOptimization(null);
-      setErrorMessage(error instanceof Error ? error.message : "自动计算凑单推荐失败");
-    } finally {
-      if (latestOptimizationToken.current === token) {
-        setOptimizing(false);
-      }
-    }
-  };
+    },
+  );
 
   useEffect(() => {
     if (loadingPage || !cart) {
@@ -141,24 +280,42 @@ export default function OrderSubmitPage() {
       setOptimization(null);
       return;
     }
-    void recomputeOptimization({ silent: true });
+    void recomputeOptimization(cart, { silent: true });
   }, [cart, cartSignature, loadingPage]);
 
   const updateItemQty = async (skuId: string) => {
-    const qtyValue = Number(qtyDraft[skuId] ?? "0");
+    const currentRow = cart?.items.find((item) => item.sku_id === skuId);
+    if (!currentRow) {
+      return;
+    }
+    const rawDraft = qtyDraft[skuId];
+    if (typeof rawDraft !== "string" || rawDraft.trim() === "") {
+      setQtyDraft((prev) => ({
+        ...prev,
+        [skuId]: String(currentRow.qty),
+      }));
+      return;
+    }
+
+    const qtyValue = Number(rawDraft);
     if (!Number.isFinite(qtyValue)) {
       return;
     }
+
     const qty = Math.floor(qtyValue);
+    if (qty === currentRow.qty) {
+      return;
+    }
     setBusyActionKey(`patch:${skuId}`);
     setErrorMessage("");
     setSuccessMessage("");
     try {
+      const itemName = currentRow.sku_name ?? "商品";
       const result = await patchCartItem({ skuId, qty });
       setCart(result.cart);
-      setSuccessMessage(qty <= 0 ? `已移除 ${skuId}` : `已更新 ${skuId} 数量`);
+      setSuccessMessage(qty <= 0 ? `已移除 ${itemName}` : `已把 ${itemName} 调整为 ${qty} 箱`);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "更新数量失败");
+      setErrorMessage(error instanceof Error ? error.message : "修改数量失败");
     } finally {
       setBusyActionKey("");
     }
@@ -169,9 +326,10 @@ export default function OrderSubmitPage() {
     setErrorMessage("");
     setSuccessMessage("");
     try {
+      const itemName = cart?.items.find((item) => item.sku_id === skuId)?.sku_name ?? "商品";
       const result = await removeCartItem(skuId);
       setCart(result.cart);
-      setSuccessMessage(`已删除 ${skuId}`);
+      setSuccessMessage(`已移除 ${itemName}`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "删除商品失败");
     } finally {
@@ -235,12 +393,12 @@ export default function OrderSubmitPage() {
   return (
     <div className="space-y-6" data-testid="order-submit-workbench">
       <section className="space-y-3">
-        <Badge className="rounded-full px-3 py-1">购物车提交页</Badge>
+        <Badge className="rounded-full px-3 py-1">确认下单</Badge>
         <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-          购物车结算与提交
+          确认商品并下单
         </h1>
         <p className="text-sm text-slate-600">
-          系统会根据最新购物车自动给出顺手补货和凑单推荐，你只需逐条决定是否采纳，然后完成交易信息确认。
+          确认这次要带的商品和箱数；如果金额还差一点，右侧会提示几款适合一起带上的商品。
         </p>
       </section>
 
@@ -260,7 +418,7 @@ export default function OrderSubmitPage() {
           <CardHeader className="space-y-2">
             <CardTitle className="text-xl text-slate-900">购物车商品清单</CardTitle>
             <p className="text-sm text-slate-600">
-              支持改量、删项。商品变化后，右侧推荐条会自动刷新。
+              确认每款商品的箱数；改完数字后会自动保存，不需要的可以直接删掉。
             </p>
           </CardHeader>
           <CardContent>
@@ -271,28 +429,32 @@ export default function OrderSubmitPage() {
               </div>
             ) : cart.items.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                购物车为空，请先返回采购工作台进行组货或加购。
+                当前还没有选中商品，请先回到上一页继续选货。
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>SKU</TableHead>
+                    <TableHead>序号</TableHead>
                     <TableHead>商品</TableHead>
                     <TableHead className="text-right">单价</TableHead>
-                    <TableHead className="text-right">数量</TableHead>
+                    <TableHead className="text-right">箱数</TableHead>
                     <TableHead className="text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {cart.items.map((row) => (
+                  {cart.items.map((row, index) => (
                     <TableRow key={row.sku_id}>
-                      <TableCell className="font-mono text-xs">{row.sku_id}</TableCell>
+                      <TableCell className="text-xs text-slate-500">
+                        {toDisplayNumber(index)}
+                      </TableCell>
                       <TableCell>
                         <p className="font-medium text-slate-900">{row.sku_name}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          来源：{row.source === "recommendation" ? "系统推荐" : "手工加购"}
-                        </p>
+                        {productMap.get(row.sku_id)?.spec ? (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {productMap.get(row.sku_id)?.spec}
+                          </p>
+                        ) : null}
                       </TableCell>
                       <TableCell className="text-right">
                         {formatMoney(row.price_per_case)}
@@ -309,16 +471,20 @@ export default function OrderSubmitPage() {
                                 [row.sku_id]: event.target.value,
                               }))
                             }
+                            onBlur={() => void updateItemQty(row.sku_id)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") {
+                                return;
+                              }
+                              event.preventDefault();
+                              void updateItemQty(row.sku_id);
+                              (event.currentTarget as HTMLInputElement).blur();
+                            }}
                             aria-label={`${row.sku_name} 数量`}
                           />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void updateItemQty(row.sku_id)}
-                            disabled={busyActionKey === `patch:${row.sku_id}`}
-                          >
-                            更新
-                          </Button>
+                          {busyActionKey === `patch:${row.sku_id}` ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -343,27 +509,24 @@ export default function OrderSubmitPage() {
           <Card className="border-slate-200 bg-gradient-to-b from-slate-50 to-white" data-testid="order-submit-summary">
             <CardHeader className="space-y-2">
               <CardTitle className="text-xl text-slate-900">订单汇总</CardTitle>
-              <p className="text-sm text-slate-600">
-                推荐条会贴近金额和提交区展示，帮助你顺手补齐更合适的组合。
-              </p>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <p className="text-slate-500">当前经销商</p>
+                <p className="text-slate-500">当前门店</p>
                 <p className="mt-1 font-medium text-slate-900">
-                  {currentDealer?.customer_name ?? "未选择经销商"}
+                  {currentDealer?.customer_name ?? "未识别门店"}
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <p className="text-slate-500">商品金额 / 门槛</p>
+                <p className="text-slate-500">本单金额 / 起订额</p>
                 <p className="kpi-value mt-1 text-lg text-slate-900">
                   {formatMoney(cart?.summary.total_amount ?? 0)} /{" "}
                   {formatMoney(cart?.summary.threshold_amount ?? 0)}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   {cart?.summary.threshold_reached
-                    ? "已达到当前门槛，可直接完成交易确认。"
-                    : `距门槛还差 ${formatMoney(cart?.summary.gap_to_threshold ?? 0)}`}
+                    ? "已满足起订额，可以直接确认下单。"
+                    : `还差 ${formatMoney(cart?.summary.gap_to_threshold ?? 0)} 就到起订额`}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -384,10 +547,7 @@ export default function OrderSubmitPage() {
 
           <Card className="border-slate-200 bg-white/92" data-testid="order-submit-recommendation-bars">
             <CardHeader className="space-y-2">
-              <CardTitle className="text-xl text-slate-900">顺手补货推荐</CardTitle>
-              <p className="text-sm text-slate-600">
-                推荐条围绕活动门槛、箱规和搭配补充组织，不再采用独立优化面板。
-              </p>
+              <CardTitle className="text-xl text-slate-900">凑单推荐</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {optimizing ? (
@@ -412,20 +572,21 @@ export default function OrderSubmitPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium text-slate-900">{bar.headline}</p>
-                          <p className="mt-1 text-sm text-slate-700">{bar.value_message}</p>
+                          <p className="mt-1 text-sm text-slate-700">
+                            {buildBarCustomerSummary({
+                              bar,
+                              cart,
+                              dealer: currentDealer,
+                              productMap,
+                            })}
+                          </p>
                         </div>
-                        <Badge variant="outline">
-                          {bar.bar_type === "threshold"
-                            ? "活动门槛"
-                            : bar.bar_type === "box_adjustment"
-                              ? "箱规修正"
-                              : "搭配补充"}
-                        </Badge>
+                        <Badge variant="outline">{toBarTypeLabel(bar.bar_type)}</Badge>
                       </div>
                       <p className="mt-2 text-xs text-slate-500">
                         {bar.items.length === 1 && firstItem
                           ? `${firstItem.sku_name} · ${firstItem.action_type === "adjust_qty" ? `调整到 ${firstItem.to_qty ?? firstItem.suggested_qty} 箱` : `建议 ${firstItem.suggested_qty} 箱`}`
-                          : `涉及 ${bar.items.length} 个 SKU 组合`}
+                          : `共 ${bar.items.length} 款商品一起带上`}
                       </p>
                       <div className="mt-3 flex items-center justify-between gap-2">
                         <Button
@@ -445,7 +606,7 @@ export default function OrderSubmitPage() {
                           variant="ghost"
                           onClick={() => setOpenedBarId(bar.bar_id)}
                         >
-                          为什么推荐
+                          查看依据
                         </Button>
                       </div>
                     </div>
@@ -459,7 +620,7 @@ export default function OrderSubmitPage() {
             <CardHeader className="space-y-2">
               <CardTitle className="text-xl text-slate-900">交易信息</CardTitle>
               <p className="text-sm text-slate-600">
-                这部分承接真实 B2B 提交动作：收货、配送、结算、发票与备注。
+                确认收货、配送和结算信息后，就可以直接提交订单。
               </p>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -522,11 +683,21 @@ export default function OrderSubmitPage() {
         {openedBar ? (
           <div className="space-y-4" data-testid="order-submit-reason-drawer">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm font-medium text-slate-900">{openedBar.value_message}</p>
-              <p className="mt-1 text-xs text-slate-600">组合 ID：{openedBar.combo_id}</p>
+              <p className="text-sm font-medium text-slate-900">
+                {buildBarCustomerSummary({
+                  bar: openedBar,
+                  cart,
+                  dealer: currentDealer,
+                  productMap,
+                })}
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                共 {openedBar.items.length} 款商品，预计增加{" "}
+                {formatMoney(getBarAddedAmount(openedBar, productMap))}
+              </p>
             </div>
             <section className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">SKU 明细</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-500">建议商品</p>
               <div className="space-y-2">
                 {openedBar.items.map((item) => (
                   <div
@@ -541,14 +712,29 @@ export default function OrderSubmitPage() {
                           : `${item.suggested_qty} 箱`}
                       </Badge>
                     </div>
-                    <p className="mt-1 font-mono text-xs text-slate-500">{item.sku_id}</p>
                   </div>
                 ))}
               </div>
             </section>
             <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
-              <p className="text-xs uppercase tracking-[0.14em] text-indigo-600">业务解释</p>
-              <p className="mt-2 text-sm leading-6 text-indigo-900">{openedBar.explanation}</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-indigo-600">
+                这次建议主要依据
+              </p>
+              <div className="mt-3 space-y-2">
+                {buildBarEvidence({
+                  bar: openedBar,
+                  cart,
+                  dealer: currentDealer,
+                  productMap,
+                }).map((line) => (
+                  <div
+                    key={line}
+                    className="rounded-lg border border-indigo-100 bg-white/80 px-3 py-2"
+                  >
+                    <p className="text-sm leading-6 text-indigo-950">{line}</p>
+                  </div>
+                ))}
+              </div>
             </section>
           </div>
         ) : null}

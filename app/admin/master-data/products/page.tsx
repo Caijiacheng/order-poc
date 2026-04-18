@@ -3,8 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
+import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
-import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
+import {
+  MultiSelectChecklist,
+  type ChecklistOption,
+} from "@/components/admin/multi-select-checklist";
 import { AdminPageFrame } from "@/components/admin/page-frame";
 import { TokenEditor } from "@/components/admin/token-editor";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +17,26 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AdminClientError, formatFieldErrors, requestJson } from "@/lib/admin/client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  AdminClientError,
+  formatFieldErrors,
+  requestJson,
+} from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
 import type { ProductEntity } from "@/lib/memory/types";
 
@@ -65,6 +87,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingDisable, setPendingDisable] = useState<ProductEntity | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -129,6 +153,11 @@ export default function ProductsPage() {
     setEditingId(null);
   };
 
+  const openCreateDrawer = () => {
+    resetForm();
+    setDrawerOpen(true);
+  };
+
   const pickForEdit = (item: ProductEntity) => {
     setEditingId(item.sku_id);
     setForm({
@@ -146,6 +175,7 @@ export default function ProductsPage() {
       status: item.status,
       display_order: item.display_order,
     });
+    setDrawerOpen(true);
   };
 
   const submitCreate = async () => {
@@ -157,6 +187,7 @@ export default function ProductsPage() {
         body: JSON.stringify(form),
       });
       setSuccessMessage("商品创建成功");
+      setDrawerOpen(false);
       resetForm();
       await Promise.all([loadProducts(), loadAllProducts()]);
     } catch (error) {
@@ -178,6 +209,7 @@ export default function ProductsPage() {
         body: JSON.stringify(form),
       });
       setSuccessMessage("商品更新成功");
+      setDrawerOpen(false);
       resetForm();
       await Promise.all([loadProducts(), loadAllProducts()]);
     } catch (error) {
@@ -197,22 +229,33 @@ export default function ProductsPage() {
         method: "DELETE",
       });
       setSuccessMessage("商品已停用");
-      if (editingId === id) resetForm();
+      if (editingId === id) {
+        setDrawerOpen(false);
+        resetForm();
+      }
       await Promise.all([loadProducts(), loadAllProducts()]);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "停用失败");
+    } finally {
+      setPendingDisable(null);
     }
   };
 
   return (
     <AdminPageFrame
-      title="商品档案"
-      description="维护 SKU、价格、箱规与标签关系，供活动和推荐策略结构化引用。"
+      title="维护商品"
+      description="维护给门店可订的商品信息，供活动和推荐方案引用。"
       action={
-        <Button className="rounded-full" onClick={resetForm}>
-          <Plus className="h-4 w-4" />
-          新建商品
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadProducts} disabled={loading}>
+            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            刷新
+          </Button>
+          <Button className="rounded-full" onClick={openCreateDrawer}>
+            <Plus className="h-4 w-4" />
+            新建商品
+          </Button>
+        </div>
       }
     >
       <FeedbackBanner kind="success" message={successMessage} />
@@ -288,253 +331,293 @@ export default function ProductsPage() {
               <SelectItem value="50">50 / 页</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={loadProducts} disabled={loading}>
-            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-            刷新
-          </Button>
+          <div className="flex items-center text-xs text-slate-500">总数 {total}</div>
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>SKU</TableHead>
+                <TableHead>商品</TableHead>
+                <TableHead>价格/箱规</TableHead>
+                <TableHead>关系</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.length === 0 ? (
                 <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>商品</TableHead>
-                  <TableHead>价格/箱规</TableHead>
-                  <TableHead>关系</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableCell className="text-center text-slate-500" colSpan={6}>
+                    {loading ? "加载中..." : "无数据"}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.length === 0 ? (
-                  <TableRow>
-                    <TableCell className="text-center text-slate-500" colSpan={6}>
-                      {loading ? "加载中..." : "无数据"}
+              ) : (
+                items.map((item) => (
+                  <TableRow key={item.sku_id}>
+                    <TableCell className="font-mono text-xs">{item.sku_id}</TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <p>{item.sku_name}</p>
+                        <p className="text-xs text-slate-500">
+                          {item.brand} · {item.category} · {item.spec}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      ¥{item.price_per_case} / 箱规 {item.box_multiple}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-600">
+                      标签 {item.tags.length} · 搭配 SKU {item.pair_items.length}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={item.status === "active" ? "secondary" : "outline"}>
+                        {item.status === "active" ? "启用" : "停用"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
+                          编辑
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPendingDisable(item)}
+                          disabled={item.status === "inactive"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          停用
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  items.map((item) => (
-                    <TableRow key={item.sku_id}>
-                      <TableCell className="font-mono text-xs">{item.sku_id}</TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <p>{item.sku_name}</p>
-                          <p className="text-xs text-slate-500">
-                            {item.category} · {item.spec}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        ¥{item.price_per_case} / 箱规 {item.box_multiple}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-600">
-                        标签 {item.tags.length} · 搭配 SKU {item.pair_items.length}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={item.status === "active" ? "secondary" : "outline"}>
-                          {item.status === "active" ? "启用" : "停用"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
-                            编辑
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => softDelete(item.sku_id)}
-                            disabled={item.status === "inactive"}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            停用
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="space-y-3 p-4">
-            <p className="text-sm font-semibold text-slate-900">
-              {editingId ? `编辑商品: ${editingId}` : "创建商品"}
-            </p>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>商品编码</Label>
-                <Input
-                  value={form.sku_id}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, sku_id: event.target.value }))
-                  }
-                  disabled={Boolean(editingId)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>商品名称</Label>
-                <Input
-                  value={form.sku_name}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, sku_name: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>品类</Label>
-                <Select
-                  value={form.category || "__custom__"}
-                  onValueChange={(value) => {
-                    if (value === "__custom__") return;
-                    setForm((prev) => ({ ...prev, category: value }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择已有品类" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__custom__">手工输入</SelectItem>
-                    {categoryOptions.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={form.category}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, category: event.target.value }))
-                  }
-                  placeholder="或手工输入品类"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>规格</Label>
-                <Input
-                  value={form.spec}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, spec: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>单箱价格</Label>
-                <Input
-                  type="number"
-                  value={form.price_per_case}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      price_per_case: Number(event.target.value || "0"),
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>箱规</Label>
-                <Input
-                  type="number"
-                  value={form.box_multiple}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      box_multiple: Number(event.target.value || "0"),
-                    }))
-                  }
-                />
-              </div>
-            </div>
-
-            <TokenEditor
-              label="商品标签"
-              value={form.tags}
-              onChange={(tags) => setForm((prev) => ({ ...prev, tags }))}
-              placeholder="输入标签，例如：高频动销"
-              suggestions={["高频动销", "常购", "活动", "新品", "利润款"]}
-            />
-            <MultiSelectChecklist
-              label="搭配商品 SKU"
-              options={pairOptions}
-              selected={form.pair_items}
-              onChange={(pair_items) => setForm((prev) => ({ ...prev, pair_items }))}
-              searchPlaceholder="搜索可搭配商品"
-              emptyText="没有可搭配商品"
-            />
-
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <label className="inline-flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={form.is_weekly_focus}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      is_weekly_focus: event.target.checked,
-                    }))
-                  }
-                />
-                周活动重点品
-              </label>
-              <label className="inline-flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={form.is_new_product}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      is_new_product: event.target.checked,
-                    }))
-                  }
-                />
-                新品
-              </label>
-              <Select
-                value={form.status}
-                onValueChange={(value) =>
-                  setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
-                }
-              >
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">启用</SelectItem>
-                  <SelectItem value="inactive">停用</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2">
-              {editingId ? (
-                <Button onClick={submitUpdate}>
-                  <Save className="h-4 w-4" />
-                  保存更新
-                </Button>
-              ) : (
-                <Button onClick={submitCreate}>
-                  <Plus className="h-4 w-4" />
-                  创建
-                </Button>
+                ))
               )}
-              <Button variant="outline" onClick={resetForm}>
-                重置
-              </Button>
-            </div>
-            <p className="text-xs text-slate-500">
-              总数 {total}，当前第 {query.page} 页。
-            </p>
-          </CardContent>
-        </Card>
-      </section>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <AdminDrawer
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        title={editingId ? `编辑商品: ${editingId}` : "新建商品"}
+        description="维护商品基础信息、标签和搭配关系。"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDrawerOpen(false);
+                resetForm();
+              }}
+            >
+              取消
+            </Button>
+            <Button onClick={() => void (editingId ? submitUpdate() : submitCreate())}>
+              {editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {editingId ? "保存更新" : "创建商品"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1">
+            <Label>商品编码</Label>
+            <Input
+              value={form.sku_id}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, sku_id: event.target.value }))
+              }
+              disabled={Boolean(editingId)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>商品名称</Label>
+            <Input
+              value={form.sku_name}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, sku_name: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>品牌</Label>
+            <Input
+              value={form.brand}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, brand: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>规格</Label>
+            <Input
+              value={form.spec}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, spec: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>品类</Label>
+            <Select
+              value={form.category || "__custom__"}
+              onValueChange={(value) => {
+                if (value === "__custom__") return;
+                setForm((prev) => ({ ...prev, category: value }));
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择已有品类" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__custom__">手工输入</SelectItem>
+                {categoryOptions.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {category}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={form.category}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, category: event.target.value }))
+              }
+              placeholder="或手工输入品类"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>陈列顺序</Label>
+            <Input
+              type="number"
+              value={form.display_order}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  display_order: Number(event.target.value || "0"),
+                }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>单箱价格</Label>
+            <Input
+              type="number"
+              value={form.price_per_case}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  price_per_case: Number(event.target.value || "0"),
+                }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>箱规</Label>
+            <Input
+              type="number"
+              value={form.box_multiple}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  box_multiple: Number(event.target.value || "0"),
+                }))
+              }
+            />
+          </div>
+        </div>
+
+        <TokenEditor
+          label="商品标签"
+          value={form.tags}
+          onChange={(tags) => setForm((prev) => ({ ...prev, tags }))}
+          placeholder="输入标签，例如：高频动销"
+          suggestions={["高频动销", "常购", "活动", "新品", "利润款"]}
+        />
+        <MultiSelectChecklist
+          label="搭配商品 SKU"
+          options={pairOptions}
+          selected={form.pair_items}
+          onChange={(pair_items) => setForm((prev) => ({ ...prev, pair_items }))}
+          searchPlaceholder="搜索可搭配商品"
+          emptyText="没有可搭配商品"
+        />
+
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label className="inline-flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={form.is_weekly_focus}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  is_weekly_focus: event.target.checked,
+                }))
+              }
+            />
+            周活动重点品
+          </label>
+          <label className="inline-flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={form.is_new_product}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  is_new_product: event.target.checked,
+                }))
+              }
+            />
+            新品
+          </label>
+          <Select
+            value={form.status}
+            onValueChange={(value) =>
+              setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+            }
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">启用</SelectItem>
+              <SelectItem value="inactive">停用</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </AdminDrawer>
+
+      <AdminConfirmDialog
+        open={Boolean(pendingDisable)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDisable(null);
+          }
+        }}
+        title="停用商品"
+        description={
+          pendingDisable
+            ? `停用后该商品不会继续出现在前台选品和推荐中。确认停用 ${pendingDisable.sku_name} 吗？`
+            : ""
+        }
+        confirmLabel="确认停用"
+        onConfirm={() => {
+          if (pendingDisable) {
+            void softDelete(pendingDisable.sku_id);
+          }
+        }}
+      />
     </AdminPageFrame>
   );
 }

@@ -209,7 +209,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
 
   await page.goto("/admin/strategy/recommendation-strategies");
   await expect(page).toHaveURL(/\/admin\/strategy\/recommendation-strategies$/);
-  await page.getByPlaceholder("搜索策略 ID/名称/场景").fill(shared.strategyId);
+  await page.getByPlaceholder("搜索方案编号/名称/场景").fill(shared.strategyId);
   const strategyRow = page.locator("tbody tr", { hasText: shared.strategyId }).first();
   await expect(strategyRow).toBeVisible({
     timeout: 90_000,
@@ -217,7 +217,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   await strategyRow.getByRole("button", { name: "编辑" }).click();
 
   const strategyNameInput = page
-    .locator('label:has-text("策略名称")')
+    .locator('label:has-text("方案名称")')
     .locator("xpath=following::input[1]");
   await expect(strategyNameInput).toBeVisible({ timeout: 90_000 });
   const originalName = (await strategyNameInput.inputValue()).trim() || strategy.strategy_name;
@@ -226,7 +226,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   const updatedName = `${baseName} [${marker}]`;
   await strategyNameInput.fill(updatedName);
   await page.getByRole("button", { name: "保存更新" }).click();
-  await expect(page.getByText("推荐策略更新成功")).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByText("推荐方案更新成功")).toBeVisible({ timeout: 90_000 });
 
   const targetDealerId = strategy.target_dealer_ids[0];
   if (!targetDealerId) {
@@ -251,7 +251,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
 
   await page.goto("/admin/operations/generation-jobs");
   await expect(page).toHaveURL(/\/admin\/operations\/generation-jobs$/);
-  await page.getByPlaceholder("搜索任务 ID/名称").fill(shared.jobId);
+  await page.getByPlaceholder("搜索任务编号/名称").fill(shared.jobId);
 
   const getJobRow = () => page.locator("tbody tr", { hasText: shared.jobId }).first();
   await expect(getJobRow()).toBeVisible({ timeout: 90_000 });
@@ -367,13 +367,13 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   await expect(page.getByRole("button", { name: "采纳/改量" })).toHaveCount(0);
 
   await selectDealer(page, shared.customerName);
-  await expect(page.getByText("已加载模板化建议，可从模板与活动专区快速下单。")).toBeVisible({
+  await expect(page.getByText("已加载本周进货建议，可从当前页面直接组货下单。")).toBeVisible({
     timeout: 90_000,
   });
 
   await page
     .getByTestId("purchase-bundle-templates")
-    .getByRole("button", { name: "查看原因" })
+    .getByRole("button", { name: "查看详情" })
     .first()
     .click();
   await expect(page.getByTestId("purchase-reason-drawer")).toBeVisible({ timeout: 90_000 });
@@ -385,11 +385,15 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
       response.request().method() === "POST" &&
       response.url().includes("/api/cart-optimize"),
   );
-  await page.getByRole("button", { name: "组货后去结算" }).click();
+  await page
+    .getByTestId("purchase-bundle-templates")
+    .getByRole("button", { name: "快速下单" })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/order-submit$/);
   await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
   await expect(page.getByTestId("order-submit-recommendation-bars")).toBeVisible();
-  await expect(page.getByText("顺手补货推荐")).toBeVisible();
+  await expect(page.getByText("凑单推荐")).toBeVisible();
   await expect(page.getByText("交易信息", { exact: true })).toBeVisible();
   await expect(page.getByTestId("order-submit-optimization")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "一键应用全部" })).toHaveCount(0);
@@ -408,7 +412,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
 
   const whyButtons = page
     .getByTestId("order-submit-recommendation-bars")
-    .getByRole("button", { name: "为什么推荐" });
+    .getByRole("button", { name: "查看依据" });
   if ((await whyButtons.count()) > 0) {
     await whyButtons.first().click();
     await expect(page.getByTestId("order-submit-reason-drawer")).toBeVisible({
@@ -449,7 +453,9 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   await expect(batchRow).toBeVisible({ timeout: 90_000 });
   await batchRow.click();
 
-  await page.getByRole("link", { name: "查看批次记录" }).click();
+  await page
+    .locator(`a[href="/admin/analytics/recommendation-records?batchId=${encodeURIComponent(shared.batchId)}"]`)
+    .click();
   await expect(page).toHaveURL(
     new RegExp(
       `/admin/analytics/recommendation-records\\?batchId=${encodeURIComponent(shared.batchId)}`,
@@ -476,11 +482,11 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   await rowToClick.click();
   await expect(page.getByTestId("trace-link")).toBeVisible({ timeout: 90_000 });
 
-  const sameBatchTraceLink = page.getByRole("link", { name: "查看同批次链路" });
+  const sameBatchTraceLink = page.getByRole("link", { name: "查看同批次执行过程" });
   if (await sameBatchTraceLink.count()) {
     await sameBatchTraceLink.click();
   } else {
-    await page.getByRole("link", { name: "前往链路观察" }).click();
+    await page.getByRole("main").getByRole("link", { name: "查看执行过程" }).click();
   }
   await expect(page).toHaveURL(/\/admin\/observability\/traces/);
 

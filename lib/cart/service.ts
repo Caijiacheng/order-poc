@@ -296,11 +296,16 @@ export function buildDeterministicCartInsights(sessionId: string, customerId?: s
     throw new BusinessError("NOT_FOUND", "经销商不存在", 404);
   }
 
+  const thresholdGap = Math.max(
+    0,
+    store.rules.cart_target_amount - session.summary.total_amount,
+  );
+
   const thresholdCandidates = findThresholdTopupCandidates({
     products: store.products,
     dealer: activeDealer,
     rules: store.rules,
-    gapToThreshold: session.summary.gap_to_threshold,
+    gapToThreshold: thresholdGap,
   });
   const boxAdjustments = findBoxAdjustments({
     cartItems: session.items,
@@ -310,11 +315,13 @@ export function buildDeterministicCartInsights(sessionId: string, customerId?: s
     cartItems: session.items,
     products: store.products,
     dealer: activeDealer,
+    rules: store.rules,
   });
 
   return {
     session,
     dealer: activeDealer,
+    thresholdGap,
     thresholdCandidates,
     boxAdjustments,
     pairSuggestions,

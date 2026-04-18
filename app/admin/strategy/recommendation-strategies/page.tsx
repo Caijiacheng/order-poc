@@ -94,6 +94,16 @@ const EMPTY_FORM: StrategyForm = {
   status: "active" as const,
 };
 
+function getScenePurpose(scene: RecommendationStrategyScene) {
+  if (scene === "hot_sale_bundle") {
+    return "优先推荐走得快、适合先补的商品";
+  }
+  if (scene === "campaign_bundle") {
+    return "优先围绕活动货和周推商品来组货";
+  }
+  return "优先补齐基础货和容易断货的商品";
+}
+
 export default function RecommendationStrategiesPage() {
   const [items, setItems] = useState<RecommendationStrategyEntity[]>([]);
   const [products, setProducts] = useState<ProductEntity[]>([]);
@@ -178,7 +188,7 @@ export default function RecommendationStrategiesPage() {
       setItems(data.items);
       setTotal(data.total);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载推荐策略失败");
+      setErrorMessage(error instanceof Error ? error.message : "加载推荐方案失败");
     } finally {
       setLoading(false);
     }
@@ -241,6 +251,42 @@ export default function RecommendationStrategiesPage() {
       })),
     [campaigns],
   );
+
+  const selectedExpressionTemplate = useMemo(
+    () =>
+      expressionTemplates.find(
+        (item) => item.expression_template_id === form.expression_template_id,
+      ) ?? null,
+    [expressionTemplates, form.expression_template_id],
+  );
+
+  const referencePreview = useMemo(
+    () =>
+      form.reference_items
+        .filter((item) => item.sku_id)
+        .map((item) => {
+          const product = products.find((candidate) => candidate.sku_id === item.sku_id);
+          return `${product?.sku_name ?? item.sku_id} ${item.qty}箱`;
+        })
+        .slice(0, 3),
+    [form.reference_items, products],
+  );
+
+  const promptPreview = useMemo(() => {
+    const lines = [
+      `场景：${SCENE_LABELS[form.scene]}`,
+      `目标：${getScenePurpose(form.scene)}`,
+      selectedExpressionTemplate
+        ? `话术风格：${selectedExpressionTemplate.tone}；${selectedExpressionTemplate.style_hint}`
+        : "话术风格：尚未选择推荐话术",
+      selectedExpressionTemplate
+        ? `输出控制：理由最多 ${selectedExpressionTemplate.reason_limit} 条，避免 ${selectedExpressionTemplate.avoid.join(" / ") || "空话"}`
+        : "",
+      referencePreview.length > 0 ? `参考建议：${referencePreview.join("、")}` : "",
+      form.business_notes.trim() ? `运营补充：${form.business_notes.trim()}` : "",
+    ];
+    return lines.filter(Boolean).join("\n");
+  }, [form.business_notes, form.scene, referencePreview, selectedExpressionTemplate]);
 
   const resetForm = () => {
     setForm({
@@ -338,7 +384,7 @@ export default function RecommendationStrategiesPage() {
         method: "POST",
         body: JSON.stringify(payloadFromForm()),
       });
-      setSuccessMessage("推荐策略创建成功");
+      setSuccessMessage("推荐方案创建成功");
       setDrawerOpen(false);
       resetForm();
       await loadStrategies();
@@ -346,7 +392,7 @@ export default function RecommendationStrategiesPage() {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
       } else {
-        setErrorMessage("推荐策略创建失败");
+        setErrorMessage("推荐方案创建失败");
       }
     }
   };
@@ -363,7 +409,7 @@ export default function RecommendationStrategiesPage() {
           body: JSON.stringify(payloadFromForm()),
         },
       );
-      setSuccessMessage("推荐策略更新成功");
+      setSuccessMessage("推荐方案更新成功");
       setDrawerOpen(false);
       resetForm();
       await loadStrategies();
@@ -371,7 +417,7 @@ export default function RecommendationStrategiesPage() {
       if (error instanceof AdminClientError) {
         setErrorMessage(`${error.message} ${formatFieldErrors(error.fieldErrors)}`);
       } else {
-        setErrorMessage("推荐策略更新失败");
+        setErrorMessage("推荐方案更新失败");
       }
     }
   };
@@ -384,7 +430,7 @@ export default function RecommendationStrategiesPage() {
         `/api/admin/recommendation-strategies/${id}`,
         { method: "DELETE" },
       );
-      setSuccessMessage("推荐策略已停用");
+      setSuccessMessage("推荐方案已停用");
       if (editingId === id) {
         setDrawerOpen(false);
         resetForm();
@@ -399,8 +445,8 @@ export default function RecommendationStrategiesPage() {
 
   return (
     <AdminPageFrame
-      title="推荐策略"
-      description="按“给谁-推什么-为什么-发布场景”维护策略，使用结构化字段维护目标、商品池和表达模板。"
+      title="设置推荐方案"
+      description="按门店、人群、商品范围和展示场景设置推荐方案。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadStrategies} disabled={loading}>
@@ -415,7 +461,7 @@ export default function RecommendationStrategiesPage() {
             }}
           >
             <Plus className="h-4 w-4" />
-            新建策略
+            新建方案
           </Button>
         </div>
       }
@@ -426,7 +472,7 @@ export default function RecommendationStrategiesPage() {
       <Card>
         <CardContent className="grid gap-3 p-4 md:grid-cols-6">
           <Input
-            placeholder="搜索策略 ID/名称/场景"
+            placeholder="搜索方案编号/名称/场景"
             value={query.q}
             onChange={(event) =>
               setQuery((prev) => ({ ...prev, q: event.target.value, page: 1 }))
@@ -460,7 +506,7 @@ export default function RecommendationStrategiesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="priority">优先级</SelectItem>
-              <SelectItem value="strategy_name">策略名称</SelectItem>
+              <SelectItem value="strategy_name">方案名称</SelectItem>
               <SelectItem value="updated_at">更新时间</SelectItem>
             </SelectContent>
           </Select>
@@ -504,7 +550,7 @@ export default function RecommendationStrategiesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
-                  <TableHead>策略</TableHead>
+                  <TableHead>方案</TableHead>
                   <TableHead>目标范围</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -569,13 +615,13 @@ export default function RecommendationStrategiesPage() {
             resetForm();
           }
         }}
-        title={editingId ? `编辑策略: ${editingId}` : "创建策略"}
-        description="维护策略范围、候选集合与结构化建议项。"
+        title={editingId ? `编辑方案: ${editingId}` : "创建方案"}
+        description="设置适用门店、候选商品和推荐话术，并可预览发给 AI 的重点。"
       >
         <div className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2">
             <div className="space-y-1">
-              <Label>策略编码</Label>
+              <Label>方案编码</Label>
               <Input
                 value={form.strategy_id}
                 disabled={Boolean(editingId)}
@@ -599,7 +645,7 @@ export default function RecommendationStrategiesPage() {
             </div>
           </div>
           <div className="space-y-1">
-            <Label>策略名称</Label>
+            <Label>方案名称</Label>
             <Input
               value={form.strategy_name}
               onChange={(event) =>
@@ -630,7 +676,7 @@ export default function RecommendationStrategiesPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>表达模板</Label>
+              <Label>推荐话术</Label>
               <Select
                 value={form.expression_template_id || "__none__"}
                 onValueChange={(value) =>
@@ -773,13 +819,53 @@ export default function RecommendationStrategiesPage() {
           </div>
 
           <div className="space-y-1">
-            <Label>业务说明</Label>
+            <Label>运营补充</Label>
             <Textarea
+              placeholder="比如：优先推给重餐饮客户；文案更强调活动带货；避免说得太像系统提示。"
               value={form.business_notes}
               onChange={(event) =>
                 setForm((prev) => ({ ...prev, business_notes: event.target.value }))
               }
             />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[0.95fr_1.05fr]">
+            <Card className="border-slate-200 bg-slate-50">
+              <CardContent className="space-y-3 p-4 text-sm">
+                <div>
+                  <p className="text-slate-500">当前话术模板</p>
+                  <p className="mt-1 font-medium text-slate-900">
+                    {selectedExpressionTemplate?.expression_template_name ?? "尚未选择"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {selectedExpressionTemplate
+                      ? `${selectedExpressionTemplate.tone} · ${selectedExpressionTemplate.style_hint}`
+                      : "先选推荐话术，再看模型会按什么口径输出。"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500">这套方案想解决什么</p>
+                  <p className="mt-1 text-slate-800">{getScenePurpose(form.scene)}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500">参考建议商品</p>
+                  <p className="mt-1 text-slate-800">
+                    {referencePreview.length > 0
+                      ? referencePreview.join("、")
+                      : "还没有补参考建议商品。"}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-white">
+              <CardContent className="space-y-2 p-4">
+                <p className="text-sm font-medium text-slate-900">发给 AI 的重点预览</p>
+                <pre className="overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-6 text-slate-700">
+                  {promptPreview}
+                </pre>
+              </CardContent>
+            </Card>
           </div>
 
           <Select
@@ -823,9 +909,9 @@ export default function RecommendationStrategiesPage() {
             setPendingDisable(null);
           }
         }}
-        title="确认停用推荐策略"
-        description={`停用后该策略将不再参与后续任务生成。${
-          pendingDisable ? `\n策略：${pendingDisable.strategy_name}` : ""
+        title="确认停用推荐方案"
+        description={`停用后该方案将不再参与后续任务生成。${
+          pendingDisable ? `\n方案：${pendingDisable.strategy_name}` : ""
         }`}
         confirmLabel="确认停用"
         onConfirm={async () => {

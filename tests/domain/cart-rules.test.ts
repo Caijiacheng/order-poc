@@ -41,6 +41,7 @@ function buildRules(overrides?: Partial<RuleConfigEntity>): RuleConfigEntity {
     replenishment_days_threshold: 5,
     cart_gap_trigger_amount: 30,
     threshold_amount: 1000,
+    cart_target_amount: 1000,
     prefer_frequent_items: true,
     prefer_pair_items: true,
     box_adjust_if_close: true,
@@ -137,7 +138,10 @@ describe("cart-rules deterministic semantics", () => {
       frequent_items: ["sku_frequent"],
       forbidden_items: ["sku_forbidden"],
     });
-    const rules = buildRules({ allow_new_product_recommendation: false });
+    const rules = buildRules({
+      allow_new_product_recommendation: false,
+      cart_gap_trigger_amount: 700,
+    });
 
     const candidates = findThresholdTopupCandidates({
       products,
@@ -154,6 +158,17 @@ describe("cart-rules deterministic semantics", () => {
     expect(candidates[0].suggested_qty).toBe(2);
     expect(candidates[1].suggested_qty).toBe(3);
     expect(candidates[0].reason).toContain("¥620");
+  });
+
+  it("does not propose threshold top-up when remaining gap exceeds trigger amount", () => {
+    const candidates = findThresholdTopupCandidates({
+      products: [buildProduct()],
+      dealer: buildDealer(),
+      rules: buildRules({ cart_gap_trigger_amount: 50 }),
+      gapToThreshold: 120,
+    });
+
+    expect(candidates).toHaveLength(0);
   });
 
   it("only proposes box adjustments when close enough to box multiple", () => {
@@ -248,7 +263,12 @@ describe("cart-rules deterministic semantics", () => {
       },
     ];
 
-    const suggestions = findPairSuggestions({ cartItems, products, dealer });
+    const suggestions = findPairSuggestions({
+      cartItems,
+      products,
+      dealer,
+      rules: buildRules(),
+    });
     expect(suggestions).toEqual([
       {
         sku_id: "sku_pair",
@@ -257,5 +277,73 @@ describe("cart-rules deterministic semantics", () => {
         reason: "A 常与 搭配商品 搭配采购。",
       },
     ]);
+  });
+
+  it("can disable pair suggestions entirely from rules", () => {
+    const suggestions = findPairSuggestions({
+      cartItems: [
+        {
+          sku_id: "sku_a",
+          sku_name: "A",
+          qty: 1,
+          price_per_case: 100,
+          box_multiple: 6,
+          source: "manual",
+          added_at: "2026-04-15T00:00:00.000Z",
+          updated_at: "2026-04-15T00:00:00.000Z",
+        },
+      ],
+      products: [
+        buildProduct({
+          sku_id: "sku_a",
+          sku_name: "A",
+          pair_items: ["sku_pair"],
+        }),
+        buildProduct({
+          sku_id: "sku_pair",
+          sku_name: "搭配商品",
+        }),
+      ],
+      dealer: buildDealer(),
+      rules: buildRules({ prefer_pair_items: false }),
+    });
+
+    expect(suggestions).toEqual([]);
+  });
+
+  it("skips new pair items when new-product recommendation is disabled", () => {
+    const suggestions = findPairSuggestions({
+      cartItems: [
+        {
+          sku_id: "sku_a",
+          sku_name: "A",
+          qty: 1,
+          price_per_case: 100,
+          box_multiple: 6,
+          source: "manual",
+          added_at: "2026-04-15T00:00:00.000Z",
+          updated_at: "2026-04-15T00:00:00.000Z",
+        },
+      ],
+      products: [
+        buildProduct({
+          sku_id: "sku_a",
+          sku_name: "A",
+          pair_items: ["sku_pair_new"],
+        }),
+        buildProduct({
+          sku_id: "sku_pair_new",
+          sku_name: "新品搭配",
+          is_new_product: true,
+        }),
+      ],
+      dealer: buildDealer(),
+      rules: buildRules({
+        prefer_pair_items: true,
+        allow_new_product_recommendation: false,
+      }),
+    });
+
+    expect(suggestions).toEqual([]);
   });
 });

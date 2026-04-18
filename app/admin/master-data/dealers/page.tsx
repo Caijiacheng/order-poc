@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
+import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
 import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
 import { AdminPageFrame } from "@/components/admin/page-frame";
@@ -57,7 +59,6 @@ const EMPTY_FORM: DealerForm = {
 export default function DealersPage() {
   const [items, setItems] = useState<DealerEntity[]>([]);
   const [products, setProducts] = useState<ProductEntity[]>([]);
-  const [total, setTotal] = useState(0);
   const [query, setQuery] = useState({
     page: 1,
     pageSize: 10,
@@ -69,6 +70,8 @@ export default function DealersPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<DealerForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingDisable, setPendingDisable] = useState<DealerEntity | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -98,7 +101,6 @@ export default function DealersPage() {
         `/api/admin/dealers?${queryString}`,
       );
       setItems(data.items);
-      setTotal(data.total);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载经销商失败");
     } finally {
@@ -145,6 +147,11 @@ export default function DealersPage() {
     setEditingId(null);
   };
 
+  const openCreateDrawer = () => {
+    resetForm();
+    setDrawerOpen(true);
+  };
+
   const pickForEdit = (item: DealerEntity) => {
     setEditingId(item.customer_id);
     setForm({
@@ -164,6 +171,7 @@ export default function DealersPage() {
       business_traits: item.business_traits,
       status: item.status,
     });
+    setDrawerOpen(true);
   };
 
   const submitCreate = async () => {
@@ -175,6 +183,7 @@ export default function DealersPage() {
         body: JSON.stringify(form),
       });
       setSuccessMessage("经销商创建成功");
+      setDrawerOpen(false);
       resetForm();
       await loadDealers();
     } catch (error) {
@@ -196,6 +205,7 @@ export default function DealersPage() {
         body: JSON.stringify(form),
       });
       setSuccessMessage("经销商更新成功");
+      setDrawerOpen(false);
       resetForm();
       await loadDealers();
     } catch (error) {
@@ -222,10 +232,10 @@ export default function DealersPage() {
 
   return (
     <AdminPageFrame
-      title="经销商档案"
-      description="按经营画像维护经销商结构化关系，常购/禁推/偏好将直接进入策略投放。"
+      title="维护门店"
+      description="维护门店画像、常带商品和禁推偏好，这些信息会直接影响建议单。"
       action={
-        <Button className="rounded-full" onClick={resetForm}>
+        <Button className="rounded-full" onClick={openCreateDrawer}>
           <Plus className="h-4 w-4" />
           新建经销商
         </Button>
@@ -311,330 +321,352 @@ export default function DealersPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>名称</TableHead>
+                <TableHead>城市/渠道</TableHead>
+                <TableHead>画像关系</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.length === 0 ? (
                 <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>名称</TableHead>
-                  <TableHead>城市/渠道</TableHead>
-                  <TableHead>画像关系</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableCell colSpan={6} className="text-center text-slate-500">
+                    {loading ? "加载中..." : "无数据"}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-slate-500">
-                      {loading ? "加载中..." : "无数据"}
+              ) : (
+                items.map((item) => (
+                  <TableRow key={item.customer_id}>
+                    <TableCell className="font-mono text-xs">{item.customer_id}</TableCell>
+                    <TableCell>{item.customer_name}</TableCell>
+                    <TableCell>
+                      <p>{item.city}</p>
+                      <p className="text-xs text-slate-500">{item.channel_type}</p>
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-600">
+                      常购 {item.frequent_items.length} · 禁推 {item.forbidden_items.length} ·
+                      偏好品类 {item.preferred_categories.length}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={item.status === "active" ? "secondary" : "outline"}>
+                        {item.status === "active" ? "启用" : "停用"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
+                          编辑
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPendingDisable(item)}
+                          disabled={item.status === "inactive"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          停用
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  items.map((item) => (
-                    <TableRow key={item.customer_id}>
-                      <TableCell className="font-mono text-xs">{item.customer_id}</TableCell>
-                      <TableCell>{item.customer_name}</TableCell>
-                      <TableCell>
-                        <p>{item.city}</p>
-                        <p className="text-xs text-slate-500">{item.channel_type}</p>
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-600">
-                        常购 {item.frequent_items.length} · 禁推 {item.forbidden_items.length} ·
-                        偏好品类 {item.preferred_categories.length}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={item.status === "active" ? "secondary" : "outline"}>
-                          {item.status === "active" ? "启用" : "停用"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
-                            编辑
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => softDelete(item.customer_id)}
-                            disabled={item.status === "inactive"}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            停用
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="space-y-3 p-4">
-            <p className="text-sm font-semibold text-slate-900">
-              {editingId ? `编辑经销商: ${editingId}` : "创建经销商"}
-            </p>
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>经销商编码</Label>
-                <Input
-                  value={form.customer_id}
-                  disabled={Boolean(editingId)}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, customer_id: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>经销商名称</Label>
-                <Input
-                  value={form.customer_name}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, customer_name: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>城市</Label>
-                <Select
-                  value={form.city || "__custom__"}
-                  onValueChange={(value) => {
-                    if (value === "__custom__") return;
-                    setForm((prev) => ({ ...prev, city: value }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择已有城市" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__custom__">手工输入</SelectItem>
-                    {cityOptions.map((city) => (
-                      <SelectItem key={city} value={city}>
-                        {city}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={form.city}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, city: event.target.value }))
-                  }
-                  placeholder="或手工输入城市"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>渠道类型</Label>
-                <Select
-                  value={form.channel_type || "__custom__"}
-                  onValueChange={(value) => {
-                    if (value === "__custom__") return;
-                    setForm((prev) => ({ ...prev, channel_type: value }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择已有渠道" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__custom__">手工输入</SelectItem>
-                    {channelOptions.map((channel) => (
-                      <SelectItem key={channel} value={channel}>
-                        {channel}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={form.channel_type}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, channel_type: event.target.value }))
-                  }
-                  placeholder="或手工输入渠道"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>客户分层</Label>
-                <Select
-                  value={form.customer_type || "__custom__"}
-                  onValueChange={(value) => {
-                    if (value === "__custom__") return;
-                    setForm((prev) => ({ ...prev, customer_type: value }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择已有分层" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__custom__">手工输入</SelectItem>
-                    {customerTypeOptions.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={form.customer_type}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, customer_type: event.target.value }))
-                  }
-                  placeholder="或手工输入客户分层"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>门店规模提示</Label>
-                <Input
-                  value={form.store_count_hint}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, store_count_hint: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>距离上次下单（天）</Label>
-                <Input
-                  type="number"
-                  value={form.last_order_days_ago}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      last_order_days_ago: Number(event.target.value || "0"),
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>下单频率</Label>
-                <Input
-                  value={form.order_frequency}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, order_frequency: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-1">
-                <Label>价格敏感度</Label>
-                <Select
-                  value={form.price_sensitivity}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      price_sensitivity: value as DealerForm["price_sensitivity"],
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="高">高</SelectItem>
-                    <SelectItem value="中">中</SelectItem>
-                    <SelectItem value="中低">中低</SelectItem>
-                    <SelectItem value="低">低</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>新品接受度</Label>
-                <Select
-                  value={form.new_product_acceptance}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      new_product_acceptance: value as DealerForm["new_product_acceptance"],
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="高">高</SelectItem>
-                    <SelectItem value="中">中</SelectItem>
-                    <SelectItem value="低">低</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <MultiSelectChecklist
-              label="常购 SKU"
-              options={productOptions}
-              selected={form.frequent_items}
-              onChange={(frequent_items) => setForm((prev) => ({ ...prev, frequent_items }))}
-              searchPlaceholder="搜索常购商品"
-            />
-            <MultiSelectChecklist
-              label="禁推 SKU"
-              options={productOptions}
-              selected={form.forbidden_items}
-              onChange={(forbidden_items) => setForm((prev) => ({ ...prev, forbidden_items }))}
-              searchPlaceholder="搜索禁推商品"
-            />
-            <MultiSelectChecklist
-              label="偏好品类"
-              options={categoryOptions}
-              selected={form.preferred_categories}
-              onChange={(preferred_categories) =>
-                setForm((prev) => ({ ...prev, preferred_categories }))
-              }
-              searchPlaceholder="搜索品类"
-            />
-            <TokenEditor
-              label="经营特征"
-              value={form.business_traits}
-              onChange={(business_traits) => setForm((prev) => ({ ...prev, business_traits }))}
-              placeholder="输入经营特征，如：餐饮批发"
-              suggestions={["核心客户", "价格敏感", "新品试销能力", "周转稳定", "组合采购"]}
-            />
-
-            <div className="flex items-center gap-2">
-              <Select
-                value={form.status}
-                onValueChange={(value) =>
-                  setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
-                }
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">启用</SelectItem>
-                  <SelectItem value="inactive">停用</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2">
-              {editingId ? (
-                <Button onClick={submitUpdate}>
-                  <Save className="h-4 w-4" />
-                  保存更新
-                </Button>
-              ) : (
-                <Button onClick={submitCreate}>
-                  <Plus className="h-4 w-4" />
-                  创建
-                </Button>
+                ))
               )}
-              <Button variant="outline" onClick={resetForm}>
-                重置
-              </Button>
-            </div>
-            <p className="text-xs text-slate-500">
-              总数 {total}，当前第 {query.page} 页。
-            </p>
-          </CardContent>
-        </Card>
-      </section>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <AdminDrawer
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        title={editingId ? `编辑经销商: ${editingId}` : "新建经销商"}
+        description="维护门店画像、常带商品和禁推偏好。"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDrawerOpen(false);
+                resetForm();
+              }}
+            >
+              取消
+            </Button>
+            <Button onClick={() => void (editingId ? submitUpdate() : submitCreate())}>
+              {editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {editingId ? "保存更新" : "创建经销商"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-2 md:grid-cols-2">
+          <div className="space-y-1">
+            <Label>经销商编码</Label>
+            <Input
+              value={form.customer_id}
+              disabled={Boolean(editingId)}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, customer_id: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>经销商名称</Label>
+            <Input
+              value={form.customer_name}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, customer_name: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>城市</Label>
+            <Select
+              value={form.city || "__custom__"}
+              onValueChange={(value) => {
+                if (value === "__custom__") return;
+                setForm((prev) => ({ ...prev, city: value }));
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择已有城市" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__custom__">手工输入</SelectItem>
+                {cityOptions.map((city) => (
+                  <SelectItem key={city} value={city}>
+                    {city}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={form.city}
+              onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
+              placeholder="或手工输入城市"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>渠道类型</Label>
+            <Select
+              value={form.channel_type || "__custom__"}
+              onValueChange={(value) => {
+                if (value === "__custom__") return;
+                setForm((prev) => ({ ...prev, channel_type: value }));
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择已有渠道" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__custom__">手工输入</SelectItem>
+                {channelOptions.map((channel) => (
+                  <SelectItem key={channel} value={channel}>
+                    {channel}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={form.channel_type}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, channel_type: event.target.value }))
+              }
+              placeholder="或手工输入渠道"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>客户分层</Label>
+            <Select
+              value={form.customer_type || "__custom__"}
+              onValueChange={(value) => {
+                if (value === "__custom__") return;
+                setForm((prev) => ({ ...prev, customer_type: value }));
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择已有分层" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__custom__">手工输入</SelectItem>
+                {customerTypeOptions.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={form.customer_type}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, customer_type: event.target.value }))
+              }
+              placeholder="或手工输入客户分层"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>门店规模提示</Label>
+            <Input
+              value={form.store_count_hint}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, store_count_hint: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>距离上次下单（天）</Label>
+            <Input
+              type="number"
+              value={form.last_order_days_ago}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  last_order_days_ago: Number(event.target.value || "0"),
+                }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label>下单频率</Label>
+            <Input
+              value={form.order_frequency}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, order_frequency: event.target.value }))
+              }
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-2">
+          <div className="space-y-1">
+            <Label>价格敏感度</Label>
+            <Select
+              value={form.price_sensitivity}
+              onValueChange={(value) =>
+                setForm((prev) => ({
+                  ...prev,
+                  price_sensitivity: value as DealerForm["price_sensitivity"],
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="高">高</SelectItem>
+                <SelectItem value="中">中</SelectItem>
+                <SelectItem value="中低">中低</SelectItem>
+                <SelectItem value="低">低</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label>新品接受度</Label>
+            <Select
+              value={form.new_product_acceptance}
+              onValueChange={(value) =>
+                setForm((prev) => ({
+                  ...prev,
+                  new_product_acceptance: value as DealerForm["new_product_acceptance"],
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="高">高</SelectItem>
+                <SelectItem value="中">中</SelectItem>
+                <SelectItem value="低">低</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <MultiSelectChecklist
+          label="常购 SKU"
+          options={productOptions}
+          selected={form.frequent_items}
+          onChange={(frequent_items) => setForm((prev) => ({ ...prev, frequent_items }))}
+          searchPlaceholder="搜索常购商品"
+        />
+        <MultiSelectChecklist
+          label="禁推 SKU"
+          options={productOptions}
+          selected={form.forbidden_items}
+          onChange={(forbidden_items) => setForm((prev) => ({ ...prev, forbidden_items }))}
+          searchPlaceholder="搜索禁推商品"
+        />
+        <MultiSelectChecklist
+          label="偏好品类"
+          options={categoryOptions}
+          selected={form.preferred_categories}
+          onChange={(preferred_categories) =>
+            setForm((prev) => ({ ...prev, preferred_categories }))
+          }
+          searchPlaceholder="搜索品类"
+        />
+        <TokenEditor
+          label="经营特征"
+          value={form.business_traits}
+          onChange={(business_traits) => setForm((prev) => ({ ...prev, business_traits }))}
+          placeholder="输入经营特征，如：餐饮批发"
+          suggestions={["核心客户", "价格敏感", "新品试销能力", "周转稳定", "组合采购"]}
+        />
+
+        <div className="flex items-center gap-2">
+          <Select
+            value={form.status}
+            onValueChange={(value) =>
+              setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+            }
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">启用</SelectItem>
+              <SelectItem value="inactive">停用</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </AdminDrawer>
+
+      <AdminConfirmDialog
+        open={Boolean(pendingDisable)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDisable(null);
+          }
+        }}
+        title="确认停用经销商"
+        description={
+          pendingDisable
+            ? `停用后该门店不会继续参与建议生成。确认停用 ${pendingDisable.customer_name} 吗？`
+            : "停用后该门店不会继续参与建议生成。"
+        }
+        confirmLabel="确认停用"
+        onConfirm={async () => {
+          if (!pendingDisable) {
+            return;
+          }
+          await softDelete(pendingDisable.customer_id);
+          setPendingDisable(null);
+          setDrawerOpen(false);
+        }}
+      />
     </AdminPageFrame>
   );
 }

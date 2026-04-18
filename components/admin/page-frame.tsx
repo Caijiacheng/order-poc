@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 interface AdminPageFrameProps {
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
   children: ReactNode;
 }
@@ -20,7 +20,7 @@ export function AdminPageFrame({
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
             {title}
           </h1>
-          <p className="text-sm text-slate-600">{description}</p>
+          {description ? <p className="text-sm text-slate-600">{description}</p> : null}
         </div>
         {action}
       </div>

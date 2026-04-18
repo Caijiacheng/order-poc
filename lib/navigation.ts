@@ -1,6 +1,6 @@
 export const FRONTSTAGE_NAV = [
-  { href: "/purchase", label: "采购工作台", hint: "建议单与选品一体化" },
-  { href: "/order-submit", label: "购物车提交页", hint: "自动优化与交易确认" },
+  { href: "/purchase", label: "开始选货", hint: "本周建议和选货" },
+  { href: "/order-submit", label: "确认下单", hint: "确认商品和提交订单" },
 ] as const;
 
 export type AdminNavItem = {
@@ -13,35 +13,36 @@ export type AdminNavGroup = {
   label: string;
   defaultHref: string;
   items: readonly AdminNavItem[];
+  hidden?: boolean;
 };
 
 export const ADMIN_NAV_TREE: readonly AdminNavGroup[] = [
   {
     key: "workbench",
-    label: "工作台",
+    label: "先看整体",
     defaultHref: "/admin/workbench/overview",
-    items: [{ href: "/admin/workbench/overview", label: "运营总览" }],
+    items: [{ href: "/admin/workbench/overview", label: "今日看板" }],
   },
   {
     key: "master-data",
-    label: "主数据管理",
+    label: "维护基础信息",
     defaultHref: "/admin/master-data/products",
     items: [
-      { href: "/admin/master-data/products", label: "商品档案" },
-      { href: "/admin/master-data/dealers", label: "经销商档案" },
-      { href: "/admin/master-data/segments", label: "经销商分群" },
-      { href: "/admin/master-data/product-pools", label: "商品池与搭配" },
+      { href: "/admin/master-data/products", label: "维护商品" },
+      { href: "/admin/master-data/dealers", label: "维护门店" },
+      { href: "/admin/master-data/segments", label: "维护门店分组" },
+      { href: "/admin/master-data/product-pools", label: "维护商品分组" },
     ],
   },
   {
     key: "strategy",
-    label: "策略与活动",
+    label: "设置投放规则",
     defaultHref: "/admin/strategy/campaigns",
     items: [
-      { href: "/admin/strategy/campaigns", label: "活动策略" },
-      { href: "/admin/strategy/recommendation-strategies", label: "推荐策略" },
-      { href: "/admin/strategy/expression-templates", label: "表达模板" },
-      { href: "/admin/strategy/global-rules", label: "全局规则" },
+      { href: "/admin/strategy/campaigns", label: "安排活动" },
+      { href: "/admin/strategy/recommendation-strategies", label: "设置推荐方案" },
+      { href: "/admin/strategy/expression-templates", label: "设置推荐话术" },
+      { href: "/admin/strategy/global-rules", label: "设置凑单规则" },
     ],
   },
   {
@@ -49,33 +50,34 @@ export const ADMIN_NAV_TREE: readonly AdminNavGroup[] = [
     label: "生成与发布",
     defaultHref: "/admin/operations/generation-jobs",
     items: [
-      { href: "/admin/operations/generation-jobs", label: "批量生成任务" },
+      { href: "/admin/operations/generation-jobs", label: "生成建议单" },
       {
         href: "/admin/operations/recommendation-batches",
-        label: "建议单批次",
+        label: "查看生成批次",
       },
     ],
   },
   {
     key: "analytics",
-    label: "数据复盘",
+    label: "查看结果",
     defaultHref: "/admin/analytics/overview",
     items: [
-      { href: "/admin/analytics/overview", label: "经营总览" },
+      { href: "/admin/analytics/overview", label: "结果总览" },
       {
         href: "/admin/analytics/recommendation-records",
-        label: "建议单记录",
+        label: "查看门店建议",
       },
     ],
   },
   {
     key: "observability",
-    label: "观测与回滚",
+    label: "排查与重置",
     defaultHref: "/admin/observability/audit-logs",
+    hidden: true,
     items: [
-      { href: "/admin/observability/audit-logs", label: "审计日志" },
-      { href: "/admin/observability/traces", label: "链路观察" },
-      { href: "/admin/observability/recovery", label: "回滚中心" },
+      { href: "/admin/observability/audit-logs", label: "查看变更记录" },
+      { href: "/admin/observability/traces", label: "查看执行过程" },
+      { href: "/admin/observability/recovery", label: "恢复演示数据" },
     ],
   },
 ] as const;

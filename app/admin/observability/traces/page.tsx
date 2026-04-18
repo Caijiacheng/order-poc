@@ -69,18 +69,18 @@ const SCENE_LABELS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  generated: "已生成",
-  partially_applied: "部分采纳",
-  fully_applied: "完全采纳",
-  ignored: "已忽略",
-  adopted: "已采纳",
-  not_adopted: "未采纳",
-  pending: "待处理",
+  generated: "已出建议",
+  partially_applied: "已带走部分商品",
+  fully_applied: "已整单带走",
+  ignored: "本轮未采用",
+  adopted: "已带走",
+  not_adopted: "未带走",
+  pending: "待门店处理",
   viewed: "已查看",
-  explained: "已解释",
-  applied: "已应用",
-  rejected: "已拒绝",
-  submitted_with_order: "随单提交",
+  explained: "已看依据",
+  applied: "已加入购物车",
+  rejected: "已明确不要",
+  submitted_with_order: "随单下单",
   expired: "已失效",
 };
 
@@ -176,8 +176,8 @@ export default function TraceObservabilityPage() {
 
   return (
     <AdminPageFrame
-      title="链路观察"
-      description="按业务场景追踪推荐链路，查看状态、耗时并跳转 Langfuse。"
+      title="执行过程"
+      description="按业务场景查看每次执行的状态、耗时，并跳转 Langfuse。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadTraces()} disabled={loading}>
@@ -185,7 +185,7 @@ export default function TraceObservabilityPage() {
             刷新
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/analytics/recommendation-records">查看建议单记录</Link>
+            <Link href="/admin/analytics/recommendation-records">查看门店建议</Link>
           </Button>
         </div>
       }
@@ -269,12 +269,12 @@ export default function TraceObservabilityPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="generated">已生成</SelectItem>
-                <SelectItem value="partially_applied">部分采纳</SelectItem>
-                <SelectItem value="fully_applied">完全采纳</SelectItem>
-                <SelectItem value="ignored">已忽略</SelectItem>
-                <SelectItem value="adopted">已采纳</SelectItem>
-                <SelectItem value="not_adopted">未采纳</SelectItem>
+                <SelectItem value="generated">已出建议</SelectItem>
+                <SelectItem value="partially_applied">已带走部分商品</SelectItem>
+                <SelectItem value="fully_applied">已整单带走</SelectItem>
+                <SelectItem value="ignored">本轮未采用</SelectItem>
+                <SelectItem value="adopted">已带走</SelectItem>
+                <SelectItem value="not_adopted">未带走</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -311,6 +311,7 @@ export default function TraceObservabilityPage() {
                   <TableHead>Trace</TableHead>
                   <TableHead>批次</TableHead>
                   <TableHead>经销商</TableHead>
+                  <TableHead>场景 / 方案</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">耗时</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -319,13 +320,13 @@ export default function TraceObservabilityPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-slate-500">
+                    <TableCell colSpan={8} className="text-center text-slate-500">
                       加载中...
                     </TableCell>
                   </TableRow>
                 ) : rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-slate-500">
+                    <TableCell colSpan={8} className="text-center text-slate-500">
                       暂无链路数据
                     </TableCell>
                   </TableRow>
@@ -342,6 +343,10 @@ export default function TraceObservabilityPage() {
                       <TableCell className="font-mono text-xs">{row.trace_id ?? "-"}</TableCell>
                       <TableCell className="font-mono text-xs">{row.batch_id ?? "-"}</TableCell>
                       <TableCell>{row.customer_name}</TableCell>
+                      <TableCell className="text-xs text-slate-600">
+                        <p>{SCENE_LABELS[row.scene] ?? row.scene}</p>
+                        <p className="mt-1 text-slate-500">{row.strategy_id ?? "默认方案"}</p>
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">{STATUS_LABELS[row.status] ?? row.status}</Badge>
                       </TableCell>
@@ -372,7 +377,7 @@ export default function TraceObservabilityPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">链路详情</CardTitle>
+            <CardTitle className="text-lg">执行详情</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {!detail ? (
@@ -389,7 +394,7 @@ export default function TraceObservabilityPage() {
                     状态：{STATUS_LABELS[detail.run.status] ?? detail.run.status}
                   </p>
                   <p className="text-xs text-slate-500">
-                    批次：{detail.run.batch_id ?? "-"} · 耗时：{detail.run.model_latency_ms}ms
+                    批次：{detail.run.batch_id ?? "-"} · 方案：{detail.run.strategy_id ?? "默认方案"} · 耗时：{detail.run.model_latency_ms}ms
                   </p>
                   <p className="text-xs text-slate-500">
                     Trace ID：{detail.run.trace_id ?? "暂无"}

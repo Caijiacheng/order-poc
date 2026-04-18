@@ -37,6 +37,14 @@ type RecommendationDetail = {
   items: RecommendationItemRecord[];
 };
 
+type ReplayResponse = {
+  batch: {
+    batch_id: string;
+  };
+  summary: string;
+  generated_run_ids: string[];
+};
+
 type QueryState = {
   page: number;
   pageSize: number;
@@ -65,7 +73,7 @@ const INITIAL_QUERY: QueryState = {
   dateFrom: "",
   dateTo: "",
   customerId: "",
-  scene: "",
+  scene: "purchase_bundle",
   skuId: "",
   status: "",
   adoptionStatus: "",
@@ -76,25 +84,51 @@ const INITIAL_QUERY: QueryState = {
 };
 
 const SCENE_LABELS: Record<string, string> = {
-  daily_recommendation: "日常补货",
-  weekly_focus: "周活动备货",
-  box_pair_optimization: "箱规与搭配优化",
+  daily_recommendation: "采购页组货建议",
+  weekly_focus: "活动备货",
+  box_pair_optimization: "结算页凑单推荐",
   threshold_topup: "门槛补差",
 };
 
+function getSceneScopeNote(scene: string) {
+  if (scene === "purchase_bundle" || scene === "daily_recommendation") {
+    return "采购页里“热销补货 / 缺货补货”两张模板卡，会从同一条采购页组货建议里拆开显示；“活动备货”则来自活动场景建议。";
+  }
+  if (scene === "checkout_optimization" || scene === "box_pair_optimization") {
+    return "这里展示的是结算页右侧的凑单记录，和采购页三张组货模板不是同一层数据。";
+  }
+  return "这里同时包含采购页组货建议和结算页凑单记录。";
+}
+
+function getScenePresentationHint(scene: string) {
+  if (scene === "daily_recommendation") {
+    return "前台会把这条采购页建议拆成“热销补货 / 缺货补货”两张模板卡。";
+  }
+  if (scene === "weekly_focus") {
+    return "前台会把这条建议展示在“活动备货”和活动专区。";
+  }
+  if (scene === "box_pair_optimization") {
+    return "这条记录对应结算页右侧的凑单推荐，不会出现在采购页三张模板卡里。";
+  }
+  if (scene === "threshold_topup") {
+    return "这条记录对应门槛补差提醒，不属于采购页组货模板。";
+  }
+  return "";
+}
+
 const STATUS_LABELS: Record<string, string> = {
-  generated: "已生成",
-  partially_applied: "部分采纳",
-  fully_applied: "完全采纳",
-  ignored: "已忽略",
-  adopted: "已采纳",
-  not_adopted: "未采纳",
-  pending: "待处理",
+  generated: "已出建议",
+  partially_applied: "已带走部分商品",
+  fully_applied: "已整单带走",
+  ignored: "本轮未采用",
+  adopted: "已带走",
+  not_adopted: "未带走",
+  pending: "待门店处理",
   viewed: "已查看",
-  explained: "已解释",
-  applied: "已应用",
-  rejected: "已拒绝",
-  submitted_with_order: "随单提交",
+  explained: "已看依据",
+  applied: "已加入购物车",
+  rejected: "已明确不要",
+  submitted_with_order: "随单下单",
   expired: "已失效",
 };
 
@@ -132,6 +166,7 @@ function getLangfuseBaseUrl(meta: Record<string, unknown>) {
 export default function RecommendationRecordsPage() {
   const searchParams = useSearchParams();
   const initialBatchId = searchParams.get("batchId") ?? "";
+  const initialCustomerId = searchParams.get("customerId") ?? "";
 
   const [query, setQuery] = useState<QueryState>(INITIAL_QUERY);
   const [records, setRecords] = useState<RecommendationRunRecord[]>([]);
@@ -142,6 +177,8 @@ export default function RecommendationRecordsPage() {
   const [langfuseBaseUrl, setLangfuseBaseUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [replaying, setReplaying] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
   const loadRecords = async (nextQuery = query) => {
@@ -155,7 +192,7 @@ export default function RecommendationRecordsPage() {
       setTotal(result.data.total);
       setLangfuseBaseUrl(getLangfuseBaseUrl(result.meta));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载建议单记录失败");
+      setErrorMessage(error instanceof Error ? error.message : "加载门店建议失败");
     } finally {
       setLoading(false);
     }
@@ -165,6 +202,8 @@ export default function RecommendationRecordsPage() {
     const nextQuery = {
       ...INITIAL_QUERY,
       batchId: initialBatchId,
+      customerId: initialCustomerId,
+      scene: initialBatchId || initialCustomerId ? "" : INITIAL_QUERY.scene,
     };
     setQuery(nextQuery);
     void loadRecords(nextQuery);
@@ -193,11 +232,45 @@ export default function RecommendationRecordsPage() {
     detail?.run.trace_id,
     detail?.langfuseBaseUrl || langfuseBaseUrl,
   );
+  const canReplayCurrentRecord =
+    detail?.run.scene === "daily_recommendation" ||
+    detail?.run.scene === "weekly_focus" ||
+    detail?.run.scene === "box_pair_optimization";
+
+  const replayCurrentRecord = async () => {
+    if (!detail || !canReplayCurrentRecord) {
+      return;
+    }
+    setReplaying(true);
+    setSuccessMessage("");
+    setErrorMessage("");
+    try {
+      const result = await requestJsonWithMeta<ReplayResponse>(
+        `/api/admin/recommendation-records/${detail.run.recommendation_run_id}/replay`,
+        {
+          method: "POST",
+        },
+      );
+      setSuccessMessage(`${result.data.summary}，新批次 ${result.data.batch.batch_id} 已生成。`);
+      const nextQuery = {
+        ...query,
+        page: 1,
+        batchId: "",
+        customerId: detail.run.customer_id,
+      };
+      setQuery(nextQuery);
+      await loadRecords(nextQuery);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "补跑失败");
+    } finally {
+      setReplaying(false);
+    }
+  };
 
   return (
     <AdminPageFrame
-      title="建议单记录"
-      description="查询 run/item 级记录，支持时间、经销商、场景、状态、SKU、采纳等筛选。"
+      title="前台建议明细"
+      description="默认先看采购页组货建议；切换后也可以查看结算页凑单记录，并支持单条建议重新生成。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button
@@ -210,12 +283,22 @@ export default function RecommendationRecordsPage() {
             刷新
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/observability/traces">前往链路观察</Link>
+            <Link href="/admin/operations/recommendation-batches">查看生成批次</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/observability/traces">查看执行过程</Link>
           </Button>
         </div>
       }
     >
+      <FeedbackBanner kind="success" message={successMessage} />
       <FeedbackBanner kind="error" message={errorMessage} />
+
+      <Card>
+        <CardContent className="p-4 text-sm leading-6 text-slate-600">
+          {getSceneScopeNote(query.scene)}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="grid gap-3 p-4 md:grid-cols-3 xl:grid-cols-9">
@@ -260,10 +343,12 @@ export default function RecommendationRecordsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部场景</SelectItem>
-                <SelectItem value="daily_recommendation">日常补货</SelectItem>
-                <SelectItem value="weekly_focus">周活动备货</SelectItem>
-                <SelectItem value="box_pair_optimization">箱规与搭配优化</SelectItem>
+                <SelectItem value="purchase_bundle">采购页组货建议</SelectItem>
+                <SelectItem value="checkout_optimization">结算页凑单记录</SelectItem>
+                <SelectItem value="all">全部记录</SelectItem>
+                <SelectItem value="daily_recommendation">采购页组货建议</SelectItem>
+                <SelectItem value="weekly_focus">活动备货</SelectItem>
+                <SelectItem value="box_pair_optimization">结算页凑单推荐</SelectItem>
                 <SelectItem value="threshold_topup">门槛补差</SelectItem>
               </SelectContent>
             </Select>
@@ -281,10 +366,10 @@ export default function RecommendationRecordsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="generated">已生成</SelectItem>
-                <SelectItem value="partially_applied">部分采纳</SelectItem>
-                <SelectItem value="fully_applied">完全采纳</SelectItem>
-                <SelectItem value="ignored">已忽略</SelectItem>
+                <SelectItem value="generated">已出建议</SelectItem>
+                <SelectItem value="partially_applied">已带走部分商品</SelectItem>
+                <SelectItem value="fully_applied">已整单带走</SelectItem>
+                <SelectItem value="ignored">本轮未采用</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -305,8 +390,8 @@ export default function RecommendationRecordsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="adopted">已采纳</SelectItem>
-                <SelectItem value="not_adopted">未采纳</SelectItem>
+                <SelectItem value="adopted">已带走</SelectItem>
+                <SelectItem value="not_adopted">未带走</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -393,9 +478,9 @@ export default function RecommendationRecordsPage() {
 
         <Card>
           <CardContent className="space-y-3 p-4">
-            <p className="text-sm font-semibold text-slate-900">记录详情</p>
+            <p className="text-sm font-semibold text-slate-900">建议详情</p>
             {!detail ? (
-              <p className="text-sm text-slate-500">点击左侧记录行查看详情</p>
+              <p className="text-sm text-slate-500">点击左侧记录查看详情</p>
             ) : (
               <>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -405,7 +490,7 @@ export default function RecommendationRecordsPage() {
                     {SCENE_LABELS[detail.run.scene] ?? detail.run.scene}
                   </p>
                   <p className="text-xs text-slate-500">批次：{detail.run.batch_id ?? "-"}</p>
-                  <p className="text-xs text-slate-500">策略：{detail.run.strategy_id ?? "-"}</p>
+                  <p className="text-xs text-slate-500">方案：{detail.run.strategy_id ?? "-"}</p>
                   <p className="text-xs text-slate-500">
                     状态：{STATUS_LABELS[detail.run.status] ?? detail.run.status}
                   </p>
@@ -423,6 +508,9 @@ export default function RecommendationRecordsPage() {
                   ) : (
                     <p className="mt-2 text-xs text-slate-400">Langfuse 链路入口不可用</p>
                   )}
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+                  {getScenePresentationHint(detail.run.scene)}
                 </div>
                 <div className="space-y-2">
                   {detail.items.slice(0, 8).map((item) => (
@@ -444,7 +532,23 @@ export default function RecommendationRecordsPage() {
                     {detail.run.prompt_snapshot}
                   </pre>
                 </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">模型回复快照</p>
+                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap text-xs text-slate-700">
+                    {detail.run.response_snapshot ?? "当前记录暂无模型回复快照。"}
+                  </pre>
+                </div>
                 <div className="grid gap-2">
+                  {canReplayCurrentRecord ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => void replayCurrentRecord()}
+                      disabled={replaying}
+                    >
+                      {replaying ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+                      重新生成当前这条建议
+                    </Button>
+                  ) : null}
                   {detail.run.batch_id ? (
                     <Button asChild variant="outline">
                       <Link
@@ -452,7 +556,7 @@ export default function RecommendationRecordsPage() {
                           detail.run.batch_id,
                         )}`}
                       >
-                        查看同批次链路
+                        查看同批次执行过程
                       </Link>
                     </Button>
                   ) : null}

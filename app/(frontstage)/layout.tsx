@@ -18,7 +18,7 @@ export default function FrontstageLayout({
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-slate-500">
-                Procurement Frontstage
+                经销商订货演示
               </p>
               <p className="text-base font-semibold text-slate-900">
                 厨邦经销商采购系统
@@ -52,7 +52,7 @@ export default function FrontstageLayout({
         <div className="glass-panel overflow-hidden rounded-3xl border border-white/70 p-5 shadow-[0_24px_70px_-48px_rgba(15,23,42,0.6)] md:p-8">
           <div className="mb-6 flex flex-wrap items-center gap-2">
             <Badge variant="secondary" className="rounded-full px-3 py-1">
-              美味鲜 / 厨邦 POC
+              美味鲜 / 厨邦演示版
             </Badge>
             <Badge variant="outline" className="rounded-full px-3 py-1">
               采购流程演示

@@ -23,17 +23,17 @@ import type { ListResult } from "@/lib/admin/types";
 import type { AuditLogEvent } from "@/lib/memory/types";
 
 const ENTITY_LABELS: Record<AuditLogEvent["entity_type"], string> = {
-  product: "商品档案",
-  dealer: "经销商档案",
-  dealer_segment: "经销商分群",
-  product_pool: "商品池",
-  recommendation_strategy: "推荐策略",
-  expression_template: "表达模板",
-  campaign: "活动策略",
-  global_rule: "全局规则",
+  product: "商品信息",
+  dealer: "门店信息",
+  dealer_segment: "门店分组",
+  product_pool: "商品分组",
+  recommendation_strategy: "推荐方案",
+  expression_template: "推荐话术",
+  campaign: "活动安排",
+  global_rule: "下单设置",
   generation_job: "生成任务",
-  recommendation_batch: "建议单批次",
-  recovery_snapshot: "恢复快照",
+  recommendation_batch: "生成批次",
+  recovery_snapshot: "演示恢复",
 };
 
 const ACTION_LABELS: Record<AuditLogEvent["action"], string> = {
@@ -86,7 +86,7 @@ export default function AuditLogsPage() {
         data.items.some((item) => item.id === prev?.id) ? prev : data.items[0] ?? null,
       );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载审计日志失败");
+      setErrorMessage(error instanceof Error ? error.message : "加载变更记录失败");
     } finally {
       setLoading(false);
     }
@@ -99,8 +99,8 @@ export default function AuditLogsPage() {
 
   return (
     <AdminPageFrame
-      title="审计日志"
-      description="查询配置变更留痕，支持按关键词检索并查看对象级变更摘要。"
+      title="变更记录"
+      description="查看谁改了什么，支持按关键词搜索。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadLogs()} disabled={loading}>
@@ -109,12 +109,12 @@ export default function AuditLogsPage() {
           </Button>
           <Button asChild variant="outline">
             <Link href="/admin/observability/traces" className="gap-2">
-              前往链路观察
+              查看执行过程
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/observability/recovery">前往回滚中心</Link>
+            <Link href="/admin/observability/recovery">恢复演示数据</Link>
           </Button>
         </div>
       }
@@ -124,7 +124,7 @@ export default function AuditLogsPage() {
       <Card>
         <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_auto_auto]">
           <Input
-            placeholder="按对象类型/对象 ID/动作/摘要搜索"
+            placeholder="按对象类型 / 编号 / 动作 / 摘要搜索"
             value={query.q}
             onChange={(event) => setQuery((prev) => ({ ...prev, q: event.target.value }))}
           />
@@ -166,7 +166,7 @@ export default function AuditLogsPage() {
                 ) : logs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-slate-500">
-                      暂无审计日志
+                      暂无变更记录
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -194,7 +194,7 @@ export default function AuditLogsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">变更详情</CardTitle>
+            <CardTitle className="text-lg">这次改了什么</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {!selected ? (

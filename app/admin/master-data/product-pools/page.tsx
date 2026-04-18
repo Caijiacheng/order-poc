@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
+import { AdminConfirmDialog } from "@/components/admin/admin-confirm-dialog";
+import { AdminDrawer } from "@/components/admin/admin-drawer";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
 import { MultiSelectChecklist, type ChecklistOption } from "@/components/admin/multi-select-checklist";
 import { AdminPageFrame } from "@/components/admin/page-frame";
@@ -48,7 +50,6 @@ const POOL_TYPE_LABEL: Record<ProductPoolType, string> = {
 export default function ProductPoolsPage() {
   const [items, setItems] = useState<ProductPoolEntity[]>([]);
   const [products, setProducts] = useState<ProductEntity[]>([]);
-  const [total, setTotal] = useState(0);
   const [query, setQuery] = useState({
     page: 1,
     pageSize: 10,
@@ -60,6 +61,8 @@ export default function ProductPoolsPage() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<ProductPoolForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingDisable, setPendingDisable] = useState<ProductPoolEntity | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -89,7 +92,6 @@ export default function ProductPoolsPage() {
         `/api/admin/product-pools?${queryString}`,
       );
       setItems(data.items);
-      setTotal(data.total);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载商品池失败");
     } finally {
@@ -118,6 +120,11 @@ export default function ProductPoolsPage() {
     setEditingId(null);
   };
 
+  const openCreateDrawer = () => {
+    resetForm();
+    setDrawerOpen(true);
+  };
+
   const pickForEdit = (item: ProductPoolEntity) => {
     setEditingId(item.pool_id);
     setForm({
@@ -129,6 +136,7 @@ export default function ProductPoolsPage() {
       pair_sku_ids: item.pair_sku_ids,
       status: item.status,
     });
+    setDrawerOpen(true);
   };
 
   const submitCreate = async () => {
@@ -140,6 +148,7 @@ export default function ProductPoolsPage() {
         body: JSON.stringify(form),
       });
       setSuccessMessage("商品池创建成功");
+      setDrawerOpen(false);
       resetForm();
       await loadPools();
     } catch (error) {
@@ -161,6 +170,7 @@ export default function ProductPoolsPage() {
         body: JSON.stringify(form),
       });
       setSuccessMessage("商品池更新成功");
+      setDrawerOpen(false);
       resetForm();
       await loadPools();
     } catch (error) {
@@ -189,10 +199,10 @@ export default function ProductPoolsPage() {
 
   return (
     <AdminPageFrame
-      title="商品池与搭配"
-      description="维护热销池、新品池、活动池和搭配池，策略按池组合引用，不再使用文本拼接关联。"
+      title="维护商品分组"
+      description="维护热销、新品、活动和搭配分组，供推荐方案直接引用。"
       action={
-        <Button className="rounded-full" onClick={resetForm}>
+        <Button className="rounded-full" onClick={openCreateDrawer}>
           <Plus className="h-4 w-4" />
           新建商品池
         </Button>
@@ -278,180 +288,203 @@ export default function ProductPoolsPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>商品池</TableHead>
+                <TableHead>类型</TableHead>
+                <TableHead>SKU 数</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.length === 0 ? (
                 <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>商品池</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>SKU 数</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableCell colSpan={6} className="text-center text-slate-500">
+                    {loading ? "加载中..." : "暂无商品池"}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-slate-500">
-                      {loading ? "加载中..." : "暂无商品池"}
+              ) : (
+                items.map((item) => (
+                  <TableRow key={item.pool_id}>
+                    <TableCell className="font-mono text-xs">{item.pool_id}</TableCell>
+                    <TableCell>
+                      <p className="font-medium text-slate-800">{item.pool_name}</p>
+                      <p className="text-xs text-slate-500">{item.description || "无描述"}</p>
+                    </TableCell>
+                    <TableCell>{POOL_TYPE_LABEL[item.pool_type]}</TableCell>
+                    <TableCell className="text-xs text-slate-600">
+                      主池 {item.sku_ids.length} · 搭配 {item.pair_sku_ids.length}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={item.status === "active" ? "secondary" : "outline"}>
+                        {item.status === "active" ? "启用" : "停用"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
+                          编辑
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-rose-600"
+                          onClick={() => setPendingDisable(item)}
+                          disabled={item.status === "inactive"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          停用
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  items.map((item) => (
-                    <TableRow key={item.pool_id}>
-                      <TableCell className="font-mono text-xs">{item.pool_id}</TableCell>
-                      <TableCell>
-                        <p className="font-medium text-slate-800">{item.pool_name}</p>
-                        <p className="text-xs text-slate-500">{item.description || "无描述"}</p>
-                      </TableCell>
-                      <TableCell>{POOL_TYPE_LABEL[item.pool_type]}</TableCell>
-                      <TableCell className="text-xs text-slate-600">
-                        主池 {item.sku_ids.length} · 搭配 {item.pair_sku_ids.length}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={item.status === "active" ? "secondary" : "outline"}>
-                          {item.status === "active" ? "启用" : "停用"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => pickForEdit(item)}>
-                            编辑
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-rose-600"
-                            onClick={() => softDelete(item.pool_id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            停用
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="space-y-4 p-4">
-            <p className="text-sm font-semibold text-slate-900">
-              {editingId ? `编辑商品池: ${editingId}` : "创建商品池"}
-            </p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>商品池编码</Label>
-                <Input
-                  value={form.pool_id}
-                  disabled={Boolean(editingId)}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, pool_id: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>商品池名称</Label>
-                <Input
-                  value={form.pool_name}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, pool_name: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>类型</Label>
-                <Select
-                  value={form.pool_type}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, pool_type: value as ProductPoolType }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="regular">常规补货池</SelectItem>
-                    <SelectItem value="hot_sale">热销池</SelectItem>
-                    <SelectItem value="new_product">新品池</SelectItem>
-                    <SelectItem value="campaign">活动池</SelectItem>
-                    <SelectItem value="pairing">搭配池</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>状态</Label>
-                <Select
-                  value={form.status}
-                  onValueChange={(value) =>
-                    setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">启用</SelectItem>
-                    <SelectItem value="inactive">停用</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>业务说明</Label>
-              <Input
-                value={form.description}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-              />
-            </div>
-
-            <MultiSelectChecklist
-              label="主商品清单（SKU）"
-              options={productOptions}
-              selected={form.sku_ids}
-              onChange={(sku_ids) => setForm((prev) => ({ ...prev, sku_ids }))}
-              searchPlaceholder="搜索商品"
-            />
-            <MultiSelectChecklist
-              label="搭配商品清单（SKU）"
-              options={productOptions}
-              selected={form.pair_sku_ids}
-              onChange={(pair_sku_ids) => setForm((prev) => ({ ...prev, pair_sku_ids }))}
-              searchPlaceholder="搜索搭配商品"
-            />
-
-            <div className="flex gap-2">
-              {editingId ? (
-                <Button className="rounded-full" onClick={submitUpdate}>
-                  <Save className="h-4 w-4" />
-                  保存修改
-                </Button>
-              ) : (
-                <Button className="rounded-full" onClick={submitCreate}>
-                  <Plus className="h-4 w-4" />
-                  创建商品池
-                </Button>
+                ))
               )}
-              <Button variant="outline" onClick={resetForm}>
-                重置
-              </Button>
-            </div>
-            <p className="text-xs text-slate-500">
-              共 {total} 条记录，当前第 {query.page} 页。
-            </p>
-          </CardContent>
-        </Card>
-      </section>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <AdminDrawer
+        open={drawerOpen}
+        onOpenChange={(open) => {
+          setDrawerOpen(open);
+          if (!open) {
+            resetForm();
+          }
+        }}
+        title={editingId ? `编辑商品池: ${editingId}` : "新建商品池"}
+        description="维护推荐可引用的商品分组和搭配分组。"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDrawerOpen(false);
+                resetForm();
+              }}
+            >
+              取消
+            </Button>
+            <Button onClick={() => void (editingId ? submitUpdate() : submitCreate())}>
+              {editingId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+              {editingId ? "保存更新" : "创建商品池"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>商品池编码</Label>
+            <Input
+              value={form.pool_id}
+              disabled={Boolean(editingId)}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, pool_id: event.target.value }))
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>商品池名称</Label>
+            <Input
+              value={form.pool_name}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, pool_name: event.target.value }))
+              }
+            />
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>类型</Label>
+            <Select
+              value={form.pool_type}
+              onValueChange={(value) =>
+                setForm((prev) => ({ ...prev, pool_type: value as ProductPoolType }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="regular">常规补货池</SelectItem>
+                <SelectItem value="hot_sale">热销池</SelectItem>
+                <SelectItem value="new_product">新品池</SelectItem>
+                <SelectItem value="campaign">活动池</SelectItem>
+                <SelectItem value="pairing">搭配池</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>状态</Label>
+            <Select
+              value={form.status}
+              onValueChange={(value) =>
+                setForm((prev) => ({ ...prev, status: value as "active" | "inactive" }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">启用</SelectItem>
+                <SelectItem value="inactive">停用</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>业务说明</Label>
+          <Input
+            value={form.description}
+            onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+          />
+        </div>
+
+        <MultiSelectChecklist
+          label="主商品清单（SKU）"
+          options={productOptions}
+          selected={form.sku_ids}
+          onChange={(sku_ids) => setForm((prev) => ({ ...prev, sku_ids }))}
+          searchPlaceholder="搜索商品"
+        />
+        <MultiSelectChecklist
+          label="搭配商品清单（SKU）"
+          options={productOptions}
+          selected={form.pair_sku_ids}
+          onChange={(pair_sku_ids) => setForm((prev) => ({ ...prev, pair_sku_ids }))}
+          searchPlaceholder="搜索搭配商品"
+        />
+      </AdminDrawer>
+
+      <AdminConfirmDialog
+        open={Boolean(pendingDisable)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDisable(null);
+          }
+        }}
+        title="确认停用商品池"
+        description={
+          pendingDisable
+            ? `停用后该商品池不会继续参与方案生成。确认停用 ${pendingDisable.pool_name} 吗？`
+            : "停用后该商品池不会继续参与方案生成。"
+        }
+        confirmLabel="确认停用"
+        onConfirm={async () => {
+          if (!pendingDisable) {
+            return;
+          }
+          await softDelete(pendingDisable.pool_id);
+          setPendingDisable(null);
+          setDrawerOpen(false);
+        }}
+      />
     </AdminPageFrame>
   );
 }

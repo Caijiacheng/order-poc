@@ -1,5 +1,6 @@
 import type {
   CampaignEntity,
+  CampaignPromoType,
   DealerEntity,
   DealerSegmentEntity,
   ExpressionTemplateEntity,
@@ -13,6 +14,7 @@ import type {
   TemplateReferenceItem,
   RecoverySnapshotRecord,
 } from "@/lib/memory/types";
+import { CAMPAIGN_PROMO_OPTIONS } from "@/lib/domain/campaigns";
 
 export type ValidationResult<T> =
   | { valid: true; value: T }
@@ -268,7 +270,7 @@ export function validateCampaignInput(
     "product_pool_ids",
   );
   const promo_threshold = parseNumber(body.promo_threshold, 0);
-  const promo_type = String(body.promo_type ?? "").trim();
+  const promo_type = String(body.promo_type ?? "").trim() as CampaignPromoType;
   const activity_notes = toCanonicalStringList(
     body.activity_notes,
     fieldErrors,
@@ -309,6 +311,8 @@ export function validateCampaignInput(
   }
   if (!isNonEmptyString(promo_type)) {
     fieldErrors.promo_type = "活动类型不能为空";
+  } else if (!CAMPAIGN_PROMO_OPTIONS.some((option) => option.value === promo_type)) {
+    fieldErrors.promo_type = "活动类型必须从预设枚举中选择";
   }
   if (promo_threshold < 0) {
     fieldErrors.promo_threshold = "门槛金额不能小于 0";
@@ -348,6 +352,7 @@ export function validateRulesInput(payload: unknown): ValidationResult<RuleConfi
     replenishment_days_threshold: parseNumber(body.replenishment_days_threshold),
     cart_gap_trigger_amount: parseNumber(body.cart_gap_trigger_amount),
     threshold_amount: parseNumber(body.threshold_amount),
+    cart_target_amount: parseNumber(body.cart_target_amount),
     prefer_frequent_items: parseBoolean(body.prefer_frequent_items),
     prefer_pair_items: parseBoolean(body.prefer_pair_items),
     box_adjust_if_close: parseBoolean(body.box_adjust_if_close),
@@ -362,6 +367,12 @@ export function validateRulesInput(payload: unknown): ValidationResult<RuleConfi
   }
   if (rules.threshold_amount <= 0) {
     fieldErrors.threshold_amount = "门槛金额必须大于 0";
+  }
+  if (rules.cart_target_amount <= 0) {
+    fieldErrors.cart_target_amount = "凑单目标金额必须大于 0";
+  }
+  if (rules.cart_target_amount < rules.threshold_amount) {
+    fieldErrors.cart_target_amount = "凑单目标金额不能低于下单门槛金额";
   }
   if (rules.cart_gap_trigger_amount < 0) {
     fieldErrors.cart_gap_trigger_amount = "触发差额不能为负数";

@@ -121,7 +121,7 @@ export default function AnalyticsOverviewPage() {
         records: recordData.items,
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载经营总览失败");
+      setErrorMessage(error instanceof Error ? error.message : "加载结果总览失败");
     } finally {
       setLoading(false);
     }
@@ -176,8 +176,8 @@ export default function AnalyticsOverviewPage() {
 
   return (
     <AdminPageFrame
-      title="经营总览"
-      description="基于 canonical 批次与建议记录数据源的运行与效果复盘。"
+      title="结果总览"
+      description="按时间查看生成结果、发布情况和门店采纳效果。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadData()} disabled={loading}>
@@ -186,7 +186,7 @@ export default function AnalyticsOverviewPage() {
           </Button>
           <Button asChild variant="outline">
             <Link href="/admin/analytics/recommendation-records" className="gap-2">
-              查看建议单记录
+              查看门店建议
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -274,12 +274,12 @@ export default function AnalyticsOverviewPage() {
       <section className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">推荐效果摘要</CardTitle>
+            <CardTitle className="text-lg">今日运营情况</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 text-sm md:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">建议记录数</p>
+                <p className="text-slate-500">门店建议数</p>
                 <p className="kpi-value text-xl">{data.records.length}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -296,16 +296,19 @@ export default function AnalyticsOverviewPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">建议记录 {data.records.length}</Badge>
+              <Badge variant="outline">门店建议 {data.records.length}</Badge>
               <Badge variant="outline">批次异常 {abnormalBatches.length}</Badge>
               <Badge variant="outline">已发布批次 {publishedBatches}</Badge>
             </div>
+            <p className="text-sm text-slate-500">
+              这一块用于先看当前筛选时间范围内的发布、异常、采纳和模型耗时，再决定是否继续下钻到具体建议。
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">场景分布 & 策略贡献</CardTitle>
+            <CardTitle className="text-lg">场景分布和方案贡献</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -322,7 +325,7 @@ export default function AnalyticsOverviewPage() {
               )}
             </div>
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-              <p className="text-xs text-slate-500">策略贡献（按记录数）</p>
+              <p className="text-xs text-slate-500">方案贡献（按建议数）</p>
               {strategyContribution.length === 0 ? (
                 <p className="text-sm text-slate-500">暂无策略贡献数据</p>
               ) : (
@@ -340,7 +343,7 @@ export default function AnalyticsOverviewPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">异常批次列表</CardTitle>
+          <CardTitle className="text-lg">异常批次清单</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
