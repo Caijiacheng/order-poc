@@ -213,7 +213,6 @@ export default function SegmentsPage() {
   return (
     <AdminPageFrame
       title="维护门店分组"
-      description="按城市、类型、渠道和指定门店分组，方便批量生成和投放。"
       action={
         <Button className="rounded-full" onClick={openCreateDrawer}>
           <Plus className="h-4 w-4" />
@@ -371,7 +370,6 @@ export default function SegmentsPage() {
           }
         }}
         title={editingId ? `编辑分群: ${editingId}` : "新建分群"}
-        description="设置分组范围，方便按门店分批投放建议。"
         footer={
           <div className="flex justify-end gap-2">
             <Button

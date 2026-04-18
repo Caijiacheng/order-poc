@@ -180,104 +180,207 @@ function deriveProductPools(products: ProductEntity[]): ProductPoolEntity[] {
   ];
 }
 
-function createSeedRecommendationRuns(): RecommendationRunRecord[] {
-  return [
-    {
-      recommendation_run_id: "reco_run_seed_001",
-      session_id: "session_seed_001",
-      batch_id: "batch_seed_001",
-      trace_id: "trace_seed_001",
-      customer_id: "dealer_xm_sm",
-      customer_name: "厦门思明经销商",
-      scene: "daily_recommendation",
-      page_name: "/purchase",
-      trigger_source: "manual",
-      strategy_id: "tpl_xm_daily",
-      expression_template_id: "expr_recommendation_default",
-      prompt_version: "2026.04.15.a",
-      prompt_snapshot: [
-        "系统角色：你是经销商进货建议助手。",
-        "场景：daily_recommendation",
-        "经销商经营信息：厦门思明经销商 / 城区核心客户 / 餐饮+流通 / 5-7天进一次货",
-        "经营特征：动销快 / 有新品试销能力 / 接受活动引导",
-        "候选商品：厨邦味极鲜特级生抽 / 厨邦蚝油 / 厨邦鸡精",
-        "输出要求：返回 elements 结构化建议。",
-      ].join("\n"),
-      response_snapshot: JSON.stringify(
-        {
-          elements: [
-            {
-              sku_id: "cb_weijixian_500",
-              suggested_qty: 12,
-              reason: "门店常带且进入补货周期，建议优先补上。",
-              reason_tags: ["常带商品", "补货周期"],
-              priority: 1,
-              action_type: "add_to_cart",
-            },
-            {
-              sku_id: "cb_oyster_700",
-              suggested_qty: 8,
-              reason: "与当前进货节奏匹配，可降低常用品断货风险。",
-              reason_tags: ["常带商品", "缺货预防"],
-              priority: 2,
-              action_type: "add_to_cart",
-            },
-          ],
-        },
-        null,
-        2,
-      ),
-      candidate_sku_ids: [
-        "cb_weijixian_500",
-        "cb_oyster_700",
-        "cb_chicken_essence_200",
-      ],
-      returned_sku_ids: ["cb_weijixian_500", "cb_oyster_700"],
-      cart_amount_before: 724,
-      cart_amount_after: 843,
-      model_name: "seed-mock-model",
-      model_latency_ms: 820,
-      input_tokens: 820,
-      output_tokens: 248,
-      status: "partially_applied",
-      created_at: "2026-04-15T01:10:00.000Z",
-      updated_at: "2026-04-15T01:18:00.000Z",
+type PurchaseSnapshotItemSeed = Omit<
+  RecommendationItemRecord,
+  "recommendation_run_id" | "customer_id" | "scene"
+>;
+
+type PurchaseSnapshotRunSeed = {
+  recommendation_run_id: string;
+  batch_id: string;
+  trace_id: string;
+  customer_id: string;
+  customer_name: string;
+  scene: "hot_sale_restock" | "stockout_restock" | "campaign_stockup";
+  surface: "purchase";
+  generation_mode: "precomputed";
+  business_date: string;
+  snapshot_version: string;
+  campaign_id?: string;
+  stale_reason?: string;
+  strategy_id: string;
+  expression_template_id: string;
+  prompt_version: string;
+  prompt_snapshot: string;
+  response_snapshot: string;
+  candidate_sku_ids: string[];
+  returned_sku_ids: string[];
+  cart_amount_before: number;
+  cart_amount_after: number;
+  model_name: string;
+  model_latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  status: RecommendationRunRecord["status"];
+  created_at: string;
+  updated_at: string;
+  items: PurchaseSnapshotItemSeed[];
+};
+
+type DerivedPurchaseSeeds = {
+  runs: RecommendationRunRecord[];
+  items: RecommendationItemRecord[];
+  batches: RecommendationBatchRecord[];
+};
+
+function derivePurchaseSnapshotSeeds(input: {
+  snapshots: PurchaseSnapshotRunSeed[];
+  generationJobs: GenerationJobEntity[];
+}): DerivedPurchaseSeeds {
+  const runs: RecommendationRunRecord[] = input.snapshots.map((record) => ({
+    recommendation_run_id: record.recommendation_run_id,
+    session_id: `session_purchase_${record.recommendation_run_id}`,
+    batch_id: record.batch_id,
+    trace_id: record.trace_id,
+    customer_id: record.customer_id,
+    customer_name: record.customer_name,
+    scene: record.scene,
+    surface: record.surface,
+    generation_mode: record.generation_mode,
+    business_date: record.business_date,
+    snapshot_version: record.snapshot_version,
+    campaign_id: record.campaign_id,
+    stale_reason: record.stale_reason,
+    page_name: "/purchase",
+    trigger_source: "manual",
+    strategy_id: record.strategy_id,
+    expression_template_id: record.expression_template_id,
+    prompt_version: record.prompt_version,
+    prompt_snapshot: record.prompt_snapshot,
+    response_snapshot: record.response_snapshot,
+    candidate_sku_ids: record.candidate_sku_ids,
+    returned_sku_ids: record.returned_sku_ids,
+    cart_amount_before: record.cart_amount_before,
+    cart_amount_after: record.cart_amount_after,
+    model_name: record.model_name,
+    model_latency_ms: record.model_latency_ms,
+    input_tokens: record.input_tokens,
+    output_tokens: record.output_tokens,
+    status: record.status,
+    created_at: record.created_at,
+    updated_at: record.updated_at,
+  }));
+
+  const items: RecommendationItemRecord[] = input.snapshots.flatMap((record) =>
+    record.items.map((item) => ({
+      ...item,
+      recommendation_run_id: record.recommendation_run_id,
+      customer_id: record.customer_id,
+      scene: record.scene,
+    })),
+  );
+
+  const publishedBatchIds = new Set(
+    input.generationJobs
+      .filter((job) => job.publication_status === "published" && job.published_batch_id)
+      .map((job) => job.published_batch_id as string),
+  );
+  const readyBatchIds = new Set(
+    input.generationJobs.flatMap((job) =>
+      [job.last_batch_id, job.last_sample_batch_id]
+        .filter((batchId): batchId is string => Boolean(batchId))
+        .filter((batchId) => !publishedBatchIds.has(batchId)),
+    ),
+  );
+
+  const byBatch = new Map<string, PurchaseSnapshotRunSeed[]>();
+  for (const record of input.snapshots) {
+    const current = byBatch.get(record.batch_id) ?? [];
+    current.push(record);
+    byBatch.set(record.batch_id, current);
+  }
+
+  const batches: RecommendationBatchRecord[] = Array.from(byBatch.entries()).map(
+    ([batchId, records]) => {
+      const sorted = [...records].sort((left, right) =>
+        left.created_at.localeCompare(right.created_at),
+      );
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const ownerJob = input.generationJobs.find(
+        (job) =>
+          job.published_batch_id === batchId ||
+          job.last_batch_id === batchId ||
+          job.last_sample_batch_id === batchId,
+      );
+
+      let publicationStatus: RecommendationBatchRecord["publication_status"] = "unpublished";
+      if (publishedBatchIds.has(batchId)) {
+        publicationStatus = "published";
+      } else if (readyBatchIds.has(batchId)) {
+        publicationStatus = "ready";
+      }
+
+      return {
+        batch_id: batchId,
+        batch_type: "scheduled_generation",
+        trigger_source: "admin",
+        job_id: ownerJob?.job_id,
+        trace_id: first.trace_id,
+        related_run_ids: sorted.map((record) => record.recommendation_run_id),
+        config_snapshot_id: "snapshot_seed_default",
+        started_at: first.created_at,
+        finished_at: last.updated_at,
+        status: "success",
+        publication_status: publicationStatus,
+        fallback_used: false,
+        created_at: first.created_at,
+        updated_at: last.updated_at,
+      };
     },
+  );
+
+  return { runs, items, batches };
+}
+
+function assertPurchaseSnapshotConsistency(runs: RecommendationRunRecord[]) {
+  const purchaseRuns = runs.filter(
+    (run) =>
+      run.surface === "purchase" &&
+      run.generation_mode === "precomputed" &&
+      (run.scene === "hot_sale_restock" ||
+        run.scene === "stockout_restock" ||
+        run.scene === "campaign_stockup"),
+  );
+  const dealerIds = new Set(purchaseRuns.map((run) => run.customer_id));
+  const scenes = new Set(purchaseRuns.map((run) => run.scene));
+  if (purchaseRuns.length !== 9 || dealerIds.size !== 3 || scenes.size !== 3) {
+    throw new Error(
+      "purchase-snapshots.json 必须覆盖 3 个经销商 x 3 个采购场景，共 9 条预计算记录。",
+    );
+  }
+}
+
+function createSeedCheckoutRealtimeRuns(): RecommendationRunRecord[] {
+  return [
     {
       recommendation_run_id: "reco_run_seed_002",
       session_id: "session_seed_002",
-      batch_id: "batch_seed_002",
-      trace_id: "trace_seed_002",
+      trace_id: "trace_checkout_seed_001",
       customer_id: "dealer_cd_pf",
       customer_name: "成都餐饮批发经销商",
-      scene: "box_pair_optimization",
+      scene: "checkout_optimization",
+      surface: "checkout",
+      generation_mode: "realtime",
+      business_date: "2026-04-15",
+      snapshot_version: "realtime_seed_v1",
       page_name: "/order-submit",
       trigger_source: "assistant",
-      strategy_id: "tpl_cd_boxpair",
+      strategy_id: "tpl_checkout_default",
       expression_template_id: "expr_cart_opt_default",
-      prompt_version: "2026.04.15.a",
+      prompt_version: "2026.04.15.realtime.seed",
       prompt_snapshot: [
-        "系统角色：你是购物车凑单优化助手。",
-        "场景：box_pair_optimization",
-        "经销商经营信息：成都餐饮批发经销商 / 餐饮批发客户 / 餐饮批发 / 7-10天进一次货",
-        "经营特征：偏重大包装 / 重视整箱配送 / 喜欢固定搭配采购",
-        "门店常购：厨邦蚝油 / 厨邦蒸鱼豉油 / 厨邦大包装蚝油 / 厨邦餐饮装鸡精",
-        "当前购物车商品：厨邦大包装蚝油 4箱 / 厨邦餐饮装鸡精 6箱",
-        "购物车金额：¥978，目标金额：¥1,000。",
-        "输出要求：为 threshold / pairing 返回结构化 decisions。",
+        "系统角色：你是结算页凑单优化助手。",
+        "场景：checkout_optimization",
+        "目标：按规则给出可执行凑单建议。",
       ].join("\n"),
       response_snapshot: JSON.stringify(
         {
           decisions: [
             {
               bar_type: "threshold",
-              combo_id: "threshold_combo_1",
-              explanation: "这组补上后能顺手凑够起订额，且都是门店常带货。",
-            },
-            {
-              bar_type: "pairing",
-              combo_id: "pair_combo_bundle_2",
-              explanation: "和当前已选餐饮大包装商品搭配度更高，适合一次带齐。",
+              combo_id: "checkout_seed_combo_1",
+              explanation: "补齐后可达起订门槛，并保持常购结构稳定。",
             },
           ],
         },
@@ -285,127 +388,33 @@ function createSeedRecommendationRuns(): RecommendationRunRecord[] {
         2,
       ),
       candidate_sku_ids: ["cb_oyster_big_2270", "cb_chicken_restaurant_1kg"],
-      returned_sku_ids: ["cb_oyster_big_2270", "cb_chicken_restaurant_1kg"],
+      returned_sku_ids: ["cb_oyster_big_2270"],
       cart_amount_before: 978,
-      cart_amount_after: 1032,
+      cart_amount_after: 1102,
       model_name: "seed-mock-model",
-      model_latency_ms: 1104,
-      input_tokens: 930,
-      output_tokens: 291,
+      model_latency_ms: 1066,
+      input_tokens: 901,
+      output_tokens: 244,
       status: "fully_applied",
       created_at: "2026-04-15T01:20:00.000Z",
       updated_at: "2026-04-15T01:23:00.000Z",
     },
-    {
-      recommendation_run_id: "reco_run_seed_003",
-      session_id: "session_seed_003",
-      batch_id: "batch_seed_001",
-      trace_id: "trace_seed_003",
-      customer_id: "dealer_xm_sm",
-      customer_name: "厦门思明经销商",
-      scene: "weekly_focus",
-      page_name: "/purchase",
-      trigger_source: "manual",
-      strategy_id: "tpl_xm_daily",
-      expression_template_id: "expr_recommendation_default",
-      prompt_version: "2026.04.15.a",
-      prompt_snapshot: [
-        "系统角色：你是活动备货建议助手。",
-        "场景：weekly_focus",
-        "经销商经营信息：厦门思明经销商 / 城区核心客户 / 餐饮+流通 / 5-7天进一次货",
-        "经营特征：动销快 / 有新品试销能力 / 接受活动引导",
-        "活动：零添加试销冲刺周",
-        "输出要求：返回 elements 结构化建议。",
-      ].join("\n"),
-      response_snapshot: JSON.stringify(
-        {
-          elements: [
-            {
-              sku_id: "cb_zeroadd_shengchou_500",
-              suggested_qty: 12,
-              reason: "本周活动主推商品，适合先带上承接活动出货。",
-              reason_tags: ["活动主推", "周备货"],
-              priority: 1,
-              action_type: "add_to_cart",
-            },
-          ],
-        },
-        null,
-        2,
-      ),
-      candidate_sku_ids: ["cb_zeroadd_shengchou_500", "cb_zeroadd_head_500"],
-      returned_sku_ids: ["cb_zeroadd_shengchou_500"],
-      cart_amount_before: 843,
-      cart_amount_after: 1039,
-      model_name: "seed-mock-model",
-      model_latency_ms: 904,
-      input_tokens: 762,
-      output_tokens: 226,
-      status: "generated",
-      created_at: "2026-04-15T01:11:00.000Z",
-      updated_at: "2026-04-15T01:18:00.000Z",
-    },
   ];
 }
 
-function createSeedRecommendationItems(): RecommendationItemRecord[] {
+function createSeedCheckoutRealtimeItems(): RecommendationItemRecord[] {
   return [
     {
-      recommendation_item_id: "reco_item_seed_001",
-      recommendation_run_id: "reco_run_seed_001",
-      customer_id: "dealer_xm_sm",
-      scene: "daily_recommendation",
-      sku_id: "cb_weijixian_500",
-      sku_name: "厨邦味极鲜特级生抽",
-      suggested_qty: 12,
-      suggested_rank: 1,
-      reason: "进入补货周期且为高频动销品。",
-      reason_tags: ["常购品", "补货周期"],
-      action_type: "add_to_cart",
-      effect_type: "replenishment",
-      was_viewed: true,
-      was_explained: true,
-      was_applied: true,
-      applied_qty: 12,
-      applied_at: "2026-04-15T01:14:00.000Z",
-      applied_by: "user",
-      order_submitted_with_item: false,
-      final_status: "applied",
-      created_at: "2026-04-15T01:10:00.000Z",
-      updated_at: "2026-04-15T01:14:00.000Z",
-    },
-    {
-      recommendation_item_id: "reco_item_seed_002",
-      recommendation_run_id: "reco_run_seed_001",
-      customer_id: "dealer_xm_sm",
-      scene: "daily_recommendation",
-      sku_id: "cb_oyster_700",
-      sku_name: "厨邦蚝油",
-      suggested_qty: 8,
-      suggested_rank: 2,
-      reason: "与鸡精组合动销表现稳定。",
-      reason_tags: ["搭配品"],
-      action_type: "add_to_cart",
-      effect_type: "pair_item",
-      was_viewed: true,
-      was_explained: false,
-      was_applied: false,
-      applied_by: "unknown",
-      final_status: "pending",
-      created_at: "2026-04-15T01:10:00.000Z",
-      updated_at: "2026-04-15T01:10:00.000Z",
-    },
-    {
-      recommendation_item_id: "reco_item_seed_003",
+      recommendation_item_id: "reco_item_checkout_seed_001",
       recommendation_run_id: "reco_run_seed_002",
       customer_id: "dealer_cd_pf",
-      scene: "box_pair_optimization",
+      scene: "checkout_optimization",
       sku_id: "cb_oyster_big_2270",
       sku_name: "厨邦大包装蚝油",
       suggested_qty: 4,
       suggested_rank: 1,
-      reason: "整箱采购更贴合批发配送节奏。",
-      reason_tags: ["箱规修正"],
+      reason: "补齐整箱数量后可同时满足门槛与配送效率。",
+      reason_tags: ["门槛补差", "箱规修正"],
       action_type: "adjust_qty",
       effect_type: "box_adjustment",
       was_viewed: true,
@@ -419,121 +428,40 @@ function createSeedRecommendationItems(): RecommendationItemRecord[] {
       created_at: "2026-04-15T01:20:00.000Z",
       updated_at: "2026-04-15T01:22:00.000Z",
     },
-    {
-      recommendation_item_id: "reco_item_seed_004",
-      recommendation_run_id: "reco_run_seed_002",
-      customer_id: "dealer_cd_pf",
-      scene: "box_pair_optimization",
-      sku_id: "cb_chicken_restaurant_1kg",
-      sku_name: "厨邦餐饮装鸡精",
-      suggested_qty: 6,
-      suggested_rank: 2,
-      reason: "搭配蚝油可形成完整餐饮调味组合。",
-      reason_tags: ["搭配补充"],
-      action_type: "add_to_cart",
-      effect_type: "pair_item",
-      was_viewed: true,
-      was_explained: false,
-      was_applied: true,
-      applied_qty: 6,
-      applied_at: "2026-04-15T01:23:00.000Z",
-      applied_by: "user",
-      order_submitted_with_item: false,
-      final_status: "applied",
-      created_at: "2026-04-15T01:20:00.000Z",
-      updated_at: "2026-04-15T01:23:00.000Z",
-    },
-    {
-      recommendation_item_id: "reco_item_seed_005",
-      recommendation_run_id: "reco_run_seed_003",
-      customer_id: "dealer_xm_sm",
-      scene: "weekly_focus",
-      sku_id: "cb_zeroadd_shengchou_500",
-      sku_name: "厨邦零添加特级生抽",
-      suggested_qty: 12,
-      suggested_rank: 1,
-      reason: "本周活动主推商品，建议提前备货。",
-      reason_tags: ["活动备货", "新品试销"],
-      action_type: "add_to_cart",
-      effect_type: "weekly_focus",
-      was_viewed: true,
-      was_explained: false,
-      was_applied: true,
-      applied_qty: 12,
-      applied_at: "2026-04-15T01:18:00.000Z",
-      applied_by: "user",
-      final_status: "applied",
-      created_at: "2026-04-15T01:11:00.000Z",
-      updated_at: "2026-04-15T01:18:00.000Z",
-    },
   ];
 }
 
-function createSeedRecommendationBatches(): RecommendationBatchRecord[] {
-  return [
-    {
-      batch_id: "batch_seed_001",
-      batch_type: "scheduled_generation",
-      trigger_source: "admin",
-      job_id: "job_seed_2026-04-15",
-      customer_id: "dealer_xm_sm",
-      scene: "daily_recommendation",
-      trace_id: "trace_seed_001",
-      related_run_ids: ["reco_run_seed_001", "reco_run_seed_003"],
-      config_snapshot_id: "snapshot_seed_default",
-      started_at: "2026-04-15T01:08:00.000Z",
-      finished_at: "2026-04-15T01:18:00.000Z",
-      status: "success",
-      publication_status: "published",
-      fallback_used: false,
-      created_at: "2026-04-15T01:08:00.000Z",
-      updated_at: "2026-04-15T01:18:00.000Z",
-    },
-    {
-      batch_id: "batch_seed_002",
-      batch_type: "frontstage_realtime",
-      trigger_source: "frontstage",
-      session_id: "session_seed_002",
-      customer_id: "dealer_cd_pf",
-      scene: "box_pair_optimization",
-      trace_id: "trace_seed_002",
-      related_run_ids: ["reco_run_seed_002"],
-      config_snapshot_id: "snapshot_seed_default",
-      started_at: "2026-04-15T01:20:00.000Z",
-      finished_at: "2026-04-15T01:23:00.000Z",
-      status: "success",
-      publication_status: "unpublished",
-      fallback_used: false,
-      created_at: "2026-04-15T01:20:00.000Z",
-      updated_at: "2026-04-15T01:23:00.000Z",
-    },
-  ];
-}
+function createSeedEvents(input: {
+  purchaseRuns: RecommendationRunRecord[];
+  checkoutRuns: RecommendationRunRecord[];
+}): MetricEvent[] {
+  const firstPurchaseRun = input.purchaseRuns[0];
+  const firstCheckoutRun = input.checkoutRuns[0];
 
-function createSeedEvents(): MetricEvent[] {
   return [
     {
       id: randomUUID(),
-      timestamp: "2026-04-15T01:10:00.000Z",
-      customerId: "dealer_xm_sm",
-      customerName: "厦门思明经销商",
+      timestamp: firstPurchaseRun?.created_at ?? "2026-04-15T01:10:00.000Z",
+      customerId: firstPurchaseRun?.customer_id ?? "dealer_xm_sm",
+      customerName: firstPurchaseRun?.customer_name ?? "厦门思明经销商",
       eventType: "recommendation_generated",
-      scene: "daily_recommendation",
+      scene: firstPurchaseRun?.scene ?? "hot_sale_restock",
       payload: {
-        recommendation_run_id: "reco_run_seed_001",
-        batch_id: "batch_seed_001",
+        recommendation_run_id:
+          firstPurchaseRun?.recommendation_run_id ?? "reco_run_seed_fallback_001",
+        batch_id: firstPurchaseRun?.batch_id ?? "batch_seed_001",
       },
     },
     {
       id: randomUUID(),
-      timestamp: "2026-04-15T01:20:00.000Z",
-      customerId: "dealer_cd_pf",
-      customerName: "成都餐饮批发经销商",
-      eventType: "recommendation_batch_created",
-      scene: "box_pair_optimization",
+      timestamp: firstCheckoutRun?.created_at ?? "2026-04-15T01:20:00.000Z",
+      customerId: firstCheckoutRun?.customer_id ?? "dealer_cd_pf",
+      customerName: firstCheckoutRun?.customer_name ?? "成都餐饮批发经销商",
+      eventType: "cart_optimized",
+      scene: firstCheckoutRun?.scene ?? "checkout_optimization",
       payload: {
-        recommendation_run_id: "reco_run_seed_002",
-        batch_id: "batch_seed_002",
+        recommendation_run_id:
+          firstCheckoutRun?.recommendation_run_id ?? "reco_run_seed_002",
       },
     },
   ];
@@ -595,7 +523,7 @@ function createSeedGenerationJobs(): GenerationJobEntity[] {
       business_date: "2026-04-15",
       target_dealer_ids: ["dealer_xm_sm", "dealer_dg_sm", "dealer_cd_pf"],
       target_segment_ids: [],
-      strategy_ids: ["tpl_xm_daily", "tpl_dg_daily", "tpl_cd_boxpair"],
+      strategy_ids: ["tpl_purchase_stockout", "tpl_purchase_hot_sale", "tpl_purchase_campaign"],
       publish_mode: "manual",
       status: "completed",
       publication_status: "published",
@@ -663,6 +591,9 @@ export function loadSeedStore(): AppMemoryStore {
   const products = loadJsonFile<ProductEntity[]>("products.json");
   const dealers = loadJsonFile<DealerEntity[]>("dealers.json");
   const campaigns = loadJsonFile<CampaignEntity[]>("campaigns.json");
+  const purchaseSnapshots = loadJsonFile<PurchaseSnapshotRunSeed[]>(
+    "purchase-snapshots.json",
+  );
   const recommendationStrategies = loadJsonFile<RecommendationStrategyEntity[]>(
     "recommendation-strategies.json",
   );
@@ -673,9 +604,6 @@ export function loadSeedStore(): AppMemoryStore {
   const generationJobs =
     loadJsonFileOptional<GenerationJobEntity[]>("generation-jobs.json") ??
     createSeedGenerationJobs();
-  const recommendationBatches =
-    loadJsonFileOptional<RecommendationBatchRecord[]>("recommendation-batches.json") ??
-    createSeedRecommendationBatches();
   const recoverySnapshots =
     loadJsonFileOptional<RecoverySnapshotRecord[]>("recovery-snapshots.json") ??
     createSeedRecoverySnapshots();
@@ -688,36 +616,103 @@ export function loadSeedStore(): AppMemoryStore {
     loadJsonFileOptional<ProductPoolEntity[]>("product-pools.json") ??
     deriveProductPools(products);
 
-  const recommendationRuns = createSeedRecommendationRuns();
-  const recommendationItems = createSeedRecommendationItems();
+  const normalizedGenerationJobs = generationJobs.map(normalizeGenerationJob);
+  const purchaseSeeds = derivePurchaseSnapshotSeeds({
+    snapshots: purchaseSnapshots,
+    generationJobs: normalizedGenerationJobs,
+  });
+  assertPurchaseSnapshotConsistency(purchaseSeeds.runs);
+
+  const checkoutRuns = createSeedCheckoutRealtimeRuns();
+  const checkoutItems = createSeedCheckoutRealtimeItems();
+
+  const recommendationRuns = [...purchaseSeeds.runs, ...checkoutRuns].sort((left, right) =>
+    right.created_at.localeCompare(left.created_at),
+  );
+  const recommendationItems = [...purchaseSeeds.items, ...checkoutItems].sort(
+    (left, right) => right.created_at.localeCompare(left.created_at),
+  );
+  const recommendationBatches = [...purchaseSeeds.batches].sort(
+    (left, right) => right.created_at.localeCompare(left.created_at),
+  );
+
   const promptConfig = toPromptConfig(expressionTemplates);
   const rules = toRuleConfig(globalRules);
 
-  const latestEvents = createSeedEvents();
-  const metrics = {
-    sessionCount: 9,
-    recommendationRequests: 28,
-    weeklyFocusRequests: 11,
-    cartOptimizationRequests: 18,
-    explanationRequests: 12,
-    addToCartFromSuggestion: 21,
-    applyOptimizationCount: 17,
-    thresholdReachedCount: 9,
-    boxAdjustmentCount: 8,
-    pairSuggestionAppliedCount: 11,
-    totalCartAmountBefore: 6924,
-    totalCartAmountAfter: 7711,
-    totalRevenueLift: 787,
-    averageModelLatencyMs: 941,
-    totalModelCalls: 57,
-    totalInputTokens: 48760,
-    totalOutputTokens: 13350,
-    structuredOutputFailureCount: 0,
-    customerSceneBreakdown: {
-      dealer_xm_sm_daily_recommendation: 11,
-      dealer_dg_sm_weekly_focus: 7,
-      dealer_cd_pf_box_pair_optimization: 10,
+  const latestEvents = createSeedEvents({
+    purchaseRuns: purchaseSeeds.runs,
+    checkoutRuns,
+  });
+
+  const customerSceneBreakdown = recommendationRuns.reduce<Record<string, number>>(
+    (acc, run) => {
+      const key = `${run.customer_id}_${run.scene}`;
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
     },
+    {},
+  );
+
+  const totalCartAmountBefore = recommendationRuns.reduce(
+    (sum, run) => sum + (run.cart_amount_before ?? 0),
+    0,
+  );
+  const totalCartAmountAfter = recommendationRuns.reduce(
+    (sum, run) => sum + (run.cart_amount_after ?? 0),
+    0,
+  );
+  const totalModelLatencyMs = recommendationRuns.reduce(
+    (sum, run) => sum + run.model_latency_ms,
+    0,
+  );
+  const totalInputTokens = recommendationRuns.reduce(
+    (sum, run) => sum + (run.input_tokens ?? 0),
+    0,
+  );
+  const totalOutputTokens = recommendationRuns.reduce(
+    (sum, run) => sum + (run.output_tokens ?? 0),
+    0,
+  );
+  const purchaseRequestCount = recommendationRuns.filter(
+    (run) =>
+      run.surface === "purchase" &&
+      (run.scene === "hot_sale_restock" ||
+        run.scene === "stockout_restock" ||
+        run.scene === "campaign_stockup"),
+  ).length;
+  const campaignRequestCount = recommendationRuns.filter(
+    (run) => run.scene === "campaign_stockup",
+  ).length;
+  const checkoutRequestCount = recommendationRuns.filter(
+    (run) => run.scene === "checkout_optimization",
+  ).length;
+  const appliedItemCount = recommendationItems.filter(
+    (item) => item.final_status === "applied" || item.final_status === "submitted_with_order",
+  ).length;
+
+  const metrics = {
+    sessionCount: recommendationRuns.length,
+    recommendationRequests: purchaseRequestCount,
+    weeklyFocusRequests: campaignRequestCount,
+    cartOptimizationRequests: checkoutRequestCount,
+    explanationRequests: 12,
+    addToCartFromSuggestion: appliedItemCount,
+    applyOptimizationCount: checkoutRequestCount,
+    thresholdReachedCount: checkoutRequestCount,
+    boxAdjustmentCount: checkoutRequestCount,
+    pairSuggestionAppliedCount: Math.max(0, appliedItemCount - checkoutRequestCount),
+    totalCartAmountBefore,
+    totalCartAmountAfter,
+    totalRevenueLift: Math.max(0, totalCartAmountAfter - totalCartAmountBefore),
+    averageModelLatencyMs:
+      recommendationRuns.length > 0
+        ? Math.round(totalModelLatencyMs / recommendationRuns.length)
+        : 0,
+    totalModelCalls: recommendationRuns.length,
+    totalInputTokens,
+    totalOutputTokens,
+    structuredOutputFailureCount: 0,
+    customerSceneBreakdown,
     latestEvents,
   };
 
@@ -730,7 +725,7 @@ export function loadSeedStore(): AppMemoryStore {
     expressionTemplates,
     campaigns,
     globalRules,
-    generationJobs: generationJobs.map(normalizeGenerationJob),
+    generationJobs: normalizedGenerationJobs,
     recommendationBatches: recommendationBatches.map(normalizeRecommendationBatch),
     recoverySnapshots,
     uiConfig,

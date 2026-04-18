@@ -1,30 +1,38 @@
 [
   {
-    "strategy_id": "tpl_xm_daily",
-    "strategy_name": "厦门补货组货策略",
-    "scene": "replenishment_bundle",
-    "target_dealer_ids": ["dealer_xm_sm"],
-    "dealer_segment_ids": ["seg_城区核心客户_餐饮流通"],
-    "product_pool_ids": ["pool_regular_replenishment", "pool_pairing"],
+    "strategy_id": "tpl_purchase_hot_sale",
+    "strategy_name": "采购预计算-热销补货策略",
+    "scene": "hot_sale_restock",
+    "target_dealer_ids": ["dealer_xm_sm", "dealer_dg_sm", "dealer_cd_pf"],
+    "dealer_segment_ids": [
+      "seg_城区核心客户_餐饮流通",
+      "seg_商超配送客户_ka_商超",
+      "seg_餐饮批发客户_餐饮批发"
+    ],
+    "product_pool_ids": ["pool_hot_sale", "pool_regular_replenishment"],
     "campaign_ids": [],
-    "candidate_sku_ids": ["cb_weijixian_500", "cb_oyster_700"],
+    "candidate_sku_ids": [
+      "cb_weijixian_500",
+      "cb_small_shengchou_250",
+      "cb_oyster_big_2270"
+    ],
     "reference_items": [
       {
         "sku_id": "cb_weijixian_500",
         "qty": 12,
-        "reason": "进入常规补货周期，优先补齐基础动销。",
-        "reason_tags": ["补货周期", "常购品"],
+        "reason": "高频动销，建议优先补齐基础盘。",
+        "reason_tags": ["热销补货", "高频动销"],
         "sort_order": 1
       },
       {
-        "sku_id": "cb_oyster_700",
-        "qty": 8,
-        "reason": "蚝油与鸡精搭配稳定，适合补齐结构。",
-        "reason_tags": ["搭配补货", "动销稳定"],
+        "sku_id": "cb_small_shengchou_250",
+        "qty": 16,
+        "reason": "小规格高周转，适合热销补位。",
+        "reason_tags": ["热销补货", "高周转"],
         "sort_order": 2
       }
     ],
-    "business_notes": "优先保障基础盘，避免一次性高风险压货。",
+    "business_notes": "统一热销补货基线策略，覆盖采购页预计算热销场景。",
     "expression_template_id": "expr_recommendation_default",
     "priority": 1,
     "status": "active",
@@ -32,31 +40,39 @@
     "updated_at": "2026-04-01T08:00:00.000Z"
   },
   {
-    "strategy_id": "tpl_dg_daily",
-    "strategy_name": "东莞热销组货策略",
-    "scene": "hot_sale_bundle",
-    "target_dealer_ids": ["dealer_dg_sm"],
-    "dealer_segment_ids": ["seg_商超配送客户_ka_商超"],
-    "product_pool_ids": ["pool_hot_sale", "pool_regular_replenishment"],
+    "strategy_id": "tpl_purchase_stockout",
+    "strategy_name": "采购预计算-缺货补货策略",
+    "scene": "stockout_restock",
+    "target_dealer_ids": ["dealer_xm_sm", "dealer_dg_sm", "dealer_cd_pf"],
+    "dealer_segment_ids": [
+      "seg_城区核心客户_餐饮流通",
+      "seg_商超配送客户_ka_商超",
+      "seg_餐饮批发客户_餐饮批发"
+    ],
+    "product_pool_ids": ["pool_regular_replenishment", "pool_pairing"],
     "campaign_ids": [],
-    "candidate_sku_ids": ["cb_small_shengchou_250", "cb_vinegar_450"],
+    "candidate_sku_ids": [
+      "cb_oyster_700",
+      "cb_vinegar_450",
+      "cb_steamed_fish_450"
+    ],
     "reference_items": [
       {
-        "sku_id": "cb_small_shengchou_250",
-        "qty": 16,
-        "reason": "小规格高周转，适合作为热销优先补货项。",
-        "reason_tags": ["热销", "高周转"],
+        "sku_id": "cb_oyster_700",
+        "qty": 8,
+        "reason": "常购基础品，优先避免断货。",
+        "reason_tags": ["缺货补货", "常购品"],
         "sort_order": 1
       },
       {
         "sku_id": "cb_vinegar_450",
         "qty": 12,
-        "reason": "商超基础覆盖稳定，补齐后更利于动销连续。",
-        "reason_tags": ["基础覆盖", "热销补齐"],
+        "reason": "基础覆盖商品，建议补齐安全库存。",
+        "reason_tags": ["缺货补货", "基础覆盖"],
         "sort_order": 2
       }
     ],
-    "business_notes": "侧重动销效率，优先推荐可快速陈列与补位 SKU。",
+    "business_notes": "统一缺货补货基线策略，覆盖采购页预计算缺货场景。",
     "expression_template_id": "expr_recommendation_default",
     "priority": 2,
     "status": "active",
@@ -64,33 +80,77 @@
     "updated_at": "2026-04-01T08:00:00.000Z"
   },
   {
-    "strategy_id": "tpl_cd_boxpair",
-    "strategy_name": "成都活动组货策略",
-    "scene": "campaign_bundle",
-    "target_dealer_ids": ["dealer_cd_pf"],
-    "dealer_segment_ids": ["seg_餐饮批发客户_餐饮批发"],
-    "product_pool_ids": ["pool_hot_sale", "pool_new_product"],
-    "campaign_ids": ["camp_2026w16_combo"],
-    "candidate_sku_ids": ["cb_weekly_combo", "cb_banquet_soy_1750"],
+    "strategy_id": "tpl_purchase_campaign",
+    "strategy_name": "采购预计算-活动备货策略",
+    "scene": "campaign_stockup",
+    "target_dealer_ids": ["dealer_xm_sm", "dealer_dg_sm", "dealer_cd_pf"],
+    "dealer_segment_ids": [
+      "seg_城区核心客户_餐饮流通",
+      "seg_商超配送客户_ka_商超",
+      "seg_餐饮批发客户_餐饮批发"
+    ],
+    "product_pool_ids": ["pool_new_product", "pool_pairing"],
+    "campaign_ids": ["camp_2026w16_focus", "camp_2026w16_combo", "camp_2026w16_smallpack"],
+    "candidate_sku_ids": [
+      "cb_zeroadd_shengchou_500",
+      "cb_small_oyster_230",
+      "cb_chicken_powder_combo"
+    ],
     "reference_items": [
       {
-        "sku_id": "cb_weekly_combo",
-        "qty": 3,
-        "reason": "活动窗口期优先补齐活动组合装，提升档期达成。",
-        "reason_tags": ["活动备货", "组合装"],
+        "sku_id": "cb_zeroadd_shengchou_500",
+        "qty": 12,
+        "reason": "活动主推 SKU，建议优先备货。",
+        "reason_tags": ["活动备货", "主推品"],
         "sort_order": 1
       },
       {
-        "sku_id": "cb_banquet_soy_1750",
-        "qty": 4,
-        "reason": "宴会装适配餐饮档期，能拉升活动客单结构。",
-        "reason_tags": ["活动品", "餐饮场景"],
+        "sku_id": "cb_chicken_powder_combo",
+        "qty": 6,
+        "reason": "活动组合商品，利于档期连带。",
+        "reason_tags": ["活动备货", "组合搭售"],
         "sort_order": 2
       }
     ],
-    "business_notes": "活动期优先确保活动池 SKU 完整覆盖。",
+    "business_notes": "统一活动备货基线策略，覆盖采购页预计算活动场景。",
     "expression_template_id": "expr_recommendation_default",
     "priority": 3,
+    "status": "active",
+    "created_at": "2026-04-01T08:00:00.000Z",
+    "updated_at": "2026-04-01T08:00:00.000Z"
+  },
+  {
+    "strategy_id": "tpl_checkout_default",
+    "strategy_name": "结算页实时凑单策略",
+    "scene": "checkout_optimization",
+    "target_dealer_ids": ["dealer_xm_sm", "dealer_dg_sm", "dealer_cd_pf"],
+    "dealer_segment_ids": [],
+    "product_pool_ids": ["pool_pairing"],
+    "campaign_ids": [],
+    "candidate_sku_ids": [
+      "cb_oyster_big_2270",
+      "cb_chicken_restaurant_1kg",
+      "cb_chicken_powder_combo"
+    ],
+    "reference_items": [
+      {
+        "sku_id": "cb_oyster_big_2270",
+        "qty": 4,
+        "reason": "凑单优先考虑门槛补齐与箱规修正。",
+        "reason_tags": ["凑单", "箱规修正"],
+        "sort_order": 1
+      },
+      {
+        "sku_id": "cb_chicken_restaurant_1kg",
+        "qty": 6,
+        "reason": "与主品搭配采购，提升整单效率。",
+        "reason_tags": ["凑单", "搭配补充"],
+        "sort_order": 2
+      }
+    ],
+    "business_notes": "用于 checkout_optimization 场景的实时凑单策略参考。",
+    "expression_template_id": "expr_cart_opt_default",
+    "priority": 4,
     "status": "active",
     "created_at": "2026-04-01T08:00:00.000Z",
     "updated_at": "2026-04-01T08:00:00.000Z"

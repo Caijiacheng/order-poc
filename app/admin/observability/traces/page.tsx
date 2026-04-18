@@ -70,11 +70,11 @@ const SCENE_LABELS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   generated: "已出建议",
-  partially_applied: "已带走部分商品",
-  fully_applied: "已整单带走",
-  ignored: "本轮未采用",
-  adopted: "已带走",
-  not_adopted: "未带走",
+  partially_applied: "已采纳部分商品",
+  fully_applied: "已采纳",
+  ignored: "本轮未采纳",
+  adopted: "已采纳",
+  not_adopted: "未采纳",
   pending: "待门店处理",
   viewed: "已查看",
   explained: "已看依据",
@@ -177,7 +177,6 @@ export default function TraceObservabilityPage() {
   return (
     <AdminPageFrame
       title="执行过程"
-      description="按业务场景查看每次执行的状态、耗时，并跳转 Langfuse。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadTraces()} disabled={loading}>
@@ -270,11 +269,11 @@ export default function TraceObservabilityPage() {
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
                 <SelectItem value="generated">已出建议</SelectItem>
-                <SelectItem value="partially_applied">已带走部分商品</SelectItem>
-                <SelectItem value="fully_applied">已整单带走</SelectItem>
-                <SelectItem value="ignored">本轮未采用</SelectItem>
-                <SelectItem value="adopted">已带走</SelectItem>
-                <SelectItem value="not_adopted">未带走</SelectItem>
+                <SelectItem value="partially_applied">已采纳部分商品</SelectItem>
+                <SelectItem value="fully_applied">已采纳</SelectItem>
+                <SelectItem value="ignored">本轮未采纳</SelectItem>
+                <SelectItem value="adopted">已采纳</SelectItem>
+                <SelectItem value="not_adopted">未采纳</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -31,9 +31,35 @@ describe("admin navigation IA contract", () => {
     expect(ADMIN_NAV_TREE).toHaveLength(6);
   });
 
+  it("locks Stage 6 dual-chain IA labels on canonical routes", () => {
+    const groupByKey = new Map(ADMIN_NAV_TREE.map((group) => [group.key, group]));
+    expect(groupByKey.get("operations")?.label).toBe("建议生成");
+    expect(groupByKey.get("analytics")?.label).toBe("结果查看");
+    expect(
+      groupByKey
+        .get("analytics")
+        ?.items.find(
+          (item) => item.href === "/admin/analytics/recommendation-records?view=purchase",
+        )
+        ?.label,
+    ).toBe("采购建议记录");
+    expect(
+      groupByKey
+        .get("analytics")
+        ?.items.find(
+          (item) => item.href === "/admin/analytics/recommendation-records?view=checkout",
+        )
+        ?.label,
+    ).toBe("结算凑单记录");
+  });
+
   it("keeps canonical admin leaf routes aligned with route registry", () => {
-    const navLeafRoutes = ADMIN_NAV_TREE.flatMap((group) =>
-      group.items.map((item) => item.href),
+    const navLeafRoutes = Array.from(
+      new Set(
+        ADMIN_NAV_TREE.flatMap((group) =>
+          group.items.map((item) => item.matchPath ?? item.href.split("?")[0] ?? item.href),
+        ),
+      ),
     );
     expect(navLeafRoutes).toEqual(ADMIN_ROUTES);
     expect(navLeafRoutes).toHaveLength(16);
@@ -46,5 +72,23 @@ describe("admin navigation IA contract", () => {
       expect(match?.group.key).toBe(group.key);
       expect(match?.item?.href).toBe(group.defaultHref);
     }
+  });
+
+  it("supports query-based secondary nav items for recommendation records", () => {
+    const purchaseMatch = getAdminRouteMatch(
+      "/admin/analytics/recommendation-records",
+      new URLSearchParams("view=purchase"),
+    );
+    expect(purchaseMatch?.item?.href).toBe(
+      "/admin/analytics/recommendation-records?view=purchase",
+    );
+
+    const checkoutMatch = getAdminRouteMatch(
+      "/admin/analytics/recommendation-records",
+      new URLSearchParams("view=checkout"),
+    );
+    expect(checkoutMatch?.item?.href).toBe(
+      "/admin/analytics/recommendation-records?view=checkout",
+    );
   });
 });

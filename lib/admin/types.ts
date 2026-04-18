@@ -10,6 +10,8 @@ export type RecommendationRecordFilters = {
   dateTo?: string;
   customerId?: string;
   scene?: string;
+  surface?: string;
+  generationMode?: string;
   skuId?: string;
   adoptionStatus?: string;
   modelName?: string;

@@ -6,13 +6,11 @@ import { ArrowRight, RefreshCw } from "lucide-react";
 
 import { AdminPageFrame } from "@/components/admin/page-frame";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requestJson } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
 import type {
-  AuditLogEvent,
   CampaignEntity,
   ExpressionTemplateEntity,
   ProductEntity,
@@ -29,30 +27,16 @@ type ConfigHealthItem = {
 };
 
 type WorkbenchData = {
-  todayBatches: RecommendationBatchRecord[];
-  todayRecords: RecommendationRunRecord[];
-  recentLogs: AuditLogEvent[];
+  currentBatches: RecommendationBatchRecord[];
+  currentRecords: RecommendationRunRecord[];
   configHealth: ConfigHealthItem[];
 };
 
 const EMPTY_DATA: WorkbenchData = {
-  todayBatches: [],
-  todayRecords: [],
-  recentLogs: [],
+  currentBatches: [],
+  currentRecords: [],
   configHealth: [],
 };
-
-function getTodayIsoRange() {
-  const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-  return {
-    startIso: start.toISOString(),
-    endIso: end.toISOString(),
-  };
-}
 
 function toPercent(value: number) {
   if (!Number.isFinite(value)) return "0.0%";
@@ -87,28 +71,22 @@ export default function WorkbenchOverviewPage() {
     setLoading(true);
     setErrorMessage("");
     try {
-      const { startIso, endIso } = getTodayIsoRange();
       const batchParams = new URLSearchParams({
         page: "1",
         pageSize: "500",
         sortBy: "created_at",
         sortOrder: "desc",
-        dateFrom: startIso,
-        dateTo: endIso,
       });
       const recordParams = new URLSearchParams({
         page: "1",
         pageSize: "500",
         sortBy: "created_at",
         sortOrder: "desc",
-        dateFrom: startIso,
-        dateTo: endIso,
       });
 
       const [
         batchData,
         recordData,
-        logData,
         productsHealth,
         dealersHealth,
         strategyHealth,
@@ -121,14 +99,11 @@ export default function WorkbenchOverviewPage() {
         requestJson<ListResult<RecommendationRunRecord>>(
           `/api/admin/recommendation-records?${recordParams.toString()}`,
         ),
-        requestJson<ListResult<AuditLogEvent>>(
-          "/api/admin/audit-logs?page=1&pageSize=6&sortBy=timestamp&sortOrder=desc",
-        ),
         fetchHealthItem<ProductEntity>("商品信息", "/api/admin/products?"),
         fetchHealthItem<DealerEntity>("门店信息", "/api/admin/dealers?"),
         fetchHealthItem<RecommendationStrategyEntity>(
           "推荐方案",
-          "/api/admin/recommendation-strategies?",
+          "/api/admin/recommendation-strategies?sceneGroup=purchase&",
         ),
         fetchHealthItem<CampaignEntity>("活动安排", "/api/admin/campaigns?"),
         fetchHealthItem<ExpressionTemplateEntity>(
@@ -138,9 +113,8 @@ export default function WorkbenchOverviewPage() {
       ]);
 
       setData({
-        todayBatches: batchData.items,
-        todayRecords: recordData.items,
-        recentLogs: logData.items,
+        currentBatches: batchData.items,
+        currentRecords: recordData.items,
         configHealth: [
           productsHealth,
           dealersHealth,
@@ -160,41 +134,50 @@ export default function WorkbenchOverviewPage() {
     void loadData();
   }, []);
 
-  const batchSuccessCount = data.todayBatches.filter((item) => item.status === "success").length;
-  const batchPartialCount = data.todayBatches.filter(
-    (item) => item.status === "partial_failed",
-  ).length;
-  const batchFailureCount = data.todayBatches.filter(
-    (item) => item.status === "failed" || item.status === "fallback_served",
-  ).length;
-  const abnormalBatches = data.todayBatches.filter((item) =>
-    ["partial_failed", "failed", "fallback_served"].includes(item.status),
+  const purchaseBatches = data.currentBatches;
+  const purchaseRecords = data.currentRecords.filter(
+    (item) => item.surface === "purchase" && item.generation_mode === "precomputed",
   );
-  const todayPublished = data.todayBatches.filter(
+  const checkoutRealtimeRecords = data.currentRecords.filter(
+    (item) => item.surface === "checkout" && item.generation_mode === "realtime",
+  );
+  const publishedBatchIds = new Set(
+    purchaseBatches
+      .filter((item) => item.publication_status === "published")
+      .map((item) => item.batch_id),
+  );
+  const publishedPurchaseRecords = purchaseRecords.filter(
+    (item) => item.batch_id && publishedBatchIds.has(item.batch_id),
+  );
+  const publishedBatches = purchaseBatches.filter(
     (item) => item.publication_status === "published",
   );
 
-  const adoptedCount = data.todayRecords.filter((item) =>
+  const purchaseAdoptedCount = publishedPurchaseRecords.filter((item) =>
     ["partially_applied", "fully_applied"].includes(item.status),
   ).length;
-  const adoptionRate =
-    data.todayRecords.length === 0
+  const purchaseAdoptionRate =
+    publishedPurchaseRecords.length === 0
       ? 0
-      : (adoptedCount / data.todayRecords.length) * 100;
-  const avgLatency =
-    data.todayRecords.length === 0
+      : (purchaseAdoptedCount / publishedPurchaseRecords.length) * 100;
+  const checkoutAdoptedCount = checkoutRealtimeRecords.filter((item) =>
+    ["partially_applied", "fully_applied"].includes(item.status),
+  ).length;
+  const checkoutAdoptionRate =
+    checkoutRealtimeRecords.length === 0
+      ? 0
+      : (checkoutAdoptedCount / checkoutRealtimeRecords.length) * 100;
+  const checkoutAvgLatency =
+    checkoutRealtimeRecords.length === 0
       ? 0
       : Math.round(
-          data.todayRecords.reduce((sum, item) => sum + item.model_latency_ms, 0) /
-            data.todayRecords.length,
+          checkoutRealtimeRecords.reduce((sum, item) => sum + item.model_latency_ms, 0) /
+            checkoutRealtimeRecords.length,
         );
-  const latestPublished = todayPublished[0] ?? null;
-  const latestLog = data.recentLogs[0] ?? null;
 
   return (
     <AdminPageFrame
-      title="今日看板"
-      description="先确认今天有没有发布、有没有异常、门店有没有带货，再决定下一步。"
+      title="运营看板"
       action={
         <Button className="rounded-full" variant="outline" onClick={loadData} disabled={loading}>
           <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
@@ -204,57 +187,41 @@ export default function WorkbenchOverviewPage() {
     >
       <FeedbackBanner kind="error" message={errorMessage} />
 
-      <section className="grid gap-4 xl:grid-cols-4">
+      <section className="grid gap-4 xl:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">今天已发布</CardTitle>
+            <CardTitle className="text-lg">当前已发布采购建议</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p className="kpi-value text-2xl">{todayPublished.length}</p>
+            <p className="kpi-value text-2xl">{publishedPurchaseRecords.length}</p>
             <p className="text-slate-500">
-              {latestPublished
-                ? `最近发布：${latestPublished.batch_id}`
-                : "今天还没有发布任何建议批次。"}
+              {publishedPurchaseRecords.length > 0
+                ? `当前有 ${publishedPurchaseRecords.length} 条采购建议已发给门店，来自 ${publishedBatches.length} 个已发布批次。`
+                : "当前还没有采购建议发给门店。"}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">待处理异常</CardTitle>
+            <CardTitle className="text-lg">采购建议采纳情况</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p className="kpi-value text-2xl">{abnormalBatches.length}</p>
+            <p className="kpi-value text-2xl">{toPercent(purchaseAdoptionRate)}</p>
             <p className="text-slate-500">
-              {abnormalBatches.length === 0
-                ? "今天没有需要排查的异常批次。"
-                : "建议优先查看异常批次和执行过程。"}
+              当前已发布采购建议共有 {publishedPurchaseRecords.length} 条，其中 {purchaseAdoptedCount} 条已被采纳。
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">门店采纳情况</CardTitle>
+            <CardTitle className="text-lg">结算凑单采纳情况</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p className="kpi-value text-2xl">{toPercent(adoptionRate)}</p>
+            <p className="kpi-value text-2xl">{toPercent(checkoutAdoptionRate)}</p>
             <p className="text-slate-500">
-              今天共有 {data.todayRecords.length} 条门店建议，其中 {adoptedCount} 条已被采纳。
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">平均模型耗时</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p className="kpi-value text-2xl">{avgLatency}ms</p>
-            <p className="text-slate-500">
-              {data.todayRecords.length === 0
-                ? "今天还没有实际门店建议耗时数据。"
-                : "用来判断今天的生成链路是否明显变慢。"}
+              当前共触发 {checkoutRealtimeRecords.length} 次凑单推荐，其中 {checkoutAdoptedCount} 次被采纳，平均耗时 {checkoutAvgLatency}ms。
             </p>
           </CardContent>
         </Card>
@@ -263,39 +230,35 @@ export default function WorkbenchOverviewPage() {
       <section className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">今天生成进度</CardTitle>
+            <CardTitle className="text-lg">采购建议准备情况</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm md:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">今天共生成批次</p>
-              <p className="kpi-value text-xl">{data.todayBatches.length}</p>
+              <p className="text-slate-500">当前生成批次</p>
+              <p className="kpi-value text-xl">{purchaseBatches.length}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">成功批次</p>
-              <p className="kpi-value text-xl">{batchSuccessCount}</p>
+              <p className="text-slate-500">已发布批次</p>
+              <p className="kpi-value text-xl">{publishedBatches.length}</p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">部分失败</p>
-              <p className="kpi-value text-xl">{batchPartialCount}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-slate-500">失败 / 兜底</p>
-              <p className="kpi-value text-xl">{batchFailureCount}</p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 md:col-span-2">
+              <p className="text-slate-500">已发给门店建议</p>
+              <p className="kpi-value text-xl">
+                {publishedPurchaseRecords.length} 条
+              </p>
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">建议下一步</CardTitle>
+            <CardTitle className="text-lg">下一步先做什么</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              {abnormalBatches.length > 0
-                ? `今天有 ${abnormalBatches.length} 个异常批次，建议先排查异常，再决定是否重新生成。`
-                : todayPublished.length === 0
-                  ? "今天还没有发布批次，建议先检查生成结果，再决定是否发布。"
-                  : "今天已有批次发布，可继续查看门店建议和采纳情况。"}
+              {publishedBatches.length === 0
+                ? "当前还没有发布批次，建议先检查生成结果，再决定是否发布。"
+                : "当前已有批次发布，可继续查看门店建议和采纳情况。"}
             </div>
             <div className="grid gap-2 md:grid-cols-2">
               <Button asChild variant="outline">
@@ -305,20 +268,20 @@ export default function WorkbenchOverviewPage() {
                 </Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href="/admin/analytics/recommendation-records" className="gap-2">
-                  查看门店建议
+                <Link href="/admin/analytics/recommendation-records?view=purchase" className="gap-2">
+                  查看采购建议记录
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/admin/analytics/recommendation-records?view=checkout" className="gap-2">
+                  查看结算实时记录
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
               <Button asChild variant="outline">
                 <Link href="/admin/operations/generation-jobs" className="gap-2">
-                  继续生成建议单
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/admin/analytics/overview" className="gap-2">
-                  查看结果总览
+                  继续生成建议
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -327,115 +290,26 @@ export default function WorkbenchOverviewPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">需要处理的异常批次</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {abnormalBatches.length === 0 ? (
-                <p className="text-sm text-slate-500">今日无异常批次。</p>
-              ) : (
-                abnormalBatches.slice(0, 6).map((batch) => (
-                  <div
-                    key={batch.batch_id}
-                    className="rounded-xl border border-amber-200 bg-amber-50 p-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-mono text-xs text-amber-900">{batch.batch_id}</p>
-                      <Badge variant="outline">{batch.status}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-amber-800">
-                      {batch.error_summary || "无错误摘要"}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button asChild size="sm" variant="outline">
-                        <Link
-                          href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
-                            batch.batch_id,
-                          )}`}
-                        >
-                          查看门店建议
-                        </Link>
-                      </Button>
-                      <Button asChild size="sm" variant="outline">
-                        <Link
-                          href={`/admin/observability/traces?batchId=${encodeURIComponent(
-                            batch.batch_id,
-                          )}`}
-                        >
-                          查看执行过程
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">最近改了什么</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {data.recentLogs.length === 0 ? (
-                <p className="text-sm text-slate-500">暂无配置变更记录。</p>
-              ) : (
-                data.recentLogs.map((log) => (
-                  <div key={log.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm text-slate-800">{log.summary}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {log.entity_type} · {log.action} ·{" "}
-                      {new Date(log.timestamp).toLocaleString("zh-CN")}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">基础信息是否齐全</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 text-sm">
-              {data.configHealth.map((item) => {
-                const ratio = item.total === 0 ? 0 : (item.active / item.total) * 100;
-                return (
-                  <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-slate-500">{item.label}</p>
-                    <p className="kpi-value text-xl">
-                      {item.active}/{item.total}
-                    </p>
-                    <p className="text-xs text-slate-500">启用率 {toPercent(ratio)}</p>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">今天最后一次动作</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm">
-              {latestLog ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-slate-800">{latestLog.summary}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {new Date(latestLog.timestamp).toLocaleString("zh-CN")}
+      <section>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">基础信息是否齐全</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm">
+            {data.configHealth.map((item) => {
+              const ratio = item.total === 0 ? 0 : (item.active / item.total) * 100;
+              return (
+                <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-slate-500">{item.label}</p>
+                  <p className="kpi-value text-xl">
+                    {item.active}/{item.total}
                   </p>
+                  <p className="text-xs text-slate-500">启用率 {toPercent(ratio)}</p>
                 </div>
-              ) : (
-                <p className="text-slate-500">今天还没有新的后台操作记录。</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              );
+            })}
+          </CardContent>
+        </Card>
       </section>
     </AdminPageFrame>
   );

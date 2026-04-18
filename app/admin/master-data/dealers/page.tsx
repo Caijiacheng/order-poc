@@ -233,7 +233,6 @@ export default function DealersPage() {
   return (
     <AdminPageFrame
       title="维护门店"
-      description="维护门店画像、常带商品和禁推偏好，这些信息会直接影响建议单。"
       action={
         <Button className="rounded-full" onClick={openCreateDrawer}>
           <Plus className="h-4 w-4" />
@@ -392,7 +391,6 @@ export default function DealersPage() {
           }
         }}
         title={editingId ? `编辑经销商: ${editingId}` : "新建经销商"}
-        description="维护门店画像、常带商品和禁推偏好。"
         footer={
           <div className="flex justify-end gap-2">
             <Button

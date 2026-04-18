@@ -844,7 +844,7 @@ export default function PurchasePage() {
         <aside data-testid="purchase-procurement-summary">
           <Card className="h-fit max-w-[300px] border-slate-200 bg-gradient-to-b from-slate-50 to-white xl:sticky xl:top-24 xl:ml-auto">
             <CardHeader className="space-y-1 pb-2">
-              <CardTitle className="text-lg text-slate-900">右侧采购摘要</CardTitle>
+              <CardTitle className="text-lg text-slate-900">采购摘要</CardTitle>
               <p className="text-xs text-slate-500">随时看本单金额和起订差额。</p>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">

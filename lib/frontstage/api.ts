@@ -28,12 +28,14 @@ export type RecommendationCardItem = {
 };
 
 export type RecommendationsResponse = {
-  dailyRecommendations: RecommendationCardItem[];
-  weeklyFocusRecommendations: RecommendationCardItem[];
+  hotSaleRestockRecommendations: RecommendationCardItem[];
+  stockoutRestockRecommendations: RecommendationCardItem[];
+  campaignStockupRecommendations: RecommendationCardItem[];
   summary: {
     trace_id?: string;
-    daily_run_id: string;
-    weekly_run_id: string;
+    hot_sale_run_id: string;
+    stockout_run_id: string;
+    campaign_run_id: string;
   };
 };
 

@@ -83,6 +83,10 @@ const PUBLICATION_LABEL: Record<GenerationJobEntity["publication_status"], strin
   published: "已发布",
 };
 
+function isSnapshotStale(summary: string) {
+  return summary.includes("快照状态：已过期");
+}
+
 export default function GenerationJobsPage() {
   const [items, setItems] = useState<GenerationJobEntity[]>([]);
   const [dealers, setDealers] = useState<DealerEntity[]>([]);
@@ -124,7 +128,7 @@ export default function GenerationJobsPage() {
         "/api/admin/segments?page=1&pageSize=500&sortBy=segment_name&sortOrder=asc",
       ),
       requestJson<ListResult<RecommendationStrategyEntity>>(
-        "/api/admin/recommendation-strategies?page=1&pageSize=500&sortBy=priority&sortOrder=asc",
+        "/api/admin/recommendation-strategies?sceneGroup=purchase&page=1&pageSize=500&sortBy=priority&sortOrder=asc",
       ),
     ]);
     setDealers(dealerData.items);
@@ -173,11 +177,18 @@ export default function GenerationJobsPage() {
   }, [segments]);
 
   const strategyOptions = useMemo<ChecklistOption[]>(() => {
-    return strategies.map((item) => ({
-      value: item.strategy_id,
-      label: item.strategy_name,
-      description: `${item.scene} · 优先级 ${item.priority}`,
-    }));
+    return strategies
+      .filter(
+        (item) =>
+          item.scene === "hot_sale_restock" ||
+          item.scene === "stockout_restock" ||
+          item.scene === "campaign_stockup",
+      )
+      .map((item) => ({
+        value: item.strategy_id,
+        label: item.strategy_name,
+        description: `${item.scene} · 优先级 ${item.priority}`,
+      }));
   }, [strategies]);
 
   const resetForm = () => {
@@ -335,8 +346,7 @@ export default function GenerationJobsPage() {
 
   return (
     <AdminPageFrame
-      title="生成建议单"
-      description="先设定生成范围，再到生成批次或门店建议里看结果。"
+      title="采购建议预处理任务"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={loadJobs} disabled={loading}>
@@ -345,13 +355,13 @@ export default function GenerationJobsPage() {
           </Button>
           <Button variant="outline" asChild>
             <Link href="/admin/operations/recommendation-batches" className="gap-2">
-              查看生成批次
+              查看预处理批次
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href="/admin/analytics/recommendation-records" className="gap-2">
-              查看门店建议
+            <Link href="/admin/analytics/recommendation-records?view=purchase" className="gap-2">
+              查看采购建议记录
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -363,7 +373,7 @@ export default function GenerationJobsPage() {
             }}
           >
             <Plus className="h-4 w-4" />
-            新建生成任务
+            新建预处理任务
           </Button>
         </div>
       }
@@ -436,7 +446,7 @@ export default function GenerationJobsPage() {
                   <TableHead>目标范围</TableHead>
                   <TableHead>策略数</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>发布态</TableHead>
+                  <TableHead>采购发布态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -473,6 +483,11 @@ export default function GenerationJobsPage() {
                         <Badge variant={item.publication_status === "published" ? "secondary" : "outline"}>
                           {PUBLICATION_LABEL[item.publication_status]}
                         </Badge>
+                        {isSnapshotStale(item.precheck_summary) ? (
+                          <Badge className="ml-2" variant="destructive">
+                            待重生成
+                          </Badge>
+                        ) : null}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-wrap justify-end gap-2">
@@ -543,8 +558,7 @@ export default function GenerationJobsPage() {
             resetForm();
           }
         }}
-        title={editingId ? `编辑生成任务: ${editingId}` : "创建生成任务"}
-        description="先设置要覆盖的门店和方案，生成动作仍在列表里执行。"
+        title={editingId ? `编辑预处理任务: ${editingId}` : "创建预处理任务"}
       >
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
@@ -631,12 +645,12 @@ export default function GenerationJobsPage() {
             {editingId ? (
               <Button className="rounded-full" onClick={submitUpdate}>
                 <Save className="h-4 w-4" />
-                保存任务
+                保存预处理任务
               </Button>
             ) : (
               <Button className="rounded-full" onClick={submitCreate}>
                 <Plus className="h-4 w-4" />
-                创建任务
+                创建预处理任务
               </Button>
             )}
             <Button variant="outline" onClick={resetForm}>
@@ -657,7 +671,7 @@ export default function GenerationJobsPage() {
           }
         }}
         title="确认停用生成任务"
-        description={`停用后该任务将不再参与后续生成和发布。${
+        description={`停用后该预处理任务将不再参与后续生成和发布。${
           pendingCancel ? `\n任务：${pendingCancel.job_name}` : ""
         }`}
         confirmLabel="确认取消"

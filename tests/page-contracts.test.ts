@@ -49,7 +49,7 @@ describe("frontstage canonical source contract", () => {
     expect(purchaseSource).toMatch(/快速下单/);
     expect(purchaseSource).toMatch(/活动专区/);
     expect(purchaseSource).toMatch(/商品选购区/);
-    expect(purchaseSource).toMatch(/右侧采购摘要/);
+    expect(purchaseSource).toMatch(/采购摘要/);
     expect(purchaseSource).not.toMatch(/今日建议单/);
     expect(purchaseSource).not.toMatch(/常购快捷补货/);
     expect(purchaseSource).not.toMatch(/一键复购/);
@@ -90,7 +90,7 @@ describe("admin canonical source contract", () => {
     expectTestIdContract(adminLayoutSource, "admin-secondary-nav");
 
     const workbenchSource = readSource("app/admin/workbench/overview/page.tsx");
-    expect(workbenchSource).toMatch(/title="今日看板"/);
+    expect(workbenchSource).toMatch(/title="运营看板"/);
 
     const recommendationSource = readSource(
       "app/admin/analytics/recommendation-records/page.tsx",
@@ -147,6 +147,8 @@ describe("admin canonical migration source contract", () => {
       "app/admin/strategy/recommendation-strategies/page.tsx",
     );
     expect(strategiesSource).toMatch(/\/api\/admin\/recommendation-strategies/);
+    expect(strategiesSource).toMatch(/sceneGroup=purchase/);
+    expect(strategiesSource).not.toMatch(/SelectItem value="checkout_optimization"/);
     expect(strategiesSource).not.toMatch(/\/api\/admin\/suggestion-templates/);
 
     const expressionTemplatesSource = readSource(
@@ -172,7 +174,6 @@ describe("admin canonical migration source contract", () => {
     const workbenchSource = readSource("app/admin/workbench/overview/page.tsx");
     expect(workbenchSource).toMatch(/\/api\/admin\/recommendation-batches/);
     expect(workbenchSource).toMatch(/\/api\/admin\/recommendation-records/);
-    expect(workbenchSource).toMatch(/\/api\/admin\/audit-logs/);
     expect(workbenchSource).not.toMatch(/\/api\/admin\/reports\//);
 
     const auditLogsSource = readSource("app/admin/observability/audit-logs/page.tsx");
@@ -209,10 +210,201 @@ describe("admin canonical migration source contract", () => {
     expect(routeSource).toMatch(/\blistAuditLogs\b/);
     expect(routeSource).toMatch(/\bparseListQuery\b/);
 
-    const workbenchSource = readSource("app/admin/workbench/overview/page.tsx");
-    expect(workbenchSource).toMatch(/\/api\/admin\/audit-logs/);
-
     const auditLogsSource = readSource("app/admin/observability/audit-logs/page.tsx");
     expect(auditLogsSource).toMatch(/\/api\/admin\/audit-logs/);
+  });
+
+  it("locks purchase-vs-checkout split semantics for records API and analytics pages", () => {
+    const recordsRouteSource = readSource("app/api/admin/recommendation-records/route.ts");
+    expect(recordsRouteSource).toMatch(/surface:\s*searchParams\.get\("surface"\)/);
+    expect(recordsRouteSource).toMatch(
+      /generationMode:\s*searchParams\.get\("generationMode"\)/,
+    );
+
+    const recordsPageSource = readSource("app/admin/analytics/recommendation-records/page.tsx");
+    expect(recordsPageSource).toMatch(/surface:\s*"purchase"/);
+    expect(recordsPageSource).toMatch(/generationMode:\s*"precomputed"/);
+    expect(recordsPageSource).toMatch(/surface:\s*"checkout"/);
+    expect(recordsPageSource).toMatch(/generationMode:\s*"realtime"/);
+    expect(recordsPageSource).toMatch(/params\.set\("surface",\s*VIEW_CONFIG\[view\]\.surface\)/);
+    expect(recordsPageSource).toMatch(
+      /params\.set\("generationMode",\s*VIEW_CONFIG\[view\]\.generationMode\)/,
+    );
+
+    const analyticsOverviewSource = readSource("app/admin/analytics/overview/page.tsx");
+    expect(analyticsOverviewSource).toMatch(
+      /item\.surface === "purchase" && item\.generation_mode === "precomputed"/,
+    );
+    expect(analyticsOverviewSource).toMatch(
+      /item\.surface === "checkout" && item\.generation_mode === "realtime"/,
+    );
+
+    const workbenchSource = readSource("app/admin/workbench/overview/page.tsx");
+    expect(workbenchSource).toMatch(
+      /item\.surface === "purchase" && item\.generation_mode === "precomputed"/,
+    );
+    expect(workbenchSource).toMatch(
+      /item\.surface === "checkout" && item\.generation_mode === "realtime"/,
+    );
+  });
+
+  it("locks Stage 5 snapshot command wiring and seed purchase snapshot truth source", () => {
+    const packageJson = JSON.parse(readSource("package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    expect(packageJson.scripts?.["demo:prepare-snapshots"]).toContain(
+      "scripts/prepare-snapshots.ts",
+    );
+
+    const seedSource = readSource("lib/memory/seed.ts");
+    expect(seedSource).toMatch(/"purchase-snapshots\.json"/);
+    expect(seedSource).toMatch(
+      /purchase-snapshots\.json 必须覆盖 3 个经销商 x 3 个采购场景，共 9 条预计算记录。/,
+    );
+
+    const snapshots = JSON.parse(readSource("data/purchase-snapshots.json")) as Array<{
+      customer_id: string;
+      scene: string;
+    }>;
+    expect(snapshots).toHaveLength(9);
+    expect(new Set(snapshots.map((item) => item.customer_id))).toEqual(
+      new Set(["dealer_xm_sm", "dealer_dg_sm", "dealer_cd_pf"]),
+    );
+    expect(new Set(snapshots.map((item) => item.scene))).toEqual(
+      new Set(["hot_sale_restock", "stockout_restock", "campaign_stockup"]),
+    );
+  });
+
+  it("keeps Stage 5 snapshot stale UI semantics for jobs/workbench/analytics", () => {
+    const generationJobsSource = readSource("app/admin/operations/generation-jobs/page.tsx");
+    expect(generationJobsSource).toMatch(/isSnapshotStale/);
+    expect(generationJobsSource).toMatch(/待重生成/);
+    expect(generationJobsSource).toMatch(/采购建议预处理任务/);
+
+    const workbenchSource = readSource("app/admin/workbench/overview/page.tsx");
+    expect(workbenchSource).toMatch(
+      /item\.surface === "purchase" && item\.generation_mode === "precomputed"/,
+    );
+    expect(workbenchSource).toMatch(
+      /item\.surface === "checkout" && item\.generation_mode === "realtime"/,
+    );
+
+    const analyticsOverviewSource = readSource("app/admin/analytics/overview/page.tsx");
+    expect(analyticsOverviewSource).toMatch(/采购建议/);
+    expect(analyticsOverviewSource).toMatch(/结算凑单/);
+  });
+
+  it("locks operator-facing admin IA and records/report source contracts", () => {
+    const navigationSource = readSource("lib/navigation.ts");
+    expect(navigationSource).toMatch(/label:\s*"建议生成"/);
+    expect(navigationSource).toMatch(/label:\s*"结果查看"/);
+    expect(navigationSource).toMatch(/label:\s*"采购建议记录"/);
+    expect(navigationSource).toMatch(/label:\s*"结算凑单记录"/);
+
+    const adminLayoutSource = readSource("app/admin/layout.tsx");
+    expect(adminLayoutSource).toMatch(/href=\{group\.defaultHref\}/);
+    expect(adminLayoutSource).toMatch(/href=\{item\.href\}/);
+    expect(adminLayoutSource).toMatch(/\{group\.label\}/);
+    expect(adminLayoutSource).toMatch(/OrchestraX运营后台/);
+    expect(adminLayoutSource).not.toMatch(/当前焦点：/);
+    expect(adminLayoutSource).not.toMatch(/双链路运营台/);
+    expect(adminLayoutSource).not.toMatch(/当前是演示环境，所有改动只保存在内存里/);
+
+    const recordsSource = readSource("app/admin/analytics/recommendation-records/page.tsx");
+    expect(recordsSource).toMatch(/title=\{VIEW_CONFIG\[view\]\.title\}/);
+    expect(recordsSource).toMatch(/normalizeRecordsView/);
+    expect(recordsSource).toMatch(/searchParams\.get\("view"\)/);
+    expect(recordsSource).toMatch(/searchParams\.get\("scene"\)/);
+    expect(recordsSource).toMatch(/AdminDrawer/);
+    expect(recordsSource).toMatch(/采购建议记录/);
+    expect(recordsSource).toMatch(/结算凑单记录/);
+    expect(recordsSource).toMatch(/全部经销商/);
+    expect(recordsSource).not.toMatch(/经销商编码/);
+    expect(recordsSource).not.toMatch(/单页双视图/);
+    expect(recordsSource).not.toMatch(/当前视图仅展示/);
+    expect(recordsSource).not.toMatch(/detailDescription/);
+    expect(recordsSource).not.toMatch(/查看已经发给门店的采购建议/);
+    expect(recordsSource).not.toMatch(/查看门店下单前触发的即时凑单推荐/);
+
+    const analyticsOverviewSource = readSource("app/admin/analytics/overview/page.tsx");
+    expect(analyticsOverviewSource).toMatch(/title="结果总览"/);
+    expect(analyticsOverviewSource).toMatch(/采购建议/);
+    expect(analyticsOverviewSource).toMatch(/结算凑单/);
+    expect(analyticsOverviewSource).toMatch(/全部经销商/);
+    expect(analyticsOverviewSource).toMatch(/strategyNameMap/);
+    expect(analyticsOverviewSource).not.toMatch(/异常批次清单/);
+    expect(analyticsOverviewSource).not.toMatch(/待重生成/);
+    expect(analyticsOverviewSource).not.toMatch(/分开查看采购建议和结算凑单的整体表现/);
+    expect(analyticsOverviewSource).toMatch(
+      /\/admin\/analytics\/recommendation-records\?view=checkout/,
+    );
+
+    const workbenchSource = readSource("app/admin/workbench/overview/page.tsx");
+    expect(workbenchSource).toMatch(/title="运营看板"/);
+    expect(workbenchSource).not.toMatch(
+      /description="先看当前采购建议是否已发布，以及采购建议和结算凑单的采纳情况。"/,
+    );
+    expect(workbenchSource).toMatch(/查看采购建议记录/);
+    expect(workbenchSource).toMatch(/查看结算实时记录/);
+    expect(workbenchSource).toMatch(/采购建议采纳情况/);
+    expect(workbenchSource).toMatch(/结算凑单采纳情况/);
+    expect(workbenchSource).not.toMatch(/待处理问题/);
+    expect(workbenchSource).not.toMatch(/需要处理的异常批次/);
+    expect(workbenchSource).not.toMatch(/失败 \/ 兜底/);
+    expect(workbenchSource).not.toMatch(/已过期待重做/);
+    expect(workbenchSource).toMatch(
+      /\/admin\/analytics\/recommendation-records\?view=purchase/,
+    );
+    expect(workbenchSource).toMatch(
+      /\/admin\/analytics\/recommendation-records\?view=checkout/,
+    );
+    expect(workbenchSource).not.toMatch(/今天最后一次动作/);
+
+    const generationJobsSource = readSource("app/admin/operations/generation-jobs/page.tsx");
+    expect(generationJobsSource).toMatch(/title="采购建议预处理任务"/);
+    expect(generationJobsSource).toMatch(/sceneGroup=purchase/);
+    expect(generationJobsSource).not.toMatch(/这里只管理采购建议预处理任务/);
+    expect(generationJobsSource).not.toMatch(/结算页实时凑单不在此链路/);
+    expect(generationJobsSource).toMatch(
+      /\/admin\/analytics\/recommendation-records\?view=purchase/,
+    );
+
+    const batchesSource = readSource("app/admin/operations/recommendation-batches/page.tsx");
+    expect(batchesSource).toMatch(/title="采购建议预处理批次"/);
+    expect(batchesSource).not.toMatch(/这里只展示采购建议预处理批次/);
+    expect(batchesSource).not.toMatch(/结算页实时凑单不会写入此页/);
+    expect(batchesSource).toMatch(
+      /\/admin\/analytics\/recommendation-records\?view=purchase/,
+    );
+
+    const globalRulesSource = readSource("app/admin/strategy/global-rules/page.tsx");
+    expect(globalRulesSource).toMatch(/title="设置凑单规则"/);
+    expect(globalRulesSource).not.toMatch(/把起订额、整箱补货和搭配补货三类规则统一配清楚/);
+    expect(globalRulesSource).not.toMatch(/当门店这次下单金额还差一点点时/);
+    expect(globalRulesSource).not.toMatch(/门店已经选了商品，但箱数离整箱只差一点时/);
+    expect(globalRulesSource).not.toMatch(/当门店已经选了某些核心商品时/);
+
+    const dealersSource = readSource("app/admin/master-data/dealers/page.tsx");
+    expect(dealersSource).not.toMatch(/维护门店画像、常带商品和禁推偏好。/);
+
+    const productsSource = readSource("app/admin/master-data/products/page.tsx");
+    expect(productsSource).not.toMatch(/维护商品基础信息、标签和搭配关系。/);
+
+    const segmentsSource = readSource("app/admin/master-data/segments/page.tsx");
+    expect(segmentsSource).not.toMatch(/设置分组范围，方便按门店分批投放建议。/);
+
+    const poolsSource = readSource("app/admin/master-data/product-pools/page.tsx");
+    expect(poolsSource).not.toMatch(/维护推荐可引用的商品分组和搭配分组。/);
+
+    const campaignsSource = readSource("app/admin/strategy/campaigns/page.tsx");
+    expect(campaignsSource).not.toMatch(/设置活动商品和适用门店范围。/);
+
+    const strategiesSource = readSource("app/admin/strategy/recommendation-strategies/page.tsx");
+    expect(strategiesSource).not.toMatch(/设置适用门店、候选商品和推荐话术，并可预览发给 AI 的重点。/);
+
+    const expressionTemplatesSource = readSource("app/admin/strategy/expression-templates/page.tsx");
+    expect(expressionTemplatesSource).not.toMatch(/维护推荐说明生成时要用到的话术字段。/);
+
+    expect(generationJobsSource).not.toMatch(/先设置采购链路覆盖范围与方案，预检\/试生成\/发布在列表中执行。/);
   });
 });

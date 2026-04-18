@@ -136,7 +136,6 @@ export default function GlobalRulesPage() {
   return (
     <AdminPageFrame
       title="设置凑单规则"
-      description="把起订额、整箱补货和搭配补货三类规则统一配清楚，并直接模拟前台凑单提示。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadRules} disabled={loading}>
@@ -160,9 +159,6 @@ export default function GlobalRulesPage() {
               <CardTitle className="text-lg">1. 凑够起订额</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
-              <p className="md:col-span-2 text-sm leading-6 text-slate-600">
-                当门店这次下单金额还差一点点时，系统会从门店常带商品里挑更合适的货，提醒你补到目标金额。
-              </p>
               <div className="space-y-2">
                 <Label>最低起订金额</Label>
                 <Input
@@ -226,9 +222,6 @@ export default function GlobalRulesPage() {
               <CardTitle className="text-lg">2. 补齐整箱</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
-              <p className="md:col-span-2 text-sm leading-6 text-slate-600">
-                门店已经选了商品，但箱数离整箱只差一点时，系统会提醒补齐，避免零散下单。
-              </p>
               <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm md:col-span-2">
                 <input
                   type="checkbox"
@@ -263,9 +256,6 @@ export default function GlobalRulesPage() {
               <CardTitle className="text-lg">3. 搭配补货</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
-              <p className="md:col-span-2 text-sm leading-6 text-slate-600">
-                当门店已经选了某些核心商品时，可以补上更常见的搭配商品，帮经销商一次配齐。
-              </p>
               <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
                 <input
                   type="checkbox"

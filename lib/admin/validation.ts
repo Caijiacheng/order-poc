@@ -85,6 +85,10 @@ function parseEntityStatus(value: unknown): "active" | "inactive" {
 
 function isValidSuggestionScene(value: string) {
   return (
+    value === "hot_sale_restock" ||
+    value === "stockout_restock" ||
+    value === "campaign_stockup" ||
+    value === "checkout_optimization" ||
     value === "daily_recommendation" ||
     value === "weekly_focus" ||
     value === "threshold_topup" ||
@@ -94,9 +98,10 @@ function isValidSuggestionScene(value: string) {
 
 function isValidStrategyScene(value: string) {
   return (
-    value === "hot_sale_bundle" ||
-    value === "replenishment_bundle" ||
-    value === "campaign_bundle"
+    value === "hot_sale_restock" ||
+    value === "stockout_restock" ||
+    value === "campaign_stockup" ||
+    value === "checkout_optimization"
   );
 }
 
@@ -833,7 +838,6 @@ export function validateRecommendationBatchInput(
     ![
       "scheduled_generation",
       "sample_generation",
-      "frontstage_realtime",
       "manual_replay",
     ].includes(batch_type)
   ) {

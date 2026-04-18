@@ -12,6 +12,8 @@ export async function GET(request: Request) {
       dateTo: searchParams.get("dateTo") ?? undefined,
       customerId: searchParams.get("customerId") ?? undefined,
       scene: searchParams.get("scene") ?? undefined,
+      surface: searchParams.get("surface") ?? undefined,
+      generationMode: searchParams.get("generationMode") ?? undefined,
       skuId: searchParams.get("skuId") ?? undefined,
       adoptionStatus: searchParams.get("adoptionStatus") ?? undefined,
       modelName: searchParams.get("modelName") ?? undefined,

@@ -330,6 +330,21 @@ export function buildDeterministicCartInsights(sessionId: string, customerId?: s
 
 export async function submitCart(sessionId: string) {
   const session = getOrCreateCartSession(sessionId);
+  const dealer = getDealerById(session.customer_id);
+  const submittedItems = session.items.map((item) => ({
+    商品: item.sku_name,
+    箱数: item.qty,
+    单价: item.price_per_case,
+    行金额: item.qty * item.price_per_case,
+  }));
+  const submittedSummary = {
+    SKU数: session.summary.sku_count,
+    件数: session.summary.item_count,
+    当前金额: session.summary.total_amount,
+    起订金额: session.summary.threshold_amount,
+    是否达到起订额: session.summary.threshold_reached,
+  };
+
   return withSpan(
     "confirm.submit-order",
     {
@@ -371,6 +386,29 @@ export async function submitCart(sessionId: string) {
           trace_id: traceId,
         },
       };
+    },
+    {
+      input: {
+        中文说明: "这是结算页提交订单请求，记录提交前购物车里的商品和金额。",
+        会话ID: sessionId,
+        经销商ID: dealer?.customer_id ?? session.customer_id ?? "unknown",
+        经销商名称: dealer?.customer_name ?? "未绑定经销商",
+        提交前购物车摘要: submittedSummary,
+        提交商品: submittedItems,
+      },
+      output: (result) => ({
+        中文说明: "订单已经提交成功。",
+        经销商名称: dealer?.customer_name ?? "未绑定经销商",
+        订单ID: result.order.order_id,
+        提交时间: result.order.submitted_at,
+        订单金额: result.order.total_amount,
+        商品件数: result.order.item_count,
+        提交后购物车摘要: {
+          SKU数: result.cart.summary.sku_count,
+          件数: result.cart.summary.item_count,
+          当前金额: result.cart.summary.total_amount,
+        },
+      }),
     },
   );
 }

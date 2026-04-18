@@ -221,7 +221,6 @@ export default function ExpressionTemplatesPage() {
   return (
     <AdminPageFrame
       title="设置推荐话术"
-      description="维护推荐说明和补货依据的话术内容。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadTemplates} disabled={loading}>
@@ -387,7 +386,6 @@ export default function ExpressionTemplatesPage() {
           }
         }}
         title={editingId ? `编辑话术: ${editingId}` : "创建话术"}
-        description="维护推荐说明生成时要用到的话术字段。"
       >
         <div className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2">

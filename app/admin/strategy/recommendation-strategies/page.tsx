@@ -48,10 +48,15 @@ import type {
   TemplateReferenceItem,
 } from "@/lib/memory/types";
 
+type PurchaseStrategyScene = Exclude<
+  RecommendationStrategyScene,
+  "checkout_optimization"
+>;
+
 type StrategyForm = {
   strategy_id: string;
   strategy_name: string;
-  scene: RecommendationStrategyScene;
+  scene: PurchaseStrategyScene;
   target_dealer_ids: string[];
   dealer_segment_ids: string[];
   product_pool_ids: string[];
@@ -64,10 +69,10 @@ type StrategyForm = {
   status: "active" | "inactive";
 };
 
-const SCENE_LABELS: Record<RecommendationStrategyScene, string> = {
-  hot_sale_bundle: "热销组货",
-  replenishment_bundle: "补货组货",
-  campaign_bundle: "活动组货",
+const SCENE_LABELS: Record<PurchaseStrategyScene, string> = {
+  hot_sale_restock: "热销补货",
+  stockout_restock: "缺货补货",
+  campaign_stockup: "活动备货",
 };
 
 const EMPTY_REFERENCE_ITEM = (sortOrder = 1): TemplateReferenceItem => ({
@@ -81,7 +86,7 @@ const EMPTY_REFERENCE_ITEM = (sortOrder = 1): TemplateReferenceItem => ({
 const EMPTY_FORM: StrategyForm = {
   strategy_id: "",
   strategy_name: "",
-  scene: "replenishment_bundle",
+  scene: "stockout_restock",
   target_dealer_ids: [],
   dealer_segment_ids: [],
   product_pool_ids: [],
@@ -94,11 +99,11 @@ const EMPTY_FORM: StrategyForm = {
   status: "active" as const,
 };
 
-function getScenePurpose(scene: RecommendationStrategyScene) {
-  if (scene === "hot_sale_bundle") {
+function getScenePurpose(scene: PurchaseStrategyScene) {
+  if (scene === "hot_sale_restock") {
     return "优先推荐走得快、适合先补的商品";
   }
-  if (scene === "campaign_bundle") {
+  if (scene === "campaign_stockup") {
     return "优先围绕活动货和周推商品来组货";
   }
   return "优先补齐基础货和容易断货的商品";
@@ -183,7 +188,7 @@ export default function RecommendationStrategiesPage() {
     setErrorMessage("");
     try {
       const data = await requestJson<ListResult<RecommendationStrategyEntity>>(
-        `/api/admin/recommendation-strategies?${queryString}`,
+        `/api/admin/recommendation-strategies?sceneGroup=purchase&${queryString}`,
       );
       setItems(data.items);
       setTotal(data.total);
@@ -310,7 +315,7 @@ export default function RecommendationStrategiesPage() {
     setForm({
       strategy_id: item.strategy_id,
       strategy_name: item.strategy_name,
-      scene: item.scene,
+      scene: item.scene as PurchaseStrategyScene,
       target_dealer_ids: item.target_dealer_ids,
       dealer_segment_ids: item.dealer_segment_ids,
       product_pool_ids: item.product_pool_ids,
@@ -446,7 +451,6 @@ export default function RecommendationStrategiesPage() {
   return (
     <AdminPageFrame
       title="设置推荐方案"
-      description="按门店、人群、商品范围和展示场景设置推荐方案。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadStrategies} disabled={loading}>
@@ -563,7 +567,7 @@ export default function RecommendationStrategiesPage() {
                     <TableCell>
                       <p>{item.strategy_name}</p>
                       <p className="text-xs text-slate-500">
-                        {SCENE_LABELS[item.scene]} · 优先级 {item.priority}
+                        {SCENE_LABELS[item.scene as PurchaseStrategyScene]} · 优先级 {item.priority}
                       </p>
                     </TableCell>
                     <TableCell className="text-xs text-slate-600">
@@ -616,7 +620,6 @@ export default function RecommendationStrategiesPage() {
           }
         }}
         title={editingId ? `编辑方案: ${editingId}` : "创建方案"}
-        description="设置适用门店、候选商品和推荐话术，并可预览发给 AI 的重点。"
       >
         <div className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2">
@@ -661,7 +664,7 @@ export default function RecommendationStrategiesPage() {
                 onValueChange={(value) =>
                   setForm((prev) => ({
                     ...prev,
-                    scene: value as RecommendationStrategyScene,
+                    scene: value as PurchaseStrategyScene,
                   }))
                 }
               >
@@ -669,9 +672,9 @@ export default function RecommendationStrategiesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hot_sale_bundle">热销组货</SelectItem>
-                  <SelectItem value="replenishment_bundle">补货组货</SelectItem>
-                  <SelectItem value="campaign_bundle">活动组货</SelectItem>
+                  <SelectItem value="hot_sale_restock">热销补货</SelectItem>
+                  <SelectItem value="stockout_restock">缺货补货</SelectItem>
+                  <SelectItem value="campaign_stockup">活动备货</SelectItem>
                 </SelectContent>
               </Select>
             </div>

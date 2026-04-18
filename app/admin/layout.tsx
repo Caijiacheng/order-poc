@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronRight, PanelLeftClose, Radar } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,8 +15,9 @@ export default function AdminLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
-  const current = getAdminRouteMatch(pathname);
-  const breadcrumb = getAdminBreadcrumb(pathname);
+  const searchParams = useSearchParams();
+  const current = getAdminRouteMatch(pathname, searchParams);
+  const breadcrumb = getAdminBreadcrumb(pathname, searchParams);
 
   return (
     <div className="admin-shell min-h-screen">
@@ -74,10 +75,6 @@ export default function AdminLayout({
               );
             })}
           </nav>
-
-          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-            当前是演示环境，所有改动只保存在内存里，服务重启后会恢复初始数据。
-          </div>
         </aside>
 
         <div className="min-w-0 space-y-4">

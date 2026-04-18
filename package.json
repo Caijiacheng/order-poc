@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "demo:prepare-snapshots": "tsx scripts/prepare-snapshots.ts",
     "test": "vitest run",
     "test:e2e:mock": "E2E_MODE=mock playwright test --config=playwright.config.ts --project=mock",
     "test:e2e:live": "E2E_MODE=live playwright test --config=playwright.config.ts --project=live"
@@ -40,6 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5",
     "vitest": "^3.2.4"
   },

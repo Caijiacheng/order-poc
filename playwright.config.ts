@@ -1,5 +1,43 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { defineConfig } from "@playwright/test";
 import { hasRequiredLiveEnv } from "./e2e/helpers/live-env";
+
+function loadLocalEnvFile(filename: string) {
+  const filePath = resolve(process.cwd(), filename);
+  if (!existsSync(filePath)) {
+    return;
+  }
+
+  const source = readFileSync(filePath, "utf8");
+  for (const rawLine of source.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const match = line.match(/^(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)$/i);
+    if (!match) {
+      continue;
+    }
+
+    const [, key, rawValue] = match;
+    if (!key || process.env[key]) {
+      continue;
+    }
+
+    let value = rawValue.trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+loadLocalEnvFile(".env.local");
 
 const PORT = 3000;
 const BASE_URL = `http://localhost:${PORT}`;

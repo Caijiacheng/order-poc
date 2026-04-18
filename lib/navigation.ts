@@ -6,6 +6,9 @@ export const FRONTSTAGE_NAV = [
 export type AdminNavItem = {
   href: string;
   label: string;
+  matchPath?: string;
+  matchQuery?: Record<string, string>;
+  breadcrumbLabel?: string;
 };
 
 export type AdminNavGroup = {
@@ -19,59 +22,67 @@ export type AdminNavGroup = {
 export const ADMIN_NAV_TREE: readonly AdminNavGroup[] = [
   {
     key: "workbench",
-    label: "先看整体",
+    label: "运营看板",
     defaultHref: "/admin/workbench/overview",
-    items: [{ href: "/admin/workbench/overview", label: "今日看板" }],
+    items: [{ href: "/admin/workbench/overview", label: "运营总览" }],
   },
   {
     key: "master-data",
-    label: "维护基础信息",
+    label: "基础资料",
     defaultHref: "/admin/master-data/products",
     items: [
-      { href: "/admin/master-data/products", label: "维护商品" },
-      { href: "/admin/master-data/dealers", label: "维护门店" },
-      { href: "/admin/master-data/segments", label: "维护门店分组" },
-      { href: "/admin/master-data/product-pools", label: "维护商品分组" },
+      { href: "/admin/master-data/products", label: "商品资料" },
+      { href: "/admin/master-data/dealers", label: "经销商资料" },
+      { href: "/admin/master-data/segments", label: "经销商分组" },
+      { href: "/admin/master-data/product-pools", label: "商品池配置" },
     ],
   },
   {
     key: "strategy",
-    label: "设置投放规则",
+    label: "策略与规则",
     defaultHref: "/admin/strategy/campaigns",
     items: [
-      { href: "/admin/strategy/campaigns", label: "安排活动" },
-      { href: "/admin/strategy/recommendation-strategies", label: "设置推荐方案" },
-      { href: "/admin/strategy/expression-templates", label: "设置推荐话术" },
-      { href: "/admin/strategy/global-rules", label: "设置凑单规则" },
+      { href: "/admin/strategy/campaigns", label: "促销活动" },
+      { href: "/admin/strategy/recommendation-strategies", label: "推荐方案" },
+      { href: "/admin/strategy/expression-templates", label: "话术模板" },
+      { href: "/admin/strategy/global-rules", label: "凑单规则" },
     ],
   },
   {
     key: "operations",
-    label: "生成与发布",
+    label: "建议生成",
     defaultHref: "/admin/operations/generation-jobs",
     items: [
-      { href: "/admin/operations/generation-jobs", label: "生成建议单" },
+      { href: "/admin/operations/generation-jobs", label: "生成任务" },
       {
         href: "/admin/operations/recommendation-batches",
-        label: "查看生成批次",
+        label: "生成批次",
       },
     ],
   },
   {
     key: "analytics",
-    label: "查看结果",
+    label: "结果查看",
     defaultHref: "/admin/analytics/overview",
     items: [
       { href: "/admin/analytics/overview", label: "结果总览" },
       {
-        href: "/admin/analytics/recommendation-records",
-        label: "查看门店建议",
+        href: "/admin/analytics/recommendation-records?view=purchase",
+        label: "采购建议记录",
+        matchPath: "/admin/analytics/recommendation-records",
+        matchQuery: { view: "purchase" },
+      },
+      {
+        href: "/admin/analytics/recommendation-records?view=checkout",
+        label: "结算凑单记录",
+        matchPath: "/admin/analytics/recommendation-records",
+        matchQuery: { view: "checkout" },
       },
     ],
   },
   {
     key: "observability",
-    label: "排查与重置",
+    label: "排查与恢复",
     defaultHref: "/admin/observability/audit-logs",
     hidden: true,
     items: [
@@ -89,26 +100,59 @@ const normalizePathname = (pathname: string) => {
   return pathname;
 };
 
+const normalizeHrefPath = (href: string) => normalizePathname(href.split("?")[0] ?? href);
+
+function matchesQuery(
+  requiredQuery: Record<string, string> | undefined,
+  currentQuery: URLSearchParams,
+) {
+  if (!requiredQuery) {
+    return true;
+  }
+  return Object.entries(requiredQuery).every(([key, value]) => {
+    const currentValue = currentQuery.get(key);
+    if (currentValue === value) {
+      return true;
+    }
+    if (key === "view" && value === "purchase" && !currentValue) {
+      return true;
+    }
+    return false;
+  });
+}
+
 type AdminRouteMatch = {
   group: AdminNavGroup;
   item?: AdminNavItem;
 };
 
-export function getAdminRouteMatch(pathname: string): AdminRouteMatch | null {
+export function getAdminRouteMatch(
+  pathname: string,
+  searchParams?: URLSearchParams | string,
+): AdminRouteMatch | null {
   const normalized = normalizePathname(pathname);
+  const currentQuery =
+    searchParams instanceof URLSearchParams
+      ? searchParams
+      : new URLSearchParams(searchParams ?? "");
 
   for (const group of ADMIN_NAV_TREE) {
     for (const item of group.items) {
-      if (item.href === normalized || normalized.startsWith(`${item.href}/`)) {
+      const matchPath = normalizeHrefPath(item.matchPath ?? item.href);
+      if (
+        (matchPath === normalized || normalized.startsWith(`${matchPath}/`)) &&
+        matchesQuery(item.matchQuery, currentQuery)
+      ) {
         return { group, item };
       }
     }
   }
 
   for (const group of ADMIN_NAV_TREE) {
+    const defaultPath = normalizeHrefPath(group.defaultHref);
     if (
-      group.defaultHref === normalized ||
-      normalized.startsWith(`${group.defaultHref}/`)
+      defaultPath === normalized ||
+      normalized.startsWith(`${defaultPath}/`)
     ) {
       return { group };
     }
@@ -117,13 +161,16 @@ export function getAdminRouteMatch(pathname: string): AdminRouteMatch | null {
   return null;
 }
 
-export function getAdminBreadcrumb(pathname: string): string[] {
-  const match = getAdminRouteMatch(pathname);
+export function getAdminBreadcrumb(
+  pathname: string,
+  searchParams?: URLSearchParams | string,
+): string[] {
+  const match = getAdminRouteMatch(pathname, searchParams);
   if (!match) {
     return [];
   }
   if (match.item) {
-    return [match.group.label, match.item.label];
+    return [match.group.label, match.item.breadcrumbLabel ?? match.item.label];
   }
   return [match.group.label];
 }

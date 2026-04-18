@@ -71,6 +71,28 @@ export function buildRecommendationPrompt(input: {
   strategy?: StrategyPromptReference;
 }) {
   const { scene, dealer, rules, campaigns, candidates, promptConfig, strategy } = input;
+  const campaignContextBlock =
+    scene === "campaign_stockup" || scene === "weekly_focus"
+      ? campaigns.length > 0
+        ? [
+            "匹配活动（仅可按该活动做活动备货）：",
+            stringify(
+              campaigns.map((campaign) => ({
+                campaign_id: campaign.campaign_id,
+                week_id: campaign.week_id,
+                campaign_name: campaign.campaign_name,
+                weekly_focus_items: campaign.weekly_focus_items,
+                promo_threshold: campaign.promo_threshold,
+                promo_type: campaign.promo_type,
+                activity_notes: campaign.activity_notes,
+              })),
+            ),
+          ]
+        : [
+            "匹配活动：",
+            "当前客户未命中活动，请严格返回 {\"elements\": []}。",
+          ]
+      : ["当前活动：", stringify(campaigns)];
 
   return [
     `系统角色：${promptConfig.recommendation_prompt.system_role}`,
@@ -83,8 +105,7 @@ export function buildRecommendationPrompt(input: {
     stringify(buildDealerPromptProfile(dealer)),
     "规则配置：",
     stringify(rules),
-    "当前活动：",
-    stringify(campaigns),
+    ...campaignContextBlock,
     "候选商品（仅可在候选中选择）：",
     stringify(
       candidates.map((item) => ({
@@ -183,7 +204,7 @@ export function buildCartOptimizationPrompt(input: {
     stringify(boxAdjustmentCombos),
     "搭配补充候选组合（确定性计算结果，仅可选 combo_id）：",
     stringify(pairingCombos),
-    strategyReferenceBlock(strategy, "box_pair_optimization"),
+    strategyReferenceBlock(strategy, "checkout_optimization"),
     "输出要求：",
     "1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。",
     "2. 对象字段固定为 decisions，数组元素字段必须包含：bar_type, combo_id, explanation。",

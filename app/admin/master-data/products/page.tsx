@@ -244,7 +244,6 @@ export default function ProductsPage() {
   return (
     <AdminPageFrame
       title="维护商品"
-      description="维护给门店可订的商品信息，供活动和推荐方案引用。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadProducts} disabled={loading}>
@@ -411,7 +410,6 @@ export default function ProductsPage() {
           }
         }}
         title={editingId ? `编辑商品: ${editingId}` : "新建商品"}
-        description="维护商品基础信息、标签和搭配关系。"
         footer={
           <div className="flex justify-end gap-2">
             <Button

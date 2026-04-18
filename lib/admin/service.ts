@@ -15,6 +15,7 @@ import {
   generateRecommendationsForCustomer,
   generateRecommendationSceneForCustomer,
 } from "@/lib/domain/business-service";
+import { matchCampaignsForDealer } from "@/lib/domain/recommendation-rules";
 import {
   appendAuditLog,
   getMemoryStore,
@@ -292,6 +293,100 @@ function appendAudit(input: Omit<Parameters<typeof appendAuditLog>[0], "summary"
   appendAuditLog(input);
 }
 
+const PURCHASE_PRECOMPUTED_SCENES = new Set<SuggestionScene>([
+  "hot_sale_restock",
+  "stockout_restock",
+  "campaign_stockup",
+  "daily_recommendation",
+  "weekly_focus",
+]);
+
+function isPurchasePrecomputedRun(run: RecommendationRunRecord) {
+  return (
+    run.surface === "purchase" &&
+    run.generation_mode === "precomputed" &&
+    PURCHASE_PRECOMPUTED_SCENES.has(run.scene)
+  );
+}
+
+function summarizeWithSnapshotState(baseSummary: string, staleCount: number) {
+  if (staleCount <= 0) {
+    return baseSummary;
+  }
+  return `${baseSummary}；快照状态：已过期（${staleCount} 条待重生成）`;
+}
+
+function stripSnapshotStateSuffix(summary: string) {
+  const marker = "；快照状态：";
+  const markerIndex = summary.indexOf(marker);
+  if (markerIndex < 0) {
+    return summary;
+  }
+  return summary.slice(0, markerIndex);
+}
+
+function getPurchaseRunStaleCountForJob(job: GenerationJobEntity) {
+  const store = getMemoryStore();
+  const targetBatchId =
+    job.published_batch_id ?? job.last_batch_id ?? job.last_sample_batch_id;
+  if (!targetBatchId) {
+    return 0;
+  }
+  const batch = store.recommendationBatches.find((item) => item.batch_id === targetBatchId);
+  if (!batch) {
+    return 0;
+  }
+  const runMap = new Map(
+    store.recommendationRuns.map((item) => [item.recommendation_run_id, item]),
+  );
+  return batch.related_run_ids
+    .map((runId) => runMap.get(runId))
+    .filter((item): item is RecommendationRunRecord => Boolean(item))
+    .filter((run) => isPurchasePrecomputedRun(run) && Boolean(run.stale_reason)).length;
+}
+
+function syncGenerationJobSnapshotState() {
+  const store = getMemoryStore();
+  for (const job of store.generationJobs) {
+    const staleCount = getPurchaseRunStaleCountForJob(job);
+    const baseSummary = stripSnapshotStateSuffix(job.precheck_summary || "").trim();
+    const fallbackSummary = baseSummary || `任务 ${job.job_name} 已发布采购快照`;
+    job.precheck_summary = summarizeWithSnapshotState(fallbackSummary, staleCount);
+  }
+}
+
+function markPurchaseRunsStale(input: {
+  reason: string;
+  predicate?: (run: RecommendationRunRecord) => boolean;
+}) {
+  const store = getMemoryStore();
+  const updatedAt = nowIso();
+  let staleCount = 0;
+
+  for (const run of store.recommendationRuns) {
+    if (!isPurchasePrecomputedRun(run)) {
+      continue;
+    }
+    if (input.predicate && !input.predicate(run)) {
+      continue;
+    }
+    run.stale_reason = input.reason;
+    run.updated_at = updatedAt;
+    staleCount += 1;
+  }
+
+  if (staleCount > 0) {
+    syncGenerationJobSnapshotState();
+  }
+  return staleCount;
+}
+
+function shouldStalePurchaseForExpressionTemplate(
+  template: Pick<ExpressionTemplateEntity, "scene">,
+) {
+  return template.scene === "bundle" || template.scene === "all";
+}
+
 function findById<T>(
   items: T[],
   matcher: (item: T) => boolean,
@@ -340,11 +435,17 @@ export function createProduct(input: UpsertInput<ProductEntity>) {
   ensureSkuExists(input.pair_items, "pair_items");
   const created: ProductEntity = { ...input, ...nowPair() };
   store.products.push(created);
+  const staleCount = markPurchaseRunsStale({
+    reason: `商品主数据变更：${created.sku_id}`,
+  });
   appendAudit({
     entity_type: "product",
     entity_id: created.sku_id,
     action: "create",
-    summary: `新增商品 ${created.sku_name}`,
+    summary:
+      staleCount > 0
+        ? `新增商品 ${created.sku_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `新增商品 ${created.sku_name}`,
   });
   return created;
 }
@@ -356,11 +457,17 @@ export function updateProduct(id: string, input: Partial<UpsertInput<ProductEnti
     ensureSkuExists(input.pair_items, "pair_items");
   }
   Object.assign(item, input, { updated_at: nowIso() });
+  const staleCount = markPurchaseRunsStale({
+    reason: `商品主数据变更：${item.sku_id}`,
+  });
   appendAudit({
     entity_type: "product",
     entity_id: item.sku_id,
     action: "update",
-    summary: `更新商品 ${item.sku_name}`,
+    summary:
+      staleCount > 0
+        ? `更新商品 ${item.sku_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `更新商品 ${item.sku_name}`,
   });
   return item;
 }
@@ -369,11 +476,17 @@ export function softDeleteProduct(id: string) {
   const store = getMemoryStore();
   const item = findById(store.products, (record) => record.sku_id === id, "商品不存在");
   deleteWithStatusGuard(item, "商品");
+  const staleCount = markPurchaseRunsStale({
+    reason: `商品停用：${item.sku_id}`,
+  });
   appendAudit({
     entity_type: "product",
     entity_id: item.sku_id,
     action: "toggle",
-    summary: `停用商品 ${item.sku_name}`,
+    summary:
+      staleCount > 0
+        ? `停用商品 ${item.sku_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `停用商品 ${item.sku_name}`,
   });
   return item;
 }
@@ -420,11 +533,17 @@ export function createDealer(input: UpsertInput<DealerEntity>) {
 
   const created: DealerEntity = { ...input, ...nowPair() };
   store.dealers.push(created);
+  const staleCount = markPurchaseRunsStale({
+    reason: `经销商主数据变更：${created.customer_id}`,
+  });
   appendAudit({
     entity_type: "dealer",
     entity_id: created.customer_id,
     action: "create",
-    summary: `新增经销商 ${created.customer_name}`,
+    summary:
+      staleCount > 0
+        ? `新增经销商 ${created.customer_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `新增经销商 ${created.customer_name}`,
   });
   return created;
 }
@@ -447,11 +566,18 @@ export function updateDealer(id: string, input: Partial<UpsertInput<DealerEntity
     });
   }
   Object.assign(item, input, { updated_at: nowIso() });
+  const staleCount = markPurchaseRunsStale({
+    reason: `经销商主数据变更：${item.customer_id}`,
+    predicate: (run) => run.customer_id === item.customer_id,
+  });
   appendAudit({
     entity_type: "dealer",
     entity_id: item.customer_id,
     action: "update",
-    summary: `更新经销商 ${item.customer_name}`,
+    summary:
+      staleCount > 0
+        ? `更新经销商 ${item.customer_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `更新经销商 ${item.customer_name}`,
   });
   return item;
 }
@@ -460,11 +586,18 @@ export function softDeleteDealer(id: string) {
   const store = getMemoryStore();
   const item = findById(store.dealers, (record) => record.customer_id === id, "经销商不存在");
   deleteWithStatusGuard(item, "经销商");
+  const staleCount = markPurchaseRunsStale({
+    reason: `经销商停用：${item.customer_id}`,
+    predicate: (run) => run.customer_id === item.customer_id,
+  });
   appendAudit({
     entity_type: "dealer",
     entity_id: item.customer_id,
     action: "toggle",
-    summary: `停用经销商 ${item.customer_name}`,
+    summary:
+      staleCount > 0
+        ? `停用经销商 ${item.customer_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `停用经销商 ${item.customer_name}`,
   });
   return item;
 }
@@ -511,11 +644,18 @@ export function createCampaign(input: UpsertInput<CampaignEntity>) {
   }
   const created: CampaignEntity = { ...input, ...nowPair() };
   store.campaigns.push(created);
+  const staleCount = markPurchaseRunsStale({
+    reason: `活动配置变更：${created.campaign_id}`,
+    predicate: (run) => run.scene === "campaign_stockup" || run.scene === "weekly_focus",
+  });
   appendAudit({
     entity_type: "campaign",
     entity_id: created.campaign_id,
     action: "create",
-    summary: `新增活动 ${created.campaign_name}`,
+    summary:
+      staleCount > 0
+        ? `新增活动 ${created.campaign_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `新增活动 ${created.campaign_name}`,
   });
   return created;
 }
@@ -536,11 +676,18 @@ export function updateCampaign(id: string, input: Partial<UpsertInput<CampaignEn
     ensureSegmentExists(input.target_segment_ids, "target_segment_ids");
   }
   Object.assign(item, input, { updated_at: nowIso() });
+  const staleCount = markPurchaseRunsStale({
+    reason: `活动配置变更：${item.campaign_id}`,
+    predicate: (run) => run.scene === "campaign_stockup" || run.scene === "weekly_focus",
+  });
   appendAudit({
     entity_type: "campaign",
     entity_id: item.campaign_id,
     action: "update",
-    summary: `更新活动 ${item.campaign_name}`,
+    summary:
+      staleCount > 0
+        ? `更新活动 ${item.campaign_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `更新活动 ${item.campaign_name}`,
   });
   return item;
 }
@@ -549,11 +696,18 @@ export function softDeleteCampaign(id: string) {
   const store = getMemoryStore();
   const item = findById(store.campaigns, (record) => record.campaign_id === id, "活动不存在");
   deleteWithStatusGuard(item, "活动");
+  const staleCount = markPurchaseRunsStale({
+    reason: `活动停用：${item.campaign_id}`,
+    predicate: (run) => run.scene === "campaign_stockup" || run.scene === "weekly_focus",
+  });
   appendAudit({
     entity_type: "campaign",
     entity_id: item.campaign_id,
     action: "toggle",
-    summary: `停用活动 ${item.campaign_name}`,
+    summary:
+      staleCount > 0
+        ? `停用活动 ${item.campaign_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `停用活动 ${item.campaign_name}`,
   });
   return item;
 }
@@ -590,11 +744,17 @@ export function createDealerSegment(input: UpsertInput<DealerSegmentEntity>) {
   ensureDealerExists(input.dealer_ids, "dealer_ids");
   const created: DealerSegmentEntity = { ...input, ...nowPair() };
   store.dealerSegments.push(created);
+  const staleCount = markPurchaseRunsStale({
+    reason: `经销商分群变更：${created.segment_id}`,
+  });
   appendAudit({
     entity_type: "dealer_segment",
     entity_id: created.segment_id,
     action: "create",
-    summary: `新增分群 ${created.segment_name}`,
+    summary:
+      staleCount > 0
+        ? `新增分群 ${created.segment_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `新增分群 ${created.segment_name}`,
   });
   return created;
 }
@@ -613,11 +773,17 @@ export function updateDealerSegment(
     ensureDealerExists(input.dealer_ids, "dealer_ids");
   }
   Object.assign(item, input, { updated_at: nowIso() });
+  const staleCount = markPurchaseRunsStale({
+    reason: `经销商分群变更：${item.segment_id}`,
+  });
   appendAudit({
     entity_type: "dealer_segment",
     entity_id: item.segment_id,
     action: "update",
-    summary: `更新分群 ${item.segment_name}`,
+    summary:
+      staleCount > 0
+        ? `更新分群 ${item.segment_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `更新分群 ${item.segment_name}`,
   });
   return item;
 }
@@ -630,11 +796,17 @@ export function softDeleteDealerSegment(id: string) {
     "经销商分群不存在",
   );
   deleteWithStatusGuard(item, "经销商分群");
+  const staleCount = markPurchaseRunsStale({
+    reason: `经销商分群停用：${item.segment_id}`,
+  });
   appendAudit({
     entity_type: "dealer_segment",
     entity_id: item.segment_id,
     action: "toggle",
-    summary: `停用分群 ${item.segment_name}`,
+    summary:
+      staleCount > 0
+        ? `停用分群 ${item.segment_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `停用分群 ${item.segment_name}`,
   });
   return item;
 }
@@ -664,11 +836,17 @@ export function createProductPool(input: UpsertInput<ProductPoolEntity>) {
   ensureSkuExists(input.pair_sku_ids, "pair_sku_ids");
   const created: ProductPoolEntity = { ...input, ...nowPair() };
   store.productPools.push(created);
+  const staleCount = markPurchaseRunsStale({
+    reason: `商品池配置变更：${created.pool_id}`,
+  });
   appendAudit({
     entity_type: "product_pool",
     entity_id: created.pool_id,
     action: "create",
-    summary: `新增商品池 ${created.pool_name}`,
+    summary:
+      staleCount > 0
+        ? `新增商品池 ${created.pool_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `新增商品池 ${created.pool_name}`,
   });
   return created;
 }
@@ -683,11 +861,17 @@ export function updateProductPool(id: string, input: Partial<UpsertInput<Product
     ensureSkuExists(input.pair_sku_ids, "pair_sku_ids");
   }
   Object.assign(item, input, { updated_at: nowIso() });
+  const staleCount = markPurchaseRunsStale({
+    reason: `商品池配置变更：${item.pool_id}`,
+  });
   appendAudit({
     entity_type: "product_pool",
     entity_id: item.pool_id,
     action: "update",
-    summary: `更新商品池 ${item.pool_name}`,
+    summary:
+      staleCount > 0
+        ? `更新商品池 ${item.pool_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `更新商品池 ${item.pool_name}`,
   });
   return item;
 }
@@ -696,20 +880,40 @@ export function softDeleteProductPool(id: string) {
   const store = getMemoryStore();
   const item = findById(store.productPools, (record) => record.pool_id === id, "商品池不存在");
   deleteWithStatusGuard(item, "商品池");
+  const staleCount = markPurchaseRunsStale({
+    reason: `商品池停用：${item.pool_id}`,
+  });
   appendAudit({
     entity_type: "product_pool",
     entity_id: item.pool_id,
     action: "toggle",
-    summary: `停用商品池 ${item.pool_name}`,
+    summary:
+      staleCount > 0
+        ? `停用商品池 ${item.pool_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `停用商品池 ${item.pool_name}`,
   });
   return item;
 }
 
+type RecommendationStrategyListFilters = {
+  sceneGroup?: "purchase" | "all";
+};
+
 export function listRecommendationStrategies(
   query: ListQuery,
+  filters: RecommendationStrategyListFilters = {},
 ): ListResult<RecommendationStrategyEntity> {
   const store = getMemoryStore();
-  return filterSortAndPaginate(store.recommendationStrategies, {
+  let records = [...store.recommendationStrategies];
+  if (filters.sceneGroup === "purchase") {
+    records = records.filter(
+      (item) =>
+        item.scene === "hot_sale_restock" ||
+        item.scene === "stockout_restock" ||
+        item.scene === "campaign_stockup",
+    );
+  }
+  return filterSortAndPaginate(records, {
     query,
     searchFields: [
       "strategy_id",
@@ -771,11 +975,18 @@ export function createRecommendationStrategy(
   const created: RecommendationStrategyEntity = { ...input, ...nowPair() };
   store.recommendationStrategies.push(created);
   refreshDerivedConfigs();
+  const staleCount = markPurchaseRunsStale({
+    reason: `推荐策略变更：${created.strategy_id}`,
+    predicate: (run) => run.scene === created.scene,
+  });
   appendAudit({
     entity_type: "recommendation_strategy",
     entity_id: created.strategy_id,
     action: "create",
-    summary: `新增推荐策略 ${created.strategy_name}`,
+    summary:
+      staleCount > 0
+        ? `新增推荐策略 ${created.strategy_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `新增推荐策略 ${created.strategy_name}`,
   });
   return created;
 }
@@ -793,11 +1004,18 @@ export function updateRecommendationStrategy(
   validateStrategyRelations(input);
   Object.assign(item, input, { updated_at: nowIso() });
   refreshDerivedConfigs();
+  const staleCount = markPurchaseRunsStale({
+    reason: `推荐策略变更：${item.strategy_id}`,
+    predicate: (run) => run.scene === item.scene,
+  });
   appendAudit({
     entity_type: "recommendation_strategy",
     entity_id: item.strategy_id,
     action: "update",
-    summary: `更新推荐策略 ${item.strategy_name}`,
+    summary:
+      staleCount > 0
+        ? `更新推荐策略 ${item.strategy_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `更新推荐策略 ${item.strategy_name}`,
   });
   return item;
 }
@@ -811,11 +1029,18 @@ export function softDeleteRecommendationStrategy(id: string) {
   );
   deleteWithStatusGuard(item, "推荐策略");
   refreshDerivedConfigs();
+  const staleCount = markPurchaseRunsStale({
+    reason: `推荐策略停用：${item.strategy_id}`,
+    predicate: (run) => run.scene === item.scene,
+  });
   appendAudit({
     entity_type: "recommendation_strategy",
     entity_id: item.strategy_id,
     action: "toggle",
-    summary: `停用推荐策略 ${item.strategy_name}`,
+    summary:
+      staleCount > 0
+        ? `停用推荐策略 ${item.strategy_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `停用推荐策略 ${item.strategy_name}`,
   });
   return item;
 }
@@ -859,11 +1084,19 @@ export function createExpressionTemplate(
   const created: ExpressionTemplateEntity = { ...input, ...nowPair() };
   store.expressionTemplates.push(created);
   refreshDerivedConfigs();
+  const staleCount = shouldStalePurchaseForExpressionTemplate(created)
+    ? markPurchaseRunsStale({
+        reason: `表达模板变更：${created.expression_template_id}`,
+      })
+    : 0;
   appendAudit({
     entity_type: "expression_template",
     entity_id: created.expression_template_id,
     action: "create",
-    summary: `新增表达模板 ${created.expression_template_name}`,
+    summary:
+      staleCount > 0
+        ? `新增表达模板 ${created.expression_template_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `新增表达模板 ${created.expression_template_name}`,
   });
   return created;
 }
@@ -880,11 +1113,19 @@ export function updateExpressionTemplate(
   );
   Object.assign(item, input, { updated_at: nowIso() });
   refreshDerivedConfigs();
+  const staleCount = shouldStalePurchaseForExpressionTemplate(item)
+    ? markPurchaseRunsStale({
+        reason: `表达模板变更：${item.expression_template_id}`,
+      })
+    : 0;
   appendAudit({
     entity_type: "expression_template",
     entity_id: item.expression_template_id,
     action: "update",
-    summary: `更新表达模板 ${item.expression_template_name}`,
+    summary:
+      staleCount > 0
+        ? `更新表达模板 ${item.expression_template_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `更新表达模板 ${item.expression_template_name}`,
   });
   return item;
 }
@@ -898,11 +1139,19 @@ export function softDeleteExpressionTemplate(id: string) {
   );
   deleteWithStatusGuard(item, "表达模板");
   refreshDerivedConfigs();
+  const staleCount = shouldStalePurchaseForExpressionTemplate(item)
+    ? markPurchaseRunsStale({
+        reason: `表达模板停用：${item.expression_template_id}`,
+      })
+    : 0;
   appendAudit({
     entity_type: "expression_template",
     entity_id: item.expression_template_id,
     action: "toggle",
-    summary: `停用表达模板 ${item.expression_template_name}`,
+    summary:
+      staleCount > 0
+        ? `停用表达模板 ${item.expression_template_name}，标记 ${staleCount} 条采购建议待重生成`
+        : `停用表达模板 ${item.expression_template_name}`,
   });
   return item;
 }
@@ -921,17 +1170,24 @@ export function updateGlobalRules(input: UpsertInput<GlobalRuleEntity>) {
     updated_at: nowIso(),
   };
   refreshDerivedConfigs();
+  const staleCount = markPurchaseRunsStale({
+    reason: `全局规则变更：${store.globalRules.rule_version}`,
+  });
   appendAudit({
     entity_type: "global_rule",
     entity_id: store.globalRules.global_rule_id,
     action: "update",
-    summary: `更新全局规则版本 ${store.globalRules.rule_version}`,
+    summary:
+      staleCount > 0
+        ? `更新全局规则版本 ${store.globalRules.rule_version}，标记 ${staleCount} 条采购建议待重生成`
+        : `更新全局规则版本 ${store.globalRules.rule_version}`,
   });
   return store.globalRules;
 }
 
 export function listGenerationJobs(query: ListQuery): ListResult<GenerationJobEntity> {
   const store = getMemoryStore();
+  syncGenerationJobSnapshotState();
   return filterSortAndPaginate(store.generationJobs, {
     query,
     searchFields: [
@@ -950,6 +1206,7 @@ export function listGenerationJobs(query: ListQuery): ListResult<GenerationJobEn
 
 export function getGenerationJobById(id: string) {
   const store = getMemoryStore();
+  syncGenerationJobSnapshotState();
   return store.generationJobs.find((item) => item.job_id === id) ?? null;
 }
 
@@ -1171,7 +1428,11 @@ async function executeGenerationBatch(input: {
         page_name: "/purchase",
       });
       sampledCustomerIds.push(dealerId);
-      generatedRunIds.push(result.summary.daily_run_id, result.summary.weekly_run_id);
+      generatedRunIds.push(
+        result.summary.hot_sale_run_id,
+        result.summary.stockout_run_id,
+        result.summary.campaign_run_id,
+      );
       traceId = traceId ?? result.summary.trace_id;
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown";
@@ -1317,21 +1578,70 @@ export async function replayRecommendationRecord(id: string) {
   let generatedRunIds: string[] = [];
   let traceId = "";
   let summary = "";
+  let createdBatch: RecommendationBatchRecord | undefined;
 
-  if (run.scene === "daily_recommendation" || run.scene === "weekly_focus") {
+  const isPurchaseScene =
+    run.scene === "hot_sale_restock" ||
+    run.scene === "stockout_restock" ||
+    run.scene === "campaign_stockup" ||
+    run.scene === "daily_recommendation" ||
+    run.scene === "weekly_focus";
+
+  if (isPurchaseScene) {
+    const replayScene: Parameters<typeof generateRecommendationSceneForCustomer>[0]["scene"] =
+      run.scene === "hot_sale_restock" ||
+      run.scene === "stockout_restock" ||
+      run.scene === "campaign_stockup"
+        ? run.scene
+        : run.scene === "weekly_focus"
+          ? "campaign_stockup"
+          : "stockout_restock";
     const result = await generateRecommendationSceneForCustomer({
       session_id: replaySessionId,
       customer_id: run.customer_id,
-      scene: run.scene,
+      scene: replayScene,
       trigger_source: "assistant",
       page_name: "/purchase",
     });
     generatedRunIds = [result.summary.run_id];
     traceId = result.summary.trace_id ?? "";
-    summary = `已重新生成 ${run.customer_name} 的${
-      run.scene === "daily_recommendation" ? "日常补货建议" : "活动备货建议"
-    }`;
-  } else if (run.scene === "box_pair_optimization") {
+    const sceneLabel =
+      replayScene === "campaign_stockup"
+        ? "活动备货建议"
+        : replayScene === "hot_sale_restock"
+          ? "热销补货建议"
+          : "缺货补货建议";
+    summary = `已重新生成 ${run.customer_name} 的${sceneLabel}`;
+    const finishedAt = nowIso();
+    createdBatch = createRecommendationBatch({
+      batch_id: createBatchId("batch_replay"),
+      batch_type: "manual_replay",
+      trigger_source: "admin",
+      session_id: replaySessionId,
+      job_id: sourceBatch?.job_id,
+      customer_id: run.customer_id,
+      scene: replayScene,
+      trace_id: traceId || undefined,
+      related_run_ids: generatedRunIds,
+      config_snapshot_id: pickConfigSnapshotId(),
+      started_at: startedAt,
+      finished_at: finishedAt,
+      status: "success",
+      publication_status: "ready",
+      fallback_used: false,
+    });
+
+    appendAudit({
+      entity_type: "recommendation_batch",
+      entity_id: createdBatch.batch_id,
+      action: "create",
+      summary: `补跑单条建议：${run.customer_name} · ${run.scene}`,
+    });
+  } else if (
+    run.scene === "checkout_optimization" ||
+    run.scene === "box_pair_optimization" ||
+    run.scene === "threshold_topup"
+  ) {
     const sourceSession = getCartBySession(run.session_id);
     if (sourceSession.items.length === 0) {
       conflict("当前凑单记录缺少购物车商品，无法补跑");
@@ -1346,39 +1656,15 @@ export async function replayRecommendationRecord(id: string) {
     });
     generatedRunIds = [result.summary.recommendation_run_id];
     traceId = result.summary.trace_id ?? "";
-    summary = `已重新生成 ${run.customer_name} 的凑单推荐`;
+    summary = `已重新生成 ${run.customer_name} 的结算页实时凑单建议（未创建采购批次）`;
   } else {
     conflict("当前场景暂不支持单条补跑");
   }
-  const finishedAt = nowIso();
-  const batch = createRecommendationBatch({
-    batch_id: createBatchId("batch_replay"),
-    batch_type: "manual_replay",
-    trigger_source: "admin",
-    session_id: replaySessionId,
-    job_id: sourceBatch?.job_id,
-    customer_id: run.customer_id,
-    scene: run.scene,
-    trace_id: traceId || undefined,
-    related_run_ids: generatedRunIds,
-    config_snapshot_id: pickConfigSnapshotId(),
-    started_at: startedAt,
-    finished_at: finishedAt,
-    status: "success",
-    publication_status: "ready",
-    fallback_used: false,
-  });
-
-  appendAudit({
-    entity_type: "recommendation_batch",
-    entity_id: batch.batch_id,
-    action: "create",
-    summary: `补跑单条建议：${run.customer_name} · ${run.scene}`,
-  });
 
   return {
-    batch,
+    batch: createdBatch,
     generated_run_ids: generatedRunIds,
+    trace_id: traceId || undefined,
     summary,
   };
 }
@@ -1635,23 +1921,10 @@ function projectCartSummaryFromTemplates(
 
 function resolveActivityHighlights(input: {
   campaigns: CampaignEntity[];
-  dealer: DealerEntity | null;
-  customerId: string;
   productMap: Map<string, ProductEntity>;
   weeklyRunItems: RecommendationItemRecord[];
 }): ActivityHighlight[] {
-  const scopedCampaigns = input.campaigns
-    .filter((item) => item.status === "active")
-    .filter((item) => {
-      if (item.target_dealer_ids && item.target_dealer_ids.length > 0) {
-        return item.target_dealer_ids.includes(input.customerId);
-      }
-      if (!input.dealer) {
-        return true;
-      }
-      return item.target_customer_types.includes(input.dealer.customer_type);
-    })
-    .slice(0, 3);
+  const scopedCampaigns = input.campaigns.slice(0, 3);
 
   const weeklyItemMap = new Map<string, RecommendationItemRecord>();
   for (const item of input.weeklyRunItems) {
@@ -1759,7 +2032,9 @@ export function getPublishedSuggestionsForCustomer(
       );
       return (
         run?.customer_id === customerId &&
-        (run.scene === "daily_recommendation" || run.scene === "weekly_focus")
+        (run.scene === "hot_sale_restock" ||
+          run.scene === "stockout_restock" ||
+          run.scene === "campaign_stockup")
       );
     });
     if (!hasCustomerRuns) {
@@ -1775,50 +2050,50 @@ export function getPublishedSuggestionsForCustomer(
   }
 
   const runIds = selectedBatch?.related_run_ids ?? [];
-  const dailyRun = pickLatestRunByScene({
+  const hotSaleRun = pickLatestRunByScene({
     runIds,
     customerId,
-    scene: "daily_recommendation",
+    scene: "hot_sale_restock",
   });
-  const weeklyRun = pickLatestRunByScene({
+  const stockoutRun = pickLatestRunByScene({
     runIds,
     customerId,
-    scene: "weekly_focus",
+    scene: "stockout_restock",
   });
-  const dailyOpenItems = pickOpenItemsForRun(dailyRun, store.recommendationItems);
-  const weeklyOpenItems = pickOpenItemsForRun(weeklyRun, store.recommendationItems);
+  const campaignRun = pickLatestRunByScene({
+    runIds,
+    customerId,
+    scene: "campaign_stockup",
+  });
 
-  const hotSaleRecommendationItems = dailyOpenItems
-    .filter((item) => {
-      const product = productMap.get(item.sku_id);
-      if (!product) {
-        return false;
-      }
-      return (
-        product.tags.some((tag) => tag.includes("高频动销") || tag.includes("高客单")) ||
-        item.reason_tags.some((tag) => tag.includes("热销") || tag.includes("动销"))
-      );
-    })
+  const hotSaleOpenItems = pickOpenItemsForRun(
+    hotSaleRun,
+    store.recommendationItems,
+  );
+  const stockoutOpenItems = pickOpenItemsForRun(
+    stockoutRun,
+    store.recommendationItems,
+  );
+  const campaignOpenItems = pickOpenItemsForRun(
+    campaignRun,
+    store.recommendationItems,
+  );
+
+  const hotSaleRecommendationItems = hotSaleOpenItems
     .map((item) => {
       const product = productMap.get(item.sku_id);
       return product ? asBundleTemplateItem(item, product) : null;
     })
     .filter((item): item is BundleTemplateItem => Boolean(item));
 
-  const stockoutRecommendationItems = dailyOpenItems
-    .filter(
-      (item) =>
-        item.reason_tags.some((tag) => tag.includes("补货")) ||
-        item.reason.includes("补货") ||
-        item.reason.includes("缺货"),
-    )
+  const stockoutRecommendationItems = stockoutOpenItems
     .map((item) => {
       const product = productMap.get(item.sku_id);
       return product ? asBundleTemplateItem(item, product) : null;
     })
     .filter((item): item is BundleTemplateItem => Boolean(item));
 
-  const campaignRecommendationItems = weeklyOpenItems
+  const campaignRecommendationItems = campaignOpenItems
     .map((item) => {
       const product = productMap.get(item.sku_id);
       return product ? asBundleTemplateItem(item, product) : null;
@@ -1860,13 +2135,29 @@ export function getPublishedSuggestionsForCustomer(
         }),
       ),
   ];
+  const matchedCampaigns = dealer
+    ? matchCampaignsForDealer({
+        campaigns: store.campaigns,
+        dealer,
+        dealerSegments: store.dealerSegments,
+        products: store.products,
+      })
+    : [];
+  const orderedCampaigns = matchedCampaigns.map((item) => item.campaign);
+  if (campaignRun?.campaign_id) {
+    const runCampaignIndex = orderedCampaigns.findIndex(
+      (item) => item.campaign_id === campaignRun.campaign_id,
+    );
+    if (runCampaignIndex > 0) {
+      const [runCampaign] = orderedCampaigns.splice(runCampaignIndex, 1);
+      orderedCampaigns.unshift(runCampaign);
+    }
+  }
 
   const activityHighlights = resolveActivityHighlights({
-    campaigns: store.campaigns,
-    dealer,
-    customerId,
+    campaigns: orderedCampaigns,
     productMap,
-    weeklyRunItems: weeklyOpenItems,
+    weeklyRunItems: campaignOpenItems,
   });
 
   const campaignFallbackItems = activityHighlights.flatMap((highlight) => highlight.items);
@@ -1915,7 +2206,11 @@ export function getPublishedSuggestionsForCustomer(
         selectedJob?.published_at ??
         selectedBatch?.finished_at ??
         selectedBatch?.updated_at,
-      trace_id: dailyRun?.trace_id ?? weeklyRun?.trace_id ?? selectedBatch?.trace_id,
+      trace_id:
+        hotSaleRun?.trace_id ??
+        stockoutRun?.trace_id ??
+        campaignRun?.trace_id ??
+        selectedBatch?.trace_id,
     },
   } as PublishedSuggestionsPayload;
 }
@@ -1925,7 +2220,28 @@ export function listRecommendationBatches(
   filters?: RecommendationBatchFilters,
 ): ListResult<RecommendationBatchRecord> {
   const store = getMemoryStore();
-  let records = [...store.recommendationBatches];
+  const checkoutScenes = new Set<SuggestionScene>([
+    "checkout_optimization",
+    "box_pair_optimization",
+    "threshold_topup",
+  ]);
+  const runById = new Map(
+    store.recommendationRuns.map((run) => [run.recommendation_run_id, run]),
+  );
+  let records = [...store.recommendationBatches].filter((batch) => {
+    const relatedRuns = batch.related_run_ids
+      .map((runId) => runById.get(runId))
+      .filter((run): run is RecommendationRunRecord => Boolean(run));
+    if (relatedRuns.length === 0) {
+      return batch.scene ? !checkoutScenes.has(batch.scene) : true;
+    }
+    return relatedRuns.every(
+      (run) =>
+        !checkoutScenes.has(run.scene) &&
+        run.surface !== "checkout" &&
+        run.generation_mode !== "realtime",
+    );
+  });
   if (filters?.dateFrom) {
     records = records.filter((item) => item.created_at >= filters.dateFrom!);
   }
@@ -2001,6 +2317,14 @@ export function createRecommendationBatch(input: RecommendationBatchUpsertInput)
     ...nowPair(),
   };
   store.recommendationBatches.push(created);
+  const relatedRunIds = new Set(created.related_run_ids);
+  for (const run of store.recommendationRuns) {
+    if (!relatedRunIds.has(run.recommendation_run_id)) {
+      continue;
+    }
+    run.batch_id = created.batch_id;
+    run.updated_at = created.updated_at;
+  }
   appendAudit({
     entity_type: "recommendation_batch",
     entity_id: created.batch_id,
@@ -2043,7 +2367,25 @@ export function updateRecommendationBatch(
   ) {
     validation({ publication_status: "publication_status 不合法" });
   }
+  const previousRunIds = new Set(item.related_run_ids);
   Object.assign(item, input, { updated_at: nowIso() });
+  const nextRunIds = new Set(item.related_run_ids);
+  for (const run of store.recommendationRuns) {
+    const wasLinked = previousRunIds.has(run.recommendation_run_id);
+    const isLinked = nextRunIds.has(run.recommendation_run_id);
+    if (!wasLinked && !isLinked) {
+      continue;
+    }
+    if (isLinked) {
+      run.batch_id = item.batch_id;
+      run.updated_at = item.updated_at;
+      continue;
+    }
+    if (wasLinked && run.batch_id === item.batch_id) {
+      run.batch_id = undefined;
+      run.updated_at = item.updated_at;
+    }
+  }
   appendAudit({
     entity_type: "recommendation_batch",
     entity_id: item.batch_id,
@@ -2060,10 +2402,14 @@ export function listRecommendationRuns(
   const store = getMemoryStore();
   let records = [...store.recommendationRuns];
   const purchaseScenes = new Set<SuggestionScene>([
+    "hot_sale_restock",
+    "stockout_restock",
+    "campaign_stockup",
     "daily_recommendation",
     "weekly_focus",
   ]);
   const checkoutScenes = new Set<SuggestionScene>([
+    "checkout_optimization",
     "box_pair_optimization",
     "threshold_topup",
   ]);
@@ -2077,12 +2423,41 @@ export function listRecommendationRuns(
   if (filters.customerId) {
     records = records.filter((item) => item.customer_id === filters.customerId);
   }
+  if (filters.surface) {
+    records = records.filter((item) => item.surface === filters.surface);
+  }
+  if (filters.generationMode) {
+    records = records.filter(
+      (item) => item.generation_mode === filters.generationMode,
+    );
+  }
   if (filters.scene) {
     records = records.filter((item) => {
       if (filters.scene === "purchase_bundle") {
-        return purchaseScenes.has(item.scene);
+        return (
+          purchaseScenes.has(item.scene) &&
+          item.surface === "purchase" &&
+          item.generation_mode === "precomputed"
+        );
       }
       if (filters.scene === "checkout_optimization") {
+        return (
+          checkoutScenes.has(item.scene) &&
+          item.surface === "checkout" &&
+          item.generation_mode === "realtime"
+        );
+      }
+      if (filters.scene === "daily_recommendation") {
+        return (
+          item.scene === "hot_sale_restock" ||
+          item.scene === "stockout_restock" ||
+          item.scene === "daily_recommendation"
+        );
+      }
+      if (filters.scene === "weekly_focus") {
+        return item.scene === "campaign_stockup" || item.scene === "weekly_focus";
+      }
+      if (filters.scene === "box_pair_optimization" || filters.scene === "threshold_topup") {
         return checkoutScenes.has(item.scene);
       }
       return item.scene === filters.scene;
@@ -2356,7 +2731,7 @@ export function inferSceneFromActionType(
   actionType: TemplateReferenceItem["sort_order"] | number,
 ): SuggestionScene {
   if (actionType > 2) {
-    return "box_pair_optimization";
+    return "checkout_optimization";
   }
-  return "daily_recommendation";
+  return "hot_sale_restock";
 }

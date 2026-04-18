@@ -6,22 +6,25 @@ import { ArrowRight, Filter, RefreshCw } from "lucide-react";
 
 import { AdminPageFrame } from "@/components/admin/page-frame";
 import { FeedbackBanner } from "@/components/admin/feedback-banner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { requestJson } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
-import type { RecommendationBatchRecord, RecommendationRunRecord } from "@/lib/memory/types";
+import type {
+  DealerEntity,
+  RecommendationBatchRecord,
+  RecommendationRunRecord,
+  RecommendationStrategyEntity,
+} from "@/lib/memory/types";
 
 type QueryState = {
   dateFrom: string;
@@ -32,18 +35,26 @@ type QueryState = {
 type AnalyticsData = {
   batches: RecommendationBatchRecord[];
   records: RecommendationRunRecord[];
+  dealers: DealerEntity[];
+  strategies: RecommendationStrategyEntity[];
 };
 
 const SCENE_LABELS: Record<string, string> = {
-  daily_recommendation: "日常补货",
-  weekly_focus: "周活动备货",
-  threshold_topup: "门槛补差",
-  box_pair_optimization: "箱规与搭配优化",
+  hot_sale_restock: "热销补货",
+  stockout_restock: "缺货补货",
+  campaign_stockup: "活动备货",
+  checkout_optimization: "结算页凑单",
+  daily_recommendation: "日常补货(兼容)",
+  weekly_focus: "周活动备货(兼容)",
+  threshold_topup: "门槛补差(兼容)",
+  box_pair_optimization: "箱规与搭配优化(兼容)",
 };
 
 const EMPTY_DATA: AnalyticsData = {
   batches: [],
   records: [],
+  dealers: [],
+  strategies: [],
 };
 
 function getDefaultRange() {
@@ -107,18 +118,26 @@ export default function AnalyticsOverviewPage() {
         recordParams.set("customerId", nextQuery.customerId.trim());
       }
 
-      const [batchData, recordData] = await Promise.all([
+      const [batchData, recordData, dealerData, strategyData] = await Promise.all([
         requestJson<ListResult<RecommendationBatchRecord>>(
           `/api/admin/recommendation-batches?${batchParams.toString()}`,
         ),
         requestJson<ListResult<RecommendationRunRecord>>(
           `/api/admin/recommendation-records?${recordParams.toString()}`,
         ),
+        requestJson<ListResult<DealerEntity>>(
+          "/api/admin/dealers?page=1&pageSize=500&sortBy=customer_name&sortOrder=asc",
+        ),
+        requestJson<ListResult<RecommendationStrategyEntity>>(
+          "/api/admin/recommendation-strategies?sceneGroup=purchase&page=1&pageSize=500&sortBy=priority&sortOrder=asc",
+        ),
       ]);
 
       setData({
         batches: batchData.items,
         records: recordData.items,
+        dealers: dealerData.items,
+        strategies: strategyData.items,
       });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "加载结果总览失败");
@@ -132,52 +151,68 @@ export default function AnalyticsOverviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const successBatches = data.batches.filter((item) => item.status === "success").length;
-  const failedBatches = data.batches.filter((item) =>
-    ["failed", "partial_failed", "fallback_served"].includes(item.status),
-  ).length;
-  const publishedBatches = data.batches.filter(
+  const purchaseBatches = data.batches;
+  const purchaseRecords = data.records.filter(
+    (item) => item.surface === "purchase" && item.generation_mode === "precomputed",
+  );
+  const checkoutRealtimeRecords = data.records.filter(
+    (item) => item.surface === "checkout" && item.generation_mode === "realtime",
+  );
+
+  const publishedBatches = purchaseBatches.filter(
     (item) => item.publication_status === "published",
   ).length;
 
-  const adoptedRuns = data.records.filter((item) =>
+  const adoptedRuns = purchaseRecords.filter((item) =>
     ["partially_applied", "fully_applied"].includes(item.status),
   ).length;
   const adoptionRate =
-    data.records.length === 0 ? 0 : (adoptedRuns / data.records.length) * 100;
-  const avgLatency =
-    data.records.length === 0
+    purchaseRecords.length === 0 ? 0 : (adoptedRuns / purchaseRecords.length) * 100;
+  const purchaseAvgLatency =
+    purchaseRecords.length === 0
       ? 0
       : Math.round(
-          data.records.reduce((sum, item) => sum + item.model_latency_ms, 0) /
-            data.records.length,
+          purchaseRecords.reduce((sum, item) => sum + item.model_latency_ms, 0) /
+            purchaseRecords.length,
+        );
+  const checkoutAvgLatency =
+    checkoutRealtimeRecords.length === 0
+      ? 0
+      : Math.round(
+          checkoutRealtimeRecords.reduce((sum, item) => sum + item.model_latency_ms, 0) /
+            checkoutRealtimeRecords.length,
         );
 
   const sceneBreakdown = Object.entries(
-    data.records.reduce<Record<string, number>>((acc, run) => {
+    purchaseRecords.reduce<Record<string, number>>((acc, run) => {
       acc[run.scene] = (acc[run.scene] ?? 0) + 1;
       return acc;
     }, {}),
   ).sort((a, b) => b[1] - a[1]);
 
+  const strategyNameMap = new Map(
+    data.strategies.map((item) => [item.strategy_id, item.strategy_name] as const),
+  );
   const strategyContribution = Object.entries(
-    data.records.reduce<Record<string, number>>((acc, run) => {
-      const key = run.strategy_id || "未绑定策略";
+    purchaseRecords.reduce<Record<string, number>>((acc, run) => {
+      const key = run.strategy_id || "default_strategy";
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     }, {}),
   )
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);
-
-  const abnormalBatches = data.batches.filter((item) =>
-    ["failed", "partial_failed", "fallback_served"].includes(item.status),
-  );
+  const checkoutAdoptedRuns = checkoutRealtimeRecords.filter((item) =>
+    ["partially_applied", "fully_applied"].includes(item.status),
+  ).length;
+  const checkoutAdoptionRate =
+    checkoutRealtimeRecords.length === 0
+      ? 0
+      : (checkoutAdoptedRuns / checkoutRealtimeRecords.length) * 100;
 
   return (
     <AdminPageFrame
       title="结果总览"
-      description="按时间查看生成结果、发布情况和门店采纳效果。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadData()} disabled={loading}>
@@ -185,7 +220,7 @@ export default function AnalyticsOverviewPage() {
             刷新
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/analytics/recommendation-records" className="gap-2">
+            <Link href="/admin/analytics/recommendation-records?view=purchase" className="gap-2">
               查看门店建议
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -219,13 +254,27 @@ export default function AnalyticsOverviewPage() {
           </div>
           <div className="space-y-1">
             <Label>经销商（可选）</Label>
-            <Input
-              value={query.customerId}
-              onChange={(event) =>
-                setQuery((prev) => ({ ...prev, customerId: event.target.value }))
+            <Select
+              value={query.customerId || "__all__"}
+              onValueChange={(value) =>
+                setQuery((prev) => ({
+                  ...prev,
+                  customerId: value === "__all__" ? "" : value,
+                }))
               }
-              placeholder="customer_xxx"
-            />
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="全部经销商" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">全部经销商</SelectItem>
+                {data.dealers.map((dealer) => (
+                  <SelectItem key={dealer.customer_id} value={dealer.customer_id}>
+                    {dealer.customer_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-end">
             <Button className="w-full" variant="outline" onClick={() => void loadData(query)}>
@@ -239,34 +288,34 @@ export default function AnalyticsOverviewPage() {
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-600">批次总数</CardTitle>
+            <CardTitle className="text-sm text-slate-600">采购预处理批次</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="kpi-value text-2xl">{data.batches.length}</p>
+            <p className="kpi-value text-2xl">{purchaseBatches.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-600">成功批次</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="kpi-value text-2xl">{successBatches}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-600">异常批次</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="kpi-value text-2xl">{failedBatches}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-600">已发布批次</CardTitle>
+            <CardTitle className="text-sm text-slate-600">已发布采购批次</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="kpi-value text-2xl">{publishedBatches}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-600">采购建议记录</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="kpi-value text-2xl">{purchaseRecords.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-600">结算凑单记录</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="kpi-value text-2xl">{checkoutRealtimeRecords.length}</p>
           </CardContent>
         </Card>
       </section>
@@ -274,137 +323,102 @@ export default function AnalyticsOverviewPage() {
       <section className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">今日运营情况</CardTitle>
+            <CardTitle className="text-lg">采购建议</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 text-sm md:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">门店建议数</p>
-                <p className="kpi-value text-xl">{data.records.length}</p>
+                <p className="text-slate-500">采购建议记录</p>
+                <p className="kpi-value text-xl">{purchaseRecords.length}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">已采纳记录</p>
+                <p className="text-slate-500">采购已采纳记录</p>
                 <p className="kpi-value text-xl">{adoptedRuns}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">采纳率</p>
+                <p className="text-slate-500">采购采纳率</p>
                 <p className="kpi-value text-xl">{adoptionRate.toFixed(1)}%</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-slate-500">平均模型耗时</p>
-                <p className="kpi-value text-xl">{avgLatency}ms</p>
+                <p className="text-slate-500">采购平均模型耗时</p>
+                <p className="kpi-value text-xl">{purchaseAvgLatency}ms</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">门店建议 {data.records.length}</Badge>
-              <Badge variant="outline">批次异常 {abnormalBatches.length}</Badge>
-              <Badge variant="outline">已发布批次 {publishedBatches}</Badge>
-            </div>
-            <p className="text-sm text-slate-500">
-              这一块用于先看当前筛选时间范围内的发布、异常、采纳和模型耗时，再决定是否继续下钻到具体建议。
-            </p>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/analytics/recommendation-records?view=purchase">
+                查看采购建议记录
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">场景分布和方案贡献</CardTitle>
+            <CardTitle className="text-lg">结算凑单</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-              <p className="text-xs text-slate-500">场景分布</p>
-              {sceneBreakdown.length === 0 ? (
-                <p className="text-sm text-slate-500">暂无场景数据</p>
-              ) : (
-                sceneBreakdown.map(([scene, count]) => (
-                  <div key={scene} className="flex items-center justify-between">
-                    <span>{SCENE_LABELS[scene] ?? scene}</span>
-                    <span className="kpi-value">{count}</span>
-                  </div>
-                ))
-              )}
+              <p className="text-xs text-slate-500">实时记录规模</p>
+              <div className="flex items-center justify-between">
+                <span>实时 run 数</span>
+                <span className="kpi-value">{checkoutRealtimeRecords.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>平均模型耗时</span>
+                <span className="kpi-value">{checkoutAvgLatency}ms</span>
+              </div>
             </div>
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-              <p className="text-xs text-slate-500">方案贡献（按建议数）</p>
-              {strategyContribution.length === 0 ? (
-                <p className="text-sm text-slate-500">暂无策略贡献数据</p>
-              ) : (
-                strategyContribution.map(([strategyId, count]) => (
-                  <div key={strategyId} className="flex items-center justify-between">
-                    <span className="font-mono text-xs">{strategyId}</span>
-                    <span className="kpi-value">{count}</span>
-                  </div>
-                ))
-              )}
+              <p className="text-xs text-slate-500">结算凑单采纳情况</p>
+              <p className="text-sm text-slate-600">
+                当前共触发 {checkoutRealtimeRecords.length} 次凑单推荐，采纳率 {checkoutAdoptionRate.toFixed(1)}%。
+              </p>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/admin/analytics/recommendation-records?view=checkout">
+                  查看结算凑单记录
+                </Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
       </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">异常批次清单</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>批次 ID</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>任务 / 经销商</TableHead>
-                <TableHead>错误摘要</TableHead>
-                <TableHead className="text-right">下钻</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {abnormalBatches.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-slate-500">
-                    当前筛选范围内无异常批次
-                  </TableCell>
-                </TableRow>
-              ) : (
-                abnormalBatches.slice(0, 12).map((batch) => (
-                  <TableRow key={batch.batch_id}>
-                    <TableCell className="font-mono text-xs">{batch.batch_id}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{batch.status}</Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {batch.job_id ?? "-"} / {batch.customer_id ?? "-"}
-                    </TableCell>
-                    <TableCell className="max-w-[420px] truncate text-xs">
-                      {batch.error_summary || "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button asChild size="sm" variant="outline">
-                          <Link
-                            href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
-                              batch.batch_id,
-                            )}`}
-                          >
-                            记录
-                          </Link>
-                        </Button>
-                        <Button asChild size="sm" variant="outline">
-                          <Link
-                            href={`/admin/observability/traces?batchId=${encodeURIComponent(
-                              batch.batch_id,
-                            )}`}
-                          >
-                            链路
-                          </Link>
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">采购场景分布</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+            {sceneBreakdown.length === 0 ? (
+              <p className="text-sm text-slate-500">暂无采购场景数据</p>
+            ) : (
+              sceneBreakdown.map(([scene, count]) => (
+                <div key={scene} className="flex items-center justify-between">
+                  <span>{SCENE_LABELS[scene] ?? scene}</span>
+                  <span className="kpi-value">{count}</span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">采购方案贡献（按建议数）</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+            {strategyContribution.length === 0 ? (
+              <p className="text-sm text-slate-500">暂无策略贡献数据</p>
+            ) : (
+              strategyContribution.map(([strategyId, count]) => (
+                <div key={strategyId} className="flex items-center justify-between">
+                  <span>{strategyNameMap.get(strategyId) ?? "默认方案"}</span>
+                  <span className="kpi-value">{count}</span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </section>
     </AdminPageFrame>
   );
 }

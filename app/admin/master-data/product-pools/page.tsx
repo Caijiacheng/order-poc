@@ -200,7 +200,6 @@ export default function ProductPoolsPage() {
   return (
     <AdminPageFrame
       title="维护商品分组"
-      description="维护热销、新品、活动和搭配分组，供推荐方案直接引用。"
       action={
         <Button className="rounded-full" onClick={openCreateDrawer}>
           <Plus className="h-4 w-4" />
@@ -359,7 +358,6 @@ export default function ProductPoolsPage() {
           }
         }}
         title={editingId ? `编辑商品池: ${editingId}` : "新建商品池"}
-        description="维护推荐可引用的商品分组和搭配分组。"
         footer={
           <div className="flex justify-end gap-2">
             <Button

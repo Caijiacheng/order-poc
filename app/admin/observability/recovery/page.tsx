@@ -85,7 +85,6 @@ export default function RecoveryPage() {
   return (
     <AdminPageFrame
       title="恢复演示数据"
-      description="一键回到演示初始数据。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadBaseline()} disabled={loading}>

@@ -1,15 +1,20 @@
 export type EntityStatus = "active" | "inactive";
 
-export type SuggestionScene =
+export type CanonicalSuggestionScene =
+  | "hot_sale_restock"
+  | "stockout_restock"
+  | "campaign_stockup"
+  | "checkout_optimization";
+
+export type LegacySuggestionScene =
   | "daily_recommendation"
   | "weekly_focus"
   | "threshold_topup"
   | "box_pair_optimization";
 
-export type RecommendationStrategyScene =
-  | "hot_sale_bundle"
-  | "replenishment_bundle"
-  | "campaign_bundle";
+export type SuggestionScene = CanonicalSuggestionScene | LegacySuggestionScene;
+
+export type RecommendationStrategyScene = CanonicalSuggestionScene;
 
 export type FrontstageCanonicalPageName = "/purchase" | "/order-submit";
 
@@ -240,7 +245,6 @@ export type RecommendationBatchRecord = {
   batch_type:
     | "scheduled_generation"
     | "sample_generation"
-    | "frontstage_realtime"
     | "manual_replay";
   trigger_source: "system" | "admin" | "frontstage" | "fallback";
   session_id?: string;
@@ -389,6 +393,12 @@ export type RecommendationRunRecord = {
   customer_id: string;
   customer_name: string;
   scene: SuggestionScene;
+  surface?: "purchase" | "checkout";
+  generation_mode?: "precomputed" | "realtime";
+  business_date?: string;
+  snapshot_version?: string;
+  campaign_id?: string;
+  stale_reason?: string;
   page_name: FrontstagePageName;
   trigger_source: "auto" | "manual" | "assistant";
   strategy_id?: string;

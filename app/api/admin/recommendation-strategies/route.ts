@@ -11,7 +11,10 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const query = parseListQuery(searchParams);
-    const data = listRecommendationStrategies(query);
+    const sceneGroup = searchParams.get("sceneGroup");
+    const data = listRecommendationStrategies(query, {
+      sceneGroup: sceneGroup === "purchase" ? "purchase" : "all",
+    });
     return apiSuccess(data, { query });
   } catch (error) {
     return handleRouteError(error);

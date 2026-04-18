@@ -9,6 +9,12 @@ declare global {
   var __ORDER_POC_LANGFUSE_CLIENT__: Langfuse | undefined;
 }
 
+type TraceSummaryConfig<T> = {
+  input?: unknown;
+  output?: (result: T) => unknown;
+  errorOutput?: (error: unknown) => unknown;
+};
+
 export function isLangfuseTracingEnabled() {
   return Boolean(
     process.env.LANGFUSE_PUBLIC_KEY &&
@@ -79,17 +85,31 @@ function serializeTraceMetadata(attributes: Attributes) {
   return metadata;
 }
 
+function serializeTraceContent(value: unknown) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value)) as unknown;
+  } catch {
+    return String(value);
+  }
+}
+
 async function upsertLangfuseTrace(input: {
   traceId: string;
   name: string;
   attributes: Attributes;
+  traceInput?: unknown;
+  traceOutput?: unknown;
 }) {
   const client = getLangfuseClient();
   if (!client) {
     return;
   }
 
-  client.trace({
+  const body = {
     id: input.traceId,
     name: input.name,
     sessionId:
@@ -101,7 +121,15 @@ async function upsertLangfuseTrace(input: {
         ? input.attributes["customer.id"]
         : undefined,
     metadata: serializeTraceMetadata(input.attributes),
-  });
+    ...(input.traceInput !== undefined
+      ? { input: serializeTraceContent(input.traceInput) }
+      : {}),
+    ...(input.traceOutput !== undefined
+      ? { output: serializeTraceContent(input.traceOutput) }
+      : {}),
+  } as Parameters<Langfuse["trace"]>[0];
+
+  client.trace(body);
 
   await client.flushAsync();
 }
@@ -110,21 +138,49 @@ export async function withSpan<T>(
   name: string,
   attributes: Attributes,
   fn: (traceId: string) => Promise<T>,
+  traceSummary?: TraceSummaryConfig<T>,
 ): Promise<T> {
   const tracer = trace.getTracer(TRACER_NAME);
   return tracer.startActiveSpan(name, async (span) => {
     span.setAttributes(attributes);
     const traceId = span.spanContext().traceId;
-    await upsertLangfuseTrace({ traceId, name, attributes });
+    const traceInput = traceSummary?.input;
+    await upsertLangfuseTrace({
+      traceId,
+      name,
+      attributes,
+      traceInput,
+    });
     try {
       const result = await fn(traceId);
       span.setStatus({ code: SpanStatusCode.OK });
+      await upsertLangfuseTrace({
+        traceId,
+        name,
+        attributes,
+        traceInput,
+        traceOutput: traceSummary?.output?.(result),
+      });
       return result;
     } catch (error) {
       span.recordException(error as Error);
       span.setStatus({
         code: SpanStatusCode.ERROR,
         message: error instanceof Error ? error.message : "unknown error",
+      });
+      await upsertLangfuseTrace({
+        traceId,
+        name,
+        attributes,
+        traceInput,
+        traceOutput:
+          traceSummary?.errorOutput?.(error) ??
+          {
+            中文说明: "业务链路执行失败。",
+            状态: "失败",
+            错误:
+              error instanceof Error ? error.message : String(error ?? "unknown error"),
+          },
       });
       throw error;
     } finally {

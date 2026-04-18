@@ -46,7 +46,7 @@ describe("recommendation report query semantics", () => {
       session_id: "sess_stage2_generated",
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
-      scene: "daily_recommendation",
+      scene: "hot_sale_restock",
       page_name: "/purchase",
       trigger_source: "manual",
       prompt_snapshot: "generated run",
@@ -59,7 +59,7 @@ describe("recommendation report query semantics", () => {
       session_id: "sess_stage2_ignored",
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
-      scene: "weekly_focus",
+      scene: "campaign_stockup",
       page_name: "/purchase",
       trigger_source: "manual",
       prompt_snapshot: "ignored run",
@@ -101,7 +101,9 @@ describe("recommendation report query semantics", () => {
       session_id: "sess_stage2_report",
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
-      scene: "threshold_topup",
+      scene: "checkout_optimization",
+      surface: "checkout",
+      generation_mode: "realtime",
       page_name: "/order-submit",
       trigger_source: "assistant",
       prompt_snapshot: "stage2 report prompt",
@@ -125,7 +127,7 @@ describe("recommendation report query semantics", () => {
 
     const filtered = listRecommendationRuns(REPORT_QUERY, {
       customerId: "dealer_xm_sm",
-      scene: "threshold_topup",
+      scene: "checkout_optimization",
       skuId: "cb_chicken_essence_200",
       modelName: "stage2-report",
     });
@@ -140,7 +142,7 @@ describe("recommendation report query semantics", () => {
       session_id: "sess_stage2_link",
       customer_id: "dealer_xm_sm",
       customer_name: "厦门思明经销商",
-      scene: "daily_recommendation",
+      scene: "hot_sale_restock",
       page_name: "/purchase",
       trigger_source: "manual",
       prompt_snapshot: "stage2 linked prompt",
@@ -149,8 +151,7 @@ describe("recommendation report query semantics", () => {
       model_name: "mock-stage2-link",
       model_latency_ms: 79,
     });
-    run.batch_id = "batch_stage2_linked";
-    run.strategy_id = "tpl_xm_daily";
+    run.strategy_id = "tpl_purchase_hot_sale";
     run.expression_template_id = "expr_recommendation_default";
     run.updated_at = nowIso();
     createRecommendationItems(run, [
@@ -171,7 +172,7 @@ describe("recommendation report query semantics", () => {
       batch_type: "manual_replay",
       trigger_source: "admin",
       customer_id: "dealer_xm_sm",
-      scene: "daily_recommendation",
+      scene: "hot_sale_restock",
       trace_id: "trace_stage2_linked",
       related_run_ids: [run.recommendation_run_id],
       config_snapshot_id: "snapshot_seed_default",
@@ -181,9 +182,12 @@ describe("recommendation report query semantics", () => {
       fallback_used: false,
     });
 
+    const detail = getRecommendationRunDetail(run.recommendation_run_id);
+    expect(detail?.run.batch_id).toBe("batch_stage2_linked");
+
     const filtered = listRecommendationRuns(REPORT_QUERY, {
       batchId: "batch_stage2_linked",
-      strategyId: "tpl_xm_daily",
+      strategyId: "tpl_purchase_hot_sale",
       expressionTemplateId: "expr_recommendation_default",
       customerId: "dealer_xm_sm",
     });
@@ -205,8 +209,8 @@ describe("recommendation report query semantics", () => {
       session_id: "sess_stage2_detail",
       customer_id: "dealer_dg_sm",
       customer_name: "东莞商超配送经销商",
-      scene: "weekly_focus",
-      page_name: "/order-submit",
+      scene: "campaign_stockup",
+      page_name: "/purchase",
       trigger_source: "manual",
       prompt_snapshot: "stage2 detail prompt",
       candidate_sku_ids: ["cb_small_shengchou_250"],
@@ -231,5 +235,32 @@ describe("recommendation report query semantics", () => {
     expect(detail?.run.recommendation_run_id).toBe(run.recommendation_run_id);
     expect(detail?.items).toHaveLength(1);
     expect(detail?.items[0].sku_id).toBe("cb_small_shengchou_250");
+  });
+
+  it("supports surface/generationMode split filtering for purchase vs checkout views", () => {
+    const purchaseView = listRecommendationRuns(REPORT_QUERY, {
+      scene: "purchase_bundle",
+      surface: "purchase",
+      generationMode: "precomputed",
+    });
+    const checkoutView = listRecommendationRuns(REPORT_QUERY, {
+      scene: "checkout_optimization",
+      surface: "checkout",
+      generationMode: "realtime",
+    });
+
+    expect(purchaseView.items.length).toBeGreaterThan(0);
+    expect(checkoutView.items.length).toBeGreaterThan(0);
+
+    expect(
+      purchaseView.items.every(
+        (item) => item.surface === "purchase" && item.generation_mode === "precomputed",
+      ),
+    ).toBe(true);
+    expect(
+      checkoutView.items.every(
+        (item) => item.surface === "checkout" && item.generation_mode === "realtime",
+      ),
+    ).toBe(true);
   });
 });

@@ -1,16 +1,33 @@
 [
   {
     "job_id": "job_seed_2026-04-15",
-    "job_name": "2026-04-15 每日建议单生成",
-    "business_date": "2026-04-15",
-    "target_dealer_ids": ["dealer_xm_sm", "dealer_dg_sm", "dealer_cd_pf"],
-    "target_segment_ids": ["seg_城区核心客户_餐饮流通", "seg_商超配送客户_ka_商超", "seg_餐饮批发客户_餐饮批发"],
-    "strategy_ids": ["tpl_xm_daily", "tpl_dg_daily", "tpl_cd_boxpair"],
+    "job_name": "2026-04-18 采购预计算建议单生成",
+    "business_date": "2026-04-18",
+    "target_dealer_ids": [
+      "dealer_cd_pf",
+      "dealer_dg_sm",
+      "dealer_xm_sm"
+    ],
+    "target_segment_ids": [
+      "seg_城区核心客户_餐饮流通",
+      "seg_商超配送客户_ka_商超",
+      "seg_餐饮批发客户_餐饮批发"
+    ],
+    "strategy_ids": [
+      "tpl_purchase_hot_sale",
+      "tpl_purchase_stockout",
+      "tpl_purchase_campaign"
+    ],
     "publish_mode": "manual",
     "status": "completed",
-    "precheck_summary": "预检通过：覆盖 3 个经销商，关联 3 条策略。",
-    "last_batch_id": "batch_seed_001",
+    "publication_status": "published",
+    "precheck_summary": "快照已准备：覆盖 3 个经销商，生成 9 条采购预计算建议并发布。",
+    "last_precheck_at": "2026-04-18T14:28:40.965Z",
+    "last_sample_batch_id": "batch_snapshot_20260418",
+    "last_batch_id": "batch_snapshot_20260418",
+    "published_batch_id": "batch_snapshot_20260418",
+    "published_at": "2026-04-18T14:28:40.965Z",
     "created_at": "2026-04-15T00:58:00.000Z",
-    "updated_at": "2026-04-15T01:18:00.000Z"
+    "updated_at": "2026-04-18T14:28:40.965Z"
   }
 ]

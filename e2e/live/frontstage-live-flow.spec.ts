@@ -393,7 +393,9 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   await expect(page).toHaveURL(/\/order-submit$/);
   await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
   await expect(page.getByTestId("order-submit-recommendation-bars")).toBeVisible();
-  await expect(page.getByText("凑单推荐")).toBeVisible();
+  await expect(
+    page.getByTestId("order-submit-recommendation-bars").getByText("凑单推荐", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("交易信息", { exact: true })).toBeVisible();
   await expect(page.getByTestId("order-submit-optimization")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "一键应用全部" })).toHaveCount(0);
@@ -454,24 +456,19 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   await batchRow.click();
 
   await page
-    .locator(`a[href="/admin/analytics/recommendation-records?batchId=${encodeURIComponent(shared.batchId)}"]`)
+    .locator(
+      `a[href="/admin/analytics/recommendation-records?view=purchase&batchId=${encodeURIComponent(shared.batchId)}"]`,
+    )
     .click();
   await expect(page).toHaveURL(
     new RegExp(
-      `/admin/analytics/recommendation-records\\?batchId=${encodeURIComponent(shared.batchId)}`,
+      `/admin/analytics/recommendation-records\\?view=purchase&batchId=${encodeURIComponent(shared.batchId)}`,
     ),
   );
   await expect(page.getByTestId("recommendation-report-table")).toBeVisible();
 
   const reportRows = page.locator('[data-testid="recommendation-report-table"] tbody tr');
   await expect(reportRows.first()).not.toContainText("加载中...");
-  if ((await reportRows.first().textContent())?.includes("无数据")) {
-    const batchIdFilterInput = page
-      .locator('label:has-text("批次 ID")')
-      .locator("xpath=following::input[1]");
-    await batchIdFilterInput.fill("");
-    await page.getByRole("button", { name: "查询" }).click();
-  }
   await expect(reportRows.first()).not.toContainText("无数据");
 
   const runRow = page
@@ -492,13 +489,6 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
 
   const traceRows = page.locator("tbody tr");
   await expect(traceRows.first()).not.toContainText("加载中...");
-  if ((await traceRows.first().textContent())?.includes("暂无链路数据")) {
-    const batchIdTraceFilterInput = page
-      .locator('label:has-text("批次 ID")')
-      .locator("xpath=following::input[1]");
-    await batchIdTraceFilterInput.fill("");
-    await page.getByRole("button", { name: "查询" }).click();
-  }
   await expect(traceRows.first()).not.toContainText("暂无链路数据");
 
   const traceRowById = recommendationTraceId

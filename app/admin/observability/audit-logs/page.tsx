@@ -100,7 +100,6 @@ export default function AuditLogsPage() {
   return (
     <AdminPageFrame
       title="变更记录"
-      description="查看谁改了什么，支持按关键词搜索。"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadLogs()} disabled={loading}>

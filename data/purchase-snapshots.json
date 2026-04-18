@@ -1,0 +1,859 @@
+[
+  {
+    "recommendation_run_id": "reco_run_99fc3b674566466f9e808d7233c336f0",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_cd_pf",
+    "customer_name": "成都餐饮批发经销商",
+    "scene": "hot_sale_restock",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "strategy_id": "tpl_purchase_hot_sale",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：hot_sale_restock\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_cd_pf\",\n  \"customer_name\": \"成都餐饮批发经销商\",\n  \"city\": \"成都\",\n  \"customer_type\": \"餐饮批发客户\",\n  \"channel_type\": \"餐饮批发\",\n  \"order_frequency\": \"7-10天\",\n  \"last_order_days_ago\": 8,\n  \"price_sensitivity\": \"中低\",\n  \"new_product_acceptance\": \"低\",\n  \"preferred_categories\": [\n    \"餐饮大包装\",\n    \"蚝油\",\n    \"豉油\"\n  ],\n  \"business_traits\": [\n    \"偏重大包装\",\n    \"重视整箱配送\",\n    \"喜欢固定搭配采购\"\n  ],\n  \"frequent_items\": [\n    \"cb_oyster_700\",\n    \"cb_steamed_fish_450\",\n    \"cb_oyster_big_2270\",\n    \"cb_chicken_restaurant_1kg\"\n  ],\n  \"forbidden_items\": [\n    \"cb_small_shengchou_250\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n当前活动：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_focus\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"零添加试销冲刺周\",\n    \"weekly_focus_items\": [\n      \"cb_zeroadd_shengchou_500\",\n      \"cb_zeroadd_head_500\"\n    ],\n    \"promo_threshold\": 1000,\n    \"promo_type\": \"threshold_rebate\",\n    \"activity_notes\": [\n      \"主推零添加系列\",\n      \"高新品接受客户优先\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_combo\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"鸡精组合搭售活动\",\n    \"weekly_focus_items\": [\n      \"cb_chicken_powder_combo\",\n      \"cb_chicken_essence_200\"\n    ],\n    \"promo_threshold\": 800,\n    \"promo_type\": \"combo_discount\",\n    \"activity_notes\": [\n      \"蚝油 + 鸡精品类联动\",\n      \"适合门槛补齐\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"餐饮批发客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_smallpack\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"小规格补货便利装\",\n    \"weekly_focus_items\": [\n      \"cb_small_shengchou_250\",\n      \"cb_small_oyster_230\"\n    ],\n    \"promo_threshold\": 500,\n    \"promo_type\": \"small_pack_push\",\n    \"activity_notes\": [\n      \"适配商超配送\",\n      \"提升门店补货频次\"\n    ],\n    \"target_customer_types\": [\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_oyster_big_2270\",\n    \"sku_name\": \"厨邦大包装蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"2.27kg\",\n    \"price_per_case\": 312,\n    \"box_multiple\": 4,\n    \"tags\": [\n      \"餐饮大包装\",\n      \"高客单\"\n    ],\n    \"pair_items\": [\n      \"cb_banquet_soy_1750\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_oyster_700\",\n    \"sku_name\": \"厨邦蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"700g\",\n    \"price_per_case\": 186,\n    \"box_multiple\": 8,\n    \"tags\": [\n      \"常购\",\n      \"搭配品\"\n    ],\n    \"pair_items\": [\n      \"cb_chicken_essence_200\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_steamed_fish_450\",\n    \"sku_name\": \"厨邦蒸鱼豉油\",\n    \"category\": \"豉油\",\n    \"spec\": \"450ml\",\n    \"price_per_case\": 172,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"餐饮\"\n    ],\n    \"pair_items\": [\n      \"cb_jinbiao_shengchou_500\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_chicken_restaurant_1kg\",\n    \"sku_name\": \"厨邦餐饮装鸡精\",\n    \"category\": \"鸡精\",\n    \"spec\": \"1kg\",\n    \"price_per_case\": 268,\n    \"box_multiple\": 6,\n    \"tags\": [\n      \"餐饮大包装\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_big_2270\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_weijixian_500\",\n    \"sku_name\": \"厨邦味极鲜特级生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 168,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\",\n      \"高频动销\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_small_oyster_230\",\n    \"sku_name\": \"厨邦小包装蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"230g\",\n    \"price_per_case\": 118,\n    \"box_multiple\": 16,\n    \"tags\": [\n      \"小规格\"\n    ],\n    \"pair_items\": [\n      \"cb_small_shengchou_250\"\n    ],\n    \"is_weekly_focus\": false\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_hot_sale\",\n  \"strategy_name\": \"采购预计算-热销补货策略\",\n  \"scene\": \"hot_sale_restock\",\n  \"business_notes\": \"统一热销补货基线策略，覆盖采购页预计算热销场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_weijixian_500\",\n      \"qty\": 12,\n      \"reason\": \"高频动销，建议优先补齐基础盘。\",\n      \"reason_tags\": [\n        \"热销补货\",\n        \"高频动销\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_small_shengchou_250\",\n      \"qty\": 16,\n      \"reason\": \"小规格高周转，适合热销补位。\",\n      \"reason_tags\": [\n        \"热销补货\",\n        \"高周转\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_oyster_big_2270\",\n      \"suggested_qty\": 4,\n      \"reason\": \"厨邦大包装蚝油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_oyster_700\",\n      \"suggested_qty\": 8,\n      \"reason\": \"厨邦蚝油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_steamed_fish_450\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦蒸鱼豉油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 3,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_oyster_big_2270",
+      "cb_oyster_700",
+      "cb_steamed_fish_450",
+      "cb_chicken_restaurant_1kg",
+      "cb_weijixian_500",
+      "cb_small_oyster_230"
+    ],
+    "returned_sku_ids": [
+      "cb_oyster_big_2270",
+      "cb_oyster_700",
+      "cb_steamed_fish_450"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 4800,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 16,
+    "input_tokens": 32,
+    "output_tokens": 121,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:40.992Z",
+    "updated_at": "2026-04-18T14:28:40.992Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_bc3a59a0a2c34077a4c06f89a32e98f1",
+        "sku_id": "cb_oyster_big_2270",
+        "sku_name": "厨邦大包装蚝油",
+        "suggested_qty": 4,
+        "suggested_rank": 1,
+        "reason": "厨邦大包装蚝油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.992Z",
+        "updated_at": "2026-04-18T14:28:40.992Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_5b9614e103e046678c7fe3379704ac2e",
+        "sku_id": "cb_oyster_700",
+        "sku_name": "厨邦蚝油",
+        "suggested_qty": 8,
+        "suggested_rank": 2,
+        "reason": "厨邦蚝油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.992Z",
+        "updated_at": "2026-04-18T14:28:40.992Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_889c50dbfe3d47c1bdebd19b0936d74c",
+        "sku_id": "cb_steamed_fish_450",
+        "sku_name": "厨邦蒸鱼豉油",
+        "suggested_qty": 12,
+        "suggested_rank": 3,
+        "reason": "厨邦蒸鱼豉油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.992Z",
+        "updated_at": "2026-04-18T14:28:40.992Z"
+      }
+    ]
+  },
+  {
+    "recommendation_run_id": "reco_run_ee34d9663d9e49c09d4262f7234b8cf9",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_cd_pf",
+    "customer_name": "成都餐饮批发经销商",
+    "scene": "stockout_restock",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "strategy_id": "tpl_purchase_stockout",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：stockout_restock\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_cd_pf\",\n  \"customer_name\": \"成都餐饮批发经销商\",\n  \"city\": \"成都\",\n  \"customer_type\": \"餐饮批发客户\",\n  \"channel_type\": \"餐饮批发\",\n  \"order_frequency\": \"7-10天\",\n  \"last_order_days_ago\": 8,\n  \"price_sensitivity\": \"中低\",\n  \"new_product_acceptance\": \"低\",\n  \"preferred_categories\": [\n    \"餐饮大包装\",\n    \"蚝油\",\n    \"豉油\"\n  ],\n  \"business_traits\": [\n    \"偏重大包装\",\n    \"重视整箱配送\",\n    \"喜欢固定搭配采购\"\n  ],\n  \"frequent_items\": [\n    \"cb_oyster_700\",\n    \"cb_steamed_fish_450\",\n    \"cb_oyster_big_2270\",\n    \"cb_chicken_restaurant_1kg\"\n  ],\n  \"forbidden_items\": [\n    \"cb_small_shengchou_250\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n当前活动：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_focus\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"零添加试销冲刺周\",\n    \"weekly_focus_items\": [\n      \"cb_zeroadd_shengchou_500\",\n      \"cb_zeroadd_head_500\"\n    ],\n    \"promo_threshold\": 1000,\n    \"promo_type\": \"threshold_rebate\",\n    \"activity_notes\": [\n      \"主推零添加系列\",\n      \"高新品接受客户优先\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_combo\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"鸡精组合搭售活动\",\n    \"weekly_focus_items\": [\n      \"cb_chicken_powder_combo\",\n      \"cb_chicken_essence_200\"\n    ],\n    \"promo_threshold\": 800,\n    \"promo_type\": \"combo_discount\",\n    \"activity_notes\": [\n      \"蚝油 + 鸡精品类联动\",\n      \"适合门槛补齐\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"餐饮批发客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_smallpack\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"小规格补货便利装\",\n    \"weekly_focus_items\": [\n      \"cb_small_shengchou_250\",\n      \"cb_small_oyster_230\"\n    ],\n    \"promo_threshold\": 500,\n    \"promo_type\": \"small_pack_push\",\n    \"activity_notes\": [\n      \"适配商超配送\",\n      \"提升门店补货频次\"\n    ],\n    \"target_customer_types\": [\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_oyster_700\",\n    \"sku_name\": \"厨邦蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"700g\",\n    \"price_per_case\": 186,\n    \"box_multiple\": 8,\n    \"tags\": [\n      \"常购\",\n      \"搭配品\"\n    ],\n    \"pair_items\": [\n      \"cb_chicken_essence_200\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_steamed_fish_450\",\n    \"sku_name\": \"厨邦蒸鱼豉油\",\n    \"category\": \"豉油\",\n    \"spec\": \"450ml\",\n    \"price_per_case\": 172,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"餐饮\"\n    ],\n    \"pair_items\": [\n      \"cb_jinbiao_shengchou_500\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_oyster_big_2270\",\n    \"sku_name\": \"厨邦大包装蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"2.27kg\",\n    \"price_per_case\": 312,\n    \"box_multiple\": 4,\n    \"tags\": [\n      \"餐饮大包装\",\n      \"高客单\"\n    ],\n    \"pair_items\": [\n      \"cb_banquet_soy_1750\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_chicken_restaurant_1kg\",\n    \"sku_name\": \"厨邦餐饮装鸡精\",\n    \"category\": \"鸡精\",\n    \"spec\": \"1kg\",\n    \"price_per_case\": 268,\n    \"box_multiple\": 6,\n    \"tags\": [\n      \"餐饮大包装\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_big_2270\"\n    ],\n    \"is_weekly_focus\": false\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_stockout\",\n  \"strategy_name\": \"采购预计算-缺货补货策略\",\n  \"scene\": \"stockout_restock\",\n  \"business_notes\": \"统一缺货补货基线策略，覆盖采购页预计算缺货场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_oyster_700\",\n      \"qty\": 8,\n      \"reason\": \"常购基础品，优先避免断货。\",\n      \"reason_tags\": [\n        \"缺货补货\",\n        \"常购品\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_vinegar_450\",\n      \"qty\": 12,\n      \"reason\": \"基础覆盖商品，建议补齐安全库存。\",\n      \"reason_tags\": [\n        \"缺货补货\",\n        \"基础覆盖\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_oyster_700\",\n      \"suggested_qty\": 8,\n      \"reason\": \"厨邦蚝油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_steamed_fish_450\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦蒸鱼豉油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_oyster_big_2270\",\n      \"suggested_qty\": 4,\n      \"reason\": \"厨邦大包装蚝油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 3,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_oyster_700",
+      "cb_steamed_fish_450",
+      "cb_oyster_big_2270",
+      "cb_chicken_restaurant_1kg"
+    ],
+    "returned_sku_ids": [
+      "cb_oyster_700",
+      "cb_steamed_fish_450",
+      "cb_oyster_big_2270"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 4800,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 1,
+    "input_tokens": 32,
+    "output_tokens": 121,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:40.997Z",
+    "updated_at": "2026-04-18T14:28:40.997Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_90ad6383825b49ababbd2f8db2f90d9e",
+        "sku_id": "cb_oyster_700",
+        "sku_name": "厨邦蚝油",
+        "suggested_qty": 8,
+        "suggested_rank": 1,
+        "reason": "厨邦蚝油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.997Z",
+        "updated_at": "2026-04-18T14:28:40.997Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_c12023adebfa4cdb9460a7e6f828a107",
+        "sku_id": "cb_steamed_fish_450",
+        "sku_name": "厨邦蒸鱼豉油",
+        "suggested_qty": 12,
+        "suggested_rank": 2,
+        "reason": "厨邦蒸鱼豉油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.997Z",
+        "updated_at": "2026-04-18T14:28:40.997Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_c523633de6ad461985c59454c9e71d9d",
+        "sku_id": "cb_oyster_big_2270",
+        "sku_name": "厨邦大包装蚝油",
+        "suggested_qty": 4,
+        "suggested_rank": 3,
+        "reason": "厨邦大包装蚝油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.997Z",
+        "updated_at": "2026-04-18T14:28:40.997Z"
+      }
+    ]
+  },
+  {
+    "recommendation_run_id": "reco_run_0feae5d9d4934eac9ca68d09b4fb9f0d",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_cd_pf",
+    "customer_name": "成都餐饮批发经销商",
+    "scene": "campaign_stockup",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "campaign_id": "camp_2026w16_combo",
+    "strategy_id": "tpl_purchase_campaign",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：campaign_stockup\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_cd_pf\",\n  \"customer_name\": \"成都餐饮批发经销商\",\n  \"city\": \"成都\",\n  \"customer_type\": \"餐饮批发客户\",\n  \"channel_type\": \"餐饮批发\",\n  \"order_frequency\": \"7-10天\",\n  \"last_order_days_ago\": 8,\n  \"price_sensitivity\": \"中低\",\n  \"new_product_acceptance\": \"低\",\n  \"preferred_categories\": [\n    \"餐饮大包装\",\n    \"蚝油\",\n    \"豉油\"\n  ],\n  \"business_traits\": [\n    \"偏重大包装\",\n    \"重视整箱配送\",\n    \"喜欢固定搭配采购\"\n  ],\n  \"frequent_items\": [\n    \"cb_oyster_700\",\n    \"cb_steamed_fish_450\",\n    \"cb_oyster_big_2270\",\n    \"cb_chicken_restaurant_1kg\"\n  ],\n  \"forbidden_items\": [\n    \"cb_small_shengchou_250\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n匹配活动（仅可按该活动做活动备货）：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_combo\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"鸡精组合搭售活动\",\n    \"weekly_focus_items\": [\n      \"cb_chicken_powder_combo\",\n      \"cb_chicken_essence_200\"\n    ],\n    \"promo_threshold\": 800,\n    \"promo_type\": \"combo_discount\",\n    \"activity_notes\": [\n      \"蚝油 + 鸡精品类联动\",\n      \"适合门槛补齐\"\n    ]\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_chicken_powder_combo\",\n    \"sku_name\": \"厨邦鸡粉组合装\",\n    \"category\": \"鸡粉\",\n    \"spec\": \"组合装\",\n    \"price_per_case\": 208,\n    \"box_multiple\": 6,\n    \"tags\": [\n      \"活动\",\n      \"组合\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_chicken_essence_200\",\n    \"sku_name\": \"厨邦鸡精\",\n    \"category\": \"鸡精\",\n    \"spec\": \"200g\",\n    \"price_per_case\": 132,\n    \"box_multiple\": 10,\n    \"tags\": [\n      \"常购\",\n      \"门槛补齐\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": false\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_campaign\",\n  \"strategy_name\": \"采购预计算-活动备货策略\",\n  \"scene\": \"campaign_stockup\",\n  \"business_notes\": \"统一活动备货基线策略，覆盖采购页预计算活动场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_zeroadd_shengchou_500\",\n      \"qty\": 12,\n      \"reason\": \"活动主推 SKU，建议优先备货。\",\n      \"reason_tags\": [\n        \"活动备货\",\n        \"主推品\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_chicken_powder_combo\",\n      \"qty\": 6,\n      \"reason\": \"活动组合商品，利于档期连带。\",\n      \"reason_tags\": [\n        \"活动备货\",\n        \"组合搭售\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_chicken_powder_combo\",\n      \"suggested_qty\": 6,\n      \"reason\": \"厨邦鸡粉组合装 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_chicken_essence_200\",\n      \"suggested_qty\": 10,\n      \"reason\": \"厨邦鸡精 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_chicken_powder_combo",
+      "cb_chicken_essence_200"
+    ],
+    "returned_sku_ids": [
+      "cb_chicken_powder_combo",
+      "cb_chicken_essence_200"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 2568,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 0,
+    "input_tokens": 32,
+    "output_tokens": 85,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:40.999Z",
+    "updated_at": "2026-04-18T14:28:40.999Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_bd03f838ea914ce79744311362348e2d",
+        "sku_id": "cb_chicken_powder_combo",
+        "sku_name": "厨邦鸡粉组合装",
+        "suggested_qty": 6,
+        "suggested_rank": 1,
+        "reason": "厨邦鸡粉组合装 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "weekly_focus",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.999Z",
+        "updated_at": "2026-04-18T14:28:40.999Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_059b121db8084bd39dc11c8066b416a0",
+        "sku_id": "cb_chicken_essence_200",
+        "sku_name": "厨邦鸡精",
+        "suggested_qty": 10,
+        "suggested_rank": 2,
+        "reason": "厨邦鸡精 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "weekly_focus",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.999Z",
+        "updated_at": "2026-04-18T14:28:40.999Z"
+      }
+    ]
+  },
+  {
+    "recommendation_run_id": "reco_run_1abf9133e6294691986adaab055914c7",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_dg_sm",
+    "customer_name": "东莞商超配送经销商",
+    "scene": "hot_sale_restock",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "strategy_id": "tpl_purchase_hot_sale",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：hot_sale_restock\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_dg_sm\",\n  \"customer_name\": \"东莞商超配送经销商\",\n  \"city\": \"东莞\",\n  \"customer_type\": \"商超配送客户\",\n  \"channel_type\": \"KA 商超\",\n  \"order_frequency\": \"3-5天\",\n  \"last_order_days_ago\": 4,\n  \"price_sensitivity\": \"高\",\n  \"new_product_acceptance\": \"中\",\n  \"preferred_categories\": [\n    \"小规格\",\n    \"组合装\",\n    \"醋\"\n  ],\n  \"business_traits\": [\n    \"重视促销\",\n    \"重视周转\",\n    \"偏好多规格组合\"\n  ],\n  \"frequent_items\": [\n    \"cb_small_shengchou_250\",\n    \"cb_vinegar_450\",\n    \"cb_chicken_powder_combo\",\n    \"cb_cooking_wine_500\"\n  ],\n  \"forbidden_items\": [\n    \"cb_oyster_big_2270\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n当前活动：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_focus\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"零添加试销冲刺周\",\n    \"weekly_focus_items\": [\n      \"cb_zeroadd_shengchou_500\",\n      \"cb_zeroadd_head_500\"\n    ],\n    \"promo_threshold\": 1000,\n    \"promo_type\": \"threshold_rebate\",\n    \"activity_notes\": [\n      \"主推零添加系列\",\n      \"高新品接受客户优先\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_combo\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"鸡精组合搭售活动\",\n    \"weekly_focus_items\": [\n      \"cb_chicken_powder_combo\",\n      \"cb_chicken_essence_200\"\n    ],\n    \"promo_threshold\": 800,\n    \"promo_type\": \"combo_discount\",\n    \"activity_notes\": [\n      \"蚝油 + 鸡精品类联动\",\n      \"适合门槛补齐\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"餐饮批发客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_smallpack\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"小规格补货便利装\",\n    \"weekly_focus_items\": [\n      \"cb_small_shengchou_250\",\n      \"cb_small_oyster_230\"\n    ],\n    \"promo_threshold\": 500,\n    \"promo_type\": \"small_pack_push\",\n    \"activity_notes\": [\n      \"适配商超配送\",\n      \"提升门店补货频次\"\n    ],\n    \"target_customer_types\": [\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_vinegar_450\",\n    \"sku_name\": \"厨邦陈醋\",\n    \"category\": \"醋\",\n    \"spec\": \"450ml\",\n    \"price_per_case\": 136,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\",\n      \"搭配品\"\n    ],\n    \"pair_items\": [\n      \"cb_cooking_wine_500\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_chicken_powder_combo\",\n    \"sku_name\": \"厨邦鸡粉组合装\",\n    \"category\": \"鸡粉\",\n    \"spec\": \"组合装\",\n    \"price_per_case\": 208,\n    \"box_multiple\": 6,\n    \"tags\": [\n      \"活动\",\n      \"组合\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_cooking_wine_500\",\n    \"sku_name\": \"厨邦料酒\",\n    \"category\": \"料酒\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 144,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\"\n    ],\n    \"pair_items\": [\n      \"cb_vinegar_450\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_small_shengchou_250\",\n    \"sku_name\": \"厨邦小包装生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"250ml\",\n    \"price_per_case\": 124,\n    \"box_multiple\": 16,\n    \"tags\": [\n      \"小规格\",\n      \"门店补货便利装\"\n    ],\n    \"pair_items\": [\n      \"cb_small_oyster_230\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_weijixian_500\",\n    \"sku_name\": \"厨邦味极鲜特级生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 168,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\",\n      \"高频动销\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_weekly_combo\",\n    \"sku_name\": \"厨邦本周活动组合装\",\n    \"category\": \"组合装\",\n    \"spec\": \"组合装\",\n    \"price_per_case\": 256,\n    \"box_multiple\": 6,\n    \"tags\": [\n      \"活动\",\n      \"组合\"\n    ],\n    \"pair_items\": [\n      \"cb_chicken_powder_combo\"\n    ],\n    \"is_weekly_focus\": true\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_hot_sale\",\n  \"strategy_name\": \"采购预计算-热销补货策略\",\n  \"scene\": \"hot_sale_restock\",\n  \"business_notes\": \"统一热销补货基线策略，覆盖采购页预计算热销场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_weijixian_500\",\n      \"qty\": 12,\n      \"reason\": \"高频动销，建议优先补齐基础盘。\",\n      \"reason_tags\": [\n        \"热销补货\",\n        \"高频动销\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_small_shengchou_250\",\n      \"qty\": 16,\n      \"reason\": \"小规格高周转，适合热销补位。\",\n      \"reason_tags\": [\n        \"热销补货\",\n        \"高周转\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_vinegar_450\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦陈醋 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_chicken_powder_combo\",\n      \"suggested_qty\": 6,\n      \"reason\": \"厨邦鸡粉组合装 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_cooking_wine_500\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦料酒 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 3,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_vinegar_450",
+      "cb_chicken_powder_combo",
+      "cb_cooking_wine_500",
+      "cb_small_shengchou_250",
+      "cb_weijixian_500",
+      "cb_weekly_combo"
+    ],
+    "returned_sku_ids": [
+      "cb_vinegar_450",
+      "cb_chicken_powder_combo",
+      "cb_cooking_wine_500"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 4608,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 0,
+    "input_tokens": 32,
+    "output_tokens": 122,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:40.999Z",
+    "updated_at": "2026-04-18T14:28:40.999Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_d7be9e01ffc246a798c08d2e1de6d496",
+        "sku_id": "cb_vinegar_450",
+        "sku_name": "厨邦陈醋",
+        "suggested_qty": 12,
+        "suggested_rank": 1,
+        "reason": "厨邦陈醋 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.999Z",
+        "updated_at": "2026-04-18T14:28:40.999Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_9d268233b5344b56abb7b8ed00124ebf",
+        "sku_id": "cb_chicken_powder_combo",
+        "sku_name": "厨邦鸡粉组合装",
+        "suggested_qty": 6,
+        "suggested_rank": 2,
+        "reason": "厨邦鸡粉组合装 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.999Z",
+        "updated_at": "2026-04-18T14:28:40.999Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_eec020a36ba14753ab313b9362ee02fc",
+        "sku_id": "cb_cooking_wine_500",
+        "sku_name": "厨邦料酒",
+        "suggested_qty": 12,
+        "suggested_rank": 3,
+        "reason": "厨邦料酒 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:40.999Z",
+        "updated_at": "2026-04-18T14:28:40.999Z"
+      }
+    ]
+  },
+  {
+    "recommendation_run_id": "reco_run_3a422258866a4a23a4b04afd244bdd56",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_dg_sm",
+    "customer_name": "东莞商超配送经销商",
+    "scene": "stockout_restock",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "strategy_id": "tpl_purchase_stockout",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：stockout_restock\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_dg_sm\",\n  \"customer_name\": \"东莞商超配送经销商\",\n  \"city\": \"东莞\",\n  \"customer_type\": \"商超配送客户\",\n  \"channel_type\": \"KA 商超\",\n  \"order_frequency\": \"3-5天\",\n  \"last_order_days_ago\": 4,\n  \"price_sensitivity\": \"高\",\n  \"new_product_acceptance\": \"中\",\n  \"preferred_categories\": [\n    \"小规格\",\n    \"组合装\",\n    \"醋\"\n  ],\n  \"business_traits\": [\n    \"重视促销\",\n    \"重视周转\",\n    \"偏好多规格组合\"\n  ],\n  \"frequent_items\": [\n    \"cb_small_shengchou_250\",\n    \"cb_vinegar_450\",\n    \"cb_chicken_powder_combo\",\n    \"cb_cooking_wine_500\"\n  ],\n  \"forbidden_items\": [\n    \"cb_oyster_big_2270\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n当前活动：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_focus\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"零添加试销冲刺周\",\n    \"weekly_focus_items\": [\n      \"cb_zeroadd_shengchou_500\",\n      \"cb_zeroadd_head_500\"\n    ],\n    \"promo_threshold\": 1000,\n    \"promo_type\": \"threshold_rebate\",\n    \"activity_notes\": [\n      \"主推零添加系列\",\n      \"高新品接受客户优先\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_combo\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"鸡精组合搭售活动\",\n    \"weekly_focus_items\": [\n      \"cb_chicken_powder_combo\",\n      \"cb_chicken_essence_200\"\n    ],\n    \"promo_threshold\": 800,\n    \"promo_type\": \"combo_discount\",\n    \"activity_notes\": [\n      \"蚝油 + 鸡精品类联动\",\n      \"适合门槛补齐\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"餐饮批发客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_smallpack\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"小规格补货便利装\",\n    \"weekly_focus_items\": [\n      \"cb_small_shengchou_250\",\n      \"cb_small_oyster_230\"\n    ],\n    \"promo_threshold\": 500,\n    \"promo_type\": \"small_pack_push\",\n    \"activity_notes\": [\n      \"适配商超配送\",\n      \"提升门店补货频次\"\n    ],\n    \"target_customer_types\": [\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_vinegar_450\",\n    \"sku_name\": \"厨邦陈醋\",\n    \"category\": \"醋\",\n    \"spec\": \"450ml\",\n    \"price_per_case\": 136,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\",\n      \"搭配品\"\n    ],\n    \"pair_items\": [\n      \"cb_cooking_wine_500\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_chicken_powder_combo\",\n    \"sku_name\": \"厨邦鸡粉组合装\",\n    \"category\": \"鸡粉\",\n    \"spec\": \"组合装\",\n    \"price_per_case\": 208,\n    \"box_multiple\": 6,\n    \"tags\": [\n      \"活动\",\n      \"组合\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_cooking_wine_500\",\n    \"sku_name\": \"厨邦料酒\",\n    \"category\": \"料酒\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 144,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\"\n    ],\n    \"pair_items\": [\n      \"cb_vinegar_450\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_small_shengchou_250\",\n    \"sku_name\": \"厨邦小包装生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"250ml\",\n    \"price_per_case\": 124,\n    \"box_multiple\": 16,\n    \"tags\": [\n      \"小规格\",\n      \"门店补货便利装\"\n    ],\n    \"pair_items\": [\n      \"cb_small_oyster_230\"\n    ],\n    \"is_weekly_focus\": true\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_stockout\",\n  \"strategy_name\": \"采购预计算-缺货补货策略\",\n  \"scene\": \"stockout_restock\",\n  \"business_notes\": \"统一缺货补货基线策略，覆盖采购页预计算缺货场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_oyster_700\",\n      \"qty\": 8,\n      \"reason\": \"常购基础品，优先避免断货。\",\n      \"reason_tags\": [\n        \"缺货补货\",\n        \"常购品\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_vinegar_450\",\n      \"qty\": 12,\n      \"reason\": \"基础覆盖商品，建议补齐安全库存。\",\n      \"reason_tags\": [\n        \"缺货补货\",\n        \"基础覆盖\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_vinegar_450\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦陈醋 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_chicken_powder_combo\",\n      \"suggested_qty\": 6,\n      \"reason\": \"厨邦鸡粉组合装 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_cooking_wine_500\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦料酒 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 3,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_vinegar_450",
+      "cb_chicken_powder_combo",
+      "cb_cooking_wine_500",
+      "cb_small_shengchou_250"
+    ],
+    "returned_sku_ids": [
+      "cb_vinegar_450",
+      "cb_chicken_powder_combo",
+      "cb_cooking_wine_500"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 4608,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 1,
+    "input_tokens": 32,
+    "output_tokens": 122,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:41.000Z",
+    "updated_at": "2026-04-18T14:28:41.000Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_3a9676d0c30648e089f5c96cc16f53c7",
+        "sku_id": "cb_vinegar_450",
+        "sku_name": "厨邦陈醋",
+        "suggested_qty": 12,
+        "suggested_rank": 1,
+        "reason": "厨邦陈醋 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.000Z",
+        "updated_at": "2026-04-18T14:28:41.000Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_623349baf0d341b3a04b0761632dd240",
+        "sku_id": "cb_chicken_powder_combo",
+        "sku_name": "厨邦鸡粉组合装",
+        "suggested_qty": 6,
+        "suggested_rank": 2,
+        "reason": "厨邦鸡粉组合装 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.000Z",
+        "updated_at": "2026-04-18T14:28:41.000Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_8db1fbb91f5c4c659ceeaca035e51534",
+        "sku_id": "cb_cooking_wine_500",
+        "sku_name": "厨邦料酒",
+        "suggested_qty": 12,
+        "suggested_rank": 3,
+        "reason": "厨邦料酒 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.000Z",
+        "updated_at": "2026-04-18T14:28:41.000Z"
+      }
+    ]
+  },
+  {
+    "recommendation_run_id": "reco_run_36fb8a5a5e504932b9157c4eb1329993",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_dg_sm",
+    "customer_name": "东莞商超配送经销商",
+    "scene": "campaign_stockup",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "campaign_id": "camp_2026w16_smallpack",
+    "strategy_id": "tpl_purchase_campaign",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：campaign_stockup\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_dg_sm\",\n  \"customer_name\": \"东莞商超配送经销商\",\n  \"city\": \"东莞\",\n  \"customer_type\": \"商超配送客户\",\n  \"channel_type\": \"KA 商超\",\n  \"order_frequency\": \"3-5天\",\n  \"last_order_days_ago\": 4,\n  \"price_sensitivity\": \"高\",\n  \"new_product_acceptance\": \"中\",\n  \"preferred_categories\": [\n    \"小规格\",\n    \"组合装\",\n    \"醋\"\n  ],\n  \"business_traits\": [\n    \"重视促销\",\n    \"重视周转\",\n    \"偏好多规格组合\"\n  ],\n  \"frequent_items\": [\n    \"cb_small_shengchou_250\",\n    \"cb_vinegar_450\",\n    \"cb_chicken_powder_combo\",\n    \"cb_cooking_wine_500\"\n  ],\n  \"forbidden_items\": [\n    \"cb_oyster_big_2270\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n匹配活动（仅可按该活动做活动备货）：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_smallpack\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"小规格补货便利装\",\n    \"weekly_focus_items\": [\n      \"cb_small_shengchou_250\",\n      \"cb_small_oyster_230\"\n    ],\n    \"promo_threshold\": 500,\n    \"promo_type\": \"small_pack_push\",\n    \"activity_notes\": [\n      \"适配商超配送\",\n      \"提升门店补货频次\"\n    ]\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_small_shengchou_250\",\n    \"sku_name\": \"厨邦小包装生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"250ml\",\n    \"price_per_case\": 124,\n    \"box_multiple\": 16,\n    \"tags\": [\n      \"小规格\",\n      \"门店补货便利装\"\n    ],\n    \"pair_items\": [\n      \"cb_small_oyster_230\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_small_oyster_230\",\n    \"sku_name\": \"厨邦小包装蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"230g\",\n    \"price_per_case\": 118,\n    \"box_multiple\": 16,\n    \"tags\": [\n      \"小规格\"\n    ],\n    \"pair_items\": [\n      \"cb_small_shengchou_250\"\n    ],\n    \"is_weekly_focus\": false\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_campaign\",\n  \"strategy_name\": \"采购预计算-活动备货策略\",\n  \"scene\": \"campaign_stockup\",\n  \"business_notes\": \"统一活动备货基线策略，覆盖采购页预计算活动场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_zeroadd_shengchou_500\",\n      \"qty\": 12,\n      \"reason\": \"活动主推 SKU，建议优先备货。\",\n      \"reason_tags\": [\n        \"活动备货\",\n        \"主推品\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_chicken_powder_combo\",\n      \"qty\": 6,\n      \"reason\": \"活动组合商品，利于档期连带。\",\n      \"reason_tags\": [\n        \"活动备货\",\n        \"组合搭售\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_small_shengchou_250\",\n      \"suggested_qty\": 16,\n      \"reason\": \"厨邦小包装生抽 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_small_oyster_230\",\n      \"suggested_qty\": 16,\n      \"reason\": \"厨邦小包装蚝油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_small_shengchou_250",
+      "cb_small_oyster_230"
+    ],
+    "returned_sku_ids": [
+      "cb_small_shengchou_250",
+      "cb_small_oyster_230"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 3872,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 1,
+    "input_tokens": 32,
+    "output_tokens": 85,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:41.001Z",
+    "updated_at": "2026-04-18T14:28:41.001Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_96a3342b7e5f44cbb2a85ac59d46158b",
+        "sku_id": "cb_small_shengchou_250",
+        "sku_name": "厨邦小包装生抽",
+        "suggested_qty": 16,
+        "suggested_rank": 1,
+        "reason": "厨邦小包装生抽 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "weekly_focus",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.001Z",
+        "updated_at": "2026-04-18T14:28:41.001Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_1c93d09a9b1b44c7b1c2e53339b42dfb",
+        "sku_id": "cb_small_oyster_230",
+        "sku_name": "厨邦小包装蚝油",
+        "suggested_qty": 16,
+        "suggested_rank": 2,
+        "reason": "厨邦小包装蚝油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "weekly_focus",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.001Z",
+        "updated_at": "2026-04-18T14:28:41.001Z"
+      }
+    ]
+  },
+  {
+    "recommendation_run_id": "reco_run_e1f5ce1aa12443e190036291db7e3558",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_xm_sm",
+    "customer_name": "厦门思明经销商",
+    "scene": "hot_sale_restock",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "strategy_id": "tpl_purchase_hot_sale",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：hot_sale_restock\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_xm_sm\",\n  \"customer_name\": \"厦门思明经销商\",\n  \"city\": \"厦门\",\n  \"customer_type\": \"城区核心客户\",\n  \"channel_type\": \"餐饮+流通\",\n  \"order_frequency\": \"5-7天\",\n  \"last_order_days_ago\": 6,\n  \"price_sensitivity\": \"中\",\n  \"new_product_acceptance\": \"高\",\n  \"preferred_categories\": [\n    \"生抽\",\n    \"蚝油\",\n    \"鸡精\"\n  ],\n  \"business_traits\": [\n    \"动销快\",\n    \"有新品试销能力\",\n    \"接受活动引导\"\n  ],\n  \"frequent_items\": [\n    \"cb_weijixian_500\",\n    \"cb_jinbiao_shengchou_500\",\n    \"cb_oyster_700\",\n    \"cb_chicken_essence_200\"\n  ],\n  \"forbidden_items\": [\n    \"cb_oyster_big_2270\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n当前活动：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_focus\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"零添加试销冲刺周\",\n    \"weekly_focus_items\": [\n      \"cb_zeroadd_shengchou_500\",\n      \"cb_zeroadd_head_500\"\n    ],\n    \"promo_threshold\": 1000,\n    \"promo_type\": \"threshold_rebate\",\n    \"activity_notes\": [\n      \"主推零添加系列\",\n      \"高新品接受客户优先\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_combo\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"鸡精组合搭售活动\",\n    \"weekly_focus_items\": [\n      \"cb_chicken_powder_combo\",\n      \"cb_chicken_essence_200\"\n    ],\n    \"promo_threshold\": 800,\n    \"promo_type\": \"combo_discount\",\n    \"activity_notes\": [\n      \"蚝油 + 鸡精品类联动\",\n      \"适合门槛补齐\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"餐饮批发客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_smallpack\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"小规格补货便利装\",\n    \"weekly_focus_items\": [\n      \"cb_small_shengchou_250\",\n      \"cb_small_oyster_230\"\n    ],\n    \"promo_threshold\": 500,\n    \"promo_type\": \"small_pack_push\",\n    \"activity_notes\": [\n      \"适配商超配送\",\n      \"提升门店补货频次\"\n    ],\n    \"target_customer_types\": [\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_weijixian_500\",\n    \"sku_name\": \"厨邦味极鲜特级生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 168,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\",\n      \"高频动销\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_jinbiao_shengchou_500\",\n    \"sku_name\": \"厨邦金标生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 162,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\"\n    ],\n    \"pair_items\": [\n      \"cb_steamed_fish_450\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_oyster_700\",\n    \"sku_name\": \"厨邦蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"700g\",\n    \"price_per_case\": 186,\n    \"box_multiple\": 8,\n    \"tags\": [\n      \"常购\",\n      \"搭配品\"\n    ],\n    \"pair_items\": [\n      \"cb_chicken_essence_200\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_chicken_essence_200\",\n    \"sku_name\": \"厨邦鸡精\",\n    \"category\": \"鸡精\",\n    \"spec\": \"200g\",\n    \"price_per_case\": 132,\n    \"box_multiple\": 10,\n    \"tags\": [\n      \"常购\",\n      \"门槛补齐\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_zeroadd_shengchou_500\",\n    \"sku_name\": \"厨邦零添加特级生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 196,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"本周主推\",\n      \"新品试销\"\n    ],\n    \"pair_items\": [\n      \"cb_zeroadd_head_500\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_chicken_restaurant_1kg\",\n    \"sku_name\": \"厨邦餐饮装鸡精\",\n    \"category\": \"鸡精\",\n    \"spec\": \"1kg\",\n    \"price_per_case\": 268,\n    \"box_multiple\": 6,\n    \"tags\": [\n      \"餐饮大包装\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_big_2270\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_small_shengchou_250\",\n    \"sku_name\": \"厨邦小包装生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"250ml\",\n    \"price_per_case\": 124,\n    \"box_multiple\": 16,\n    \"tags\": [\n      \"小规格\",\n      \"门店补货便利装\"\n    ],\n    \"pair_items\": [\n      \"cb_small_oyster_230\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_small_oyster_230\",\n    \"sku_name\": \"厨邦小包装蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"230g\",\n    \"price_per_case\": 118,\n    \"box_multiple\": 16,\n    \"tags\": [\n      \"小规格\"\n    ],\n    \"pair_items\": [\n      \"cb_small_shengchou_250\"\n    ],\n    \"is_weekly_focus\": false\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_hot_sale\",\n  \"strategy_name\": \"采购预计算-热销补货策略\",\n  \"scene\": \"hot_sale_restock\",\n  \"business_notes\": \"统一热销补货基线策略，覆盖采购页预计算热销场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_weijixian_500\",\n      \"qty\": 12,\n      \"reason\": \"高频动销，建议优先补齐基础盘。\",\n      \"reason_tags\": [\n        \"热销补货\",\n        \"高频动销\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_small_shengchou_250\",\n      \"qty\": 16,\n      \"reason\": \"小规格高周转，适合热销补位。\",\n      \"reason_tags\": [\n        \"热销补货\",\n        \"高周转\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_weijixian_500\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦味极鲜特级生抽 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_jinbiao_shengchou_500\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦金标生抽 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_oyster_700\",\n      \"suggested_qty\": 8,\n      \"reason\": \"厨邦蚝油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 3,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_weijixian_500",
+      "cb_jinbiao_shengchou_500",
+      "cb_oyster_700",
+      "cb_chicken_essence_200",
+      "cb_zeroadd_shengchou_500",
+      "cb_chicken_restaurant_1kg",
+      "cb_small_shengchou_250",
+      "cb_small_oyster_230"
+    ],
+    "returned_sku_ids": [
+      "cb_weijixian_500",
+      "cb_jinbiao_shengchou_500",
+      "cb_oyster_700"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 5448,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 0,
+    "input_tokens": 32,
+    "output_tokens": 122,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:41.001Z",
+    "updated_at": "2026-04-18T14:28:41.001Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_dd12f63c85c14cfb8da48a39890eabe3",
+        "sku_id": "cb_weijixian_500",
+        "sku_name": "厨邦味极鲜特级生抽",
+        "suggested_qty": 12,
+        "suggested_rank": 1,
+        "reason": "厨邦味极鲜特级生抽 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.001Z",
+        "updated_at": "2026-04-18T14:28:41.001Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_403e4d5804354e739b88fc6ab1d20d83",
+        "sku_id": "cb_jinbiao_shengchou_500",
+        "sku_name": "厨邦金标生抽",
+        "suggested_qty": 12,
+        "suggested_rank": 2,
+        "reason": "厨邦金标生抽 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.001Z",
+        "updated_at": "2026-04-18T14:28:41.001Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_b8218744f15f4d6cb40ae8e957fa9b17",
+        "sku_id": "cb_oyster_700",
+        "sku_name": "厨邦蚝油",
+        "suggested_qty": 8,
+        "suggested_rank": 3,
+        "reason": "厨邦蚝油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.001Z",
+        "updated_at": "2026-04-18T14:28:41.001Z"
+      }
+    ]
+  },
+  {
+    "recommendation_run_id": "reco_run_7264511e01644196b792710cddc1c83f",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_xm_sm",
+    "customer_name": "厦门思明经销商",
+    "scene": "stockout_restock",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "strategy_id": "tpl_purchase_stockout",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：stockout_restock\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_xm_sm\",\n  \"customer_name\": \"厦门思明经销商\",\n  \"city\": \"厦门\",\n  \"customer_type\": \"城区核心客户\",\n  \"channel_type\": \"餐饮+流通\",\n  \"order_frequency\": \"5-7天\",\n  \"last_order_days_ago\": 6,\n  \"price_sensitivity\": \"中\",\n  \"new_product_acceptance\": \"高\",\n  \"preferred_categories\": [\n    \"生抽\",\n    \"蚝油\",\n    \"鸡精\"\n  ],\n  \"business_traits\": [\n    \"动销快\",\n    \"有新品试销能力\",\n    \"接受活动引导\"\n  ],\n  \"frequent_items\": [\n    \"cb_weijixian_500\",\n    \"cb_jinbiao_shengchou_500\",\n    \"cb_oyster_700\",\n    \"cb_chicken_essence_200\"\n  ],\n  \"forbidden_items\": [\n    \"cb_oyster_big_2270\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n当前活动：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_focus\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"零添加试销冲刺周\",\n    \"weekly_focus_items\": [\n      \"cb_zeroadd_shengchou_500\",\n      \"cb_zeroadd_head_500\"\n    ],\n    \"promo_threshold\": 1000,\n    \"promo_type\": \"threshold_rebate\",\n    \"activity_notes\": [\n      \"主推零添加系列\",\n      \"高新品接受客户优先\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_combo\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"鸡精组合搭售活动\",\n    \"weekly_focus_items\": [\n      \"cb_chicken_powder_combo\",\n      \"cb_chicken_essence_200\"\n    ],\n    \"promo_threshold\": 800,\n    \"promo_type\": \"combo_discount\",\n    \"activity_notes\": [\n      \"蚝油 + 鸡精品类联动\",\n      \"适合门槛补齐\"\n    ],\n    \"target_customer_types\": [\n      \"城区核心客户\",\n      \"餐饮批发客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  },\n  {\n    \"campaign_id\": \"camp_2026w16_smallpack\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"小规格补货便利装\",\n    \"weekly_focus_items\": [\n      \"cb_small_shengchou_250\",\n      \"cb_small_oyster_230\"\n    ],\n    \"promo_threshold\": 500,\n    \"promo_type\": \"small_pack_push\",\n    \"activity_notes\": [\n      \"适配商超配送\",\n      \"提升门店补货频次\"\n    ],\n    \"target_customer_types\": [\n      \"商超配送客户\"\n    ],\n    \"status\": \"active\",\n    \"created_at\": \"2026-04-01T08:00:00.000Z\",\n    \"updated_at\": \"2026-04-01T08:00:00.000Z\"\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_weijixian_500\",\n    \"sku_name\": \"厨邦味极鲜特级生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 168,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\",\n      \"高频动销\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_jinbiao_shengchou_500\",\n    \"sku_name\": \"厨邦金标生抽\",\n    \"category\": \"生抽\",\n    \"spec\": \"500ml\",\n    \"price_per_case\": 162,\n    \"box_multiple\": 12,\n    \"tags\": [\n      \"常购\"\n    ],\n    \"pair_items\": [\n      \"cb_steamed_fish_450\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_oyster_700\",\n    \"sku_name\": \"厨邦蚝油\",\n    \"category\": \"蚝油\",\n    \"spec\": \"700g\",\n    \"price_per_case\": 186,\n    \"box_multiple\": 8,\n    \"tags\": [\n      \"常购\",\n      \"搭配品\"\n    ],\n    \"pair_items\": [\n      \"cb_chicken_essence_200\"\n    ],\n    \"is_weekly_focus\": true\n  },\n  {\n    \"sku_id\": \"cb_chicken_essence_200\",\n    \"sku_name\": \"厨邦鸡精\",\n    \"category\": \"鸡精\",\n    \"spec\": \"200g\",\n    \"price_per_case\": 132,\n    \"box_multiple\": 10,\n    \"tags\": [\n      \"常购\",\n      \"门槛补齐\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": false\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_stockout\",\n  \"strategy_name\": \"采购预计算-缺货补货策略\",\n  \"scene\": \"stockout_restock\",\n  \"business_notes\": \"统一缺货补货基线策略，覆盖采购页预计算缺货场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_oyster_700\",\n      \"qty\": 8,\n      \"reason\": \"常购基础品，优先避免断货。\",\n      \"reason_tags\": [\n        \"缺货补货\",\n        \"常购品\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_vinegar_450\",\n      \"qty\": 12,\n      \"reason\": \"基础覆盖商品，建议补齐安全库存。\",\n      \"reason_tags\": [\n        \"缺货补货\",\n        \"基础覆盖\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_weijixian_500\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦味极鲜特级生抽 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_jinbiao_shengchou_500\",\n      \"suggested_qty\": 12,\n      \"reason\": \"厨邦金标生抽 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_oyster_700\",\n      \"suggested_qty\": 8,\n      \"reason\": \"厨邦蚝油 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 3,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_weijixian_500",
+      "cb_jinbiao_shengchou_500",
+      "cb_oyster_700",
+      "cb_chicken_essence_200"
+    ],
+    "returned_sku_ids": [
+      "cb_weijixian_500",
+      "cb_jinbiao_shengchou_500",
+      "cb_oyster_700"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 5448,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 1,
+    "input_tokens": 32,
+    "output_tokens": 122,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:41.002Z",
+    "updated_at": "2026-04-18T14:28:41.002Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_7c25c65e199a41ffb841787ecdeaa81b",
+        "sku_id": "cb_weijixian_500",
+        "sku_name": "厨邦味极鲜特级生抽",
+        "suggested_qty": 12,
+        "suggested_rank": 1,
+        "reason": "厨邦味极鲜特级生抽 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.002Z",
+        "updated_at": "2026-04-18T14:28:41.002Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_5b618d83857449ad9b60940cd0f54880",
+        "sku_id": "cb_jinbiao_shengchou_500",
+        "sku_name": "厨邦金标生抽",
+        "suggested_qty": 12,
+        "suggested_rank": 2,
+        "reason": "厨邦金标生抽 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.002Z",
+        "updated_at": "2026-04-18T14:28:41.002Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_aa396594b3f44665bc48f8113647a821",
+        "sku_id": "cb_oyster_700",
+        "sku_name": "厨邦蚝油",
+        "suggested_qty": 8,
+        "suggested_rank": 3,
+        "reason": "厨邦蚝油 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "replenishment",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.002Z",
+        "updated_at": "2026-04-18T14:28:41.002Z"
+      }
+    ]
+  },
+  {
+    "recommendation_run_id": "reco_run_788f46c4f4a9440188c9efee95b44c5a",
+    "batch_id": "batch_snapshot_20260418",
+    "trace_id": "00000000000000000000000000000000",
+    "customer_id": "dealer_xm_sm",
+    "customer_name": "厦门思明经销商",
+    "scene": "campaign_stockup",
+    "surface": "purchase",
+    "generation_mode": "precomputed",
+    "business_date": "2026-04-18",
+    "snapshot_version": "purchase_snapshot_2026-04-18.v1",
+    "campaign_id": "camp_2026w16_combo",
+    "strategy_id": "tpl_purchase_campaign",
+    "expression_template_id": "expr_recommendation_default",
+    "prompt_version": "2026-04-18.snapshot.runtime",
+    "prompt_snapshot": "系统角色：你是经销商组货建议助手，负责输出可执行的组货原因与优先级说明。\n\n写作风格：专业、简洁、面向执行\n\n避免内容：夸张承诺 / 绝对化判断 / 无依据价格预测\n\n原因条数上限：3\n\n场景：campaign_stockup\n\n指令：请围绕组货建议输出简洁且可执行的说明，突出补货价值与业务依据。\n\n经销商经营信息：\n\n{\n  \"customer_id\": \"dealer_xm_sm\",\n  \"customer_name\": \"厦门思明经销商\",\n  \"city\": \"厦门\",\n  \"customer_type\": \"城区核心客户\",\n  \"channel_type\": \"餐饮+流通\",\n  \"order_frequency\": \"5-7天\",\n  \"last_order_days_ago\": 6,\n  \"price_sensitivity\": \"中\",\n  \"new_product_acceptance\": \"高\",\n  \"preferred_categories\": [\n    \"生抽\",\n    \"蚝油\",\n    \"鸡精\"\n  ],\n  \"business_traits\": [\n    \"动销快\",\n    \"有新品试销能力\",\n    \"接受活动引导\"\n  ],\n  \"frequent_items\": [\n    \"cb_weijixian_500\",\n    \"cb_jinbiao_shengchou_500\",\n    \"cb_oyster_700\",\n    \"cb_chicken_essence_200\"\n  ],\n  \"forbidden_items\": [\n    \"cb_oyster_big_2270\"\n  ]\n}\n\n规则配置：\n\n{\n  \"replenishment_days_threshold\": 5,\n  \"cart_gap_trigger_amount\": 30,\n  \"threshold_amount\": 1000,\n  \"cart_target_amount\": 1000,\n  \"prefer_frequent_items\": true,\n  \"prefer_pair_items\": true,\n  \"box_adjust_if_close\": true,\n  \"box_adjust_distance_limit\": 2,\n  \"allow_new_product_recommendation\": true\n}\n\n匹配活动（仅可按该活动做活动备货）：\n\n[\n  {\n    \"campaign_id\": \"camp_2026w16_combo\",\n    \"week_id\": \"2026-W16\",\n    \"campaign_name\": \"鸡精组合搭售活动\",\n    \"weekly_focus_items\": [\n      \"cb_chicken_powder_combo\",\n      \"cb_chicken_essence_200\"\n    ],\n    \"promo_threshold\": 800,\n    \"promo_type\": \"combo_discount\",\n    \"activity_notes\": [\n      \"蚝油 + 鸡精品类联动\",\n      \"适合门槛补齐\"\n    ]\n  }\n]\n\n候选商品（仅可在候选中选择）：\n\n[\n  {\n    \"sku_id\": \"cb_chicken_essence_200\",\n    \"sku_name\": \"厨邦鸡精\",\n    \"category\": \"鸡精\",\n    \"spec\": \"200g\",\n    \"price_per_case\": 132,\n    \"box_multiple\": 10,\n    \"tags\": [\n      \"常购\",\n      \"门槛补齐\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": false\n  },\n  {\n    \"sku_id\": \"cb_chicken_powder_combo\",\n    \"sku_name\": \"厨邦鸡粉组合装\",\n    \"category\": \"鸡粉\",\n    \"spec\": \"组合装\",\n    \"price_per_case\": 208,\n    \"box_multiple\": 6,\n    \"tags\": [\n      \"活动\",\n      \"组合\"\n    ],\n    \"pair_items\": [\n      \"cb_oyster_700\"\n    ],\n    \"is_weekly_focus\": true\n  }\n]\n\n以下为当前场景的推荐策略参考（仅参考，不直接照搬）：\n{\n  \"strategy_id\": \"tpl_purchase_campaign\",\n  \"strategy_name\": \"采购预计算-活动备货策略\",\n  \"scene\": \"campaign_stockup\",\n  \"business_notes\": \"统一活动备货基线策略，覆盖采购页预计算活动场景。\",\n  \"style_hint\": \"组货建议输出模板\",\n  \"reference_items\": [\n    {\n      \"sku_id\": \"cb_zeroadd_shengchou_500\",\n      \"qty\": 12,\n      \"reason\": \"活动主推 SKU，建议优先备货。\",\n      \"reason_tags\": [\n        \"活动备货\",\n        \"主推品\"\n      ],\n      \"sort_order\": 1\n    },\n    {\n      \"sku_id\": \"cb_chicken_powder_combo\",\n      \"qty\": 6,\n      \"reason\": \"活动组合商品，利于档期连带。\",\n      \"reason_tags\": [\n        \"活动备货\",\n        \"组合搭售\"\n      ],\n      \"sort_order\": 2\n    }\n  ]\n}\n\n输出要求：\n\n1. 只返回 JSON 对象，不要 Markdown 代码块，不要额外说明。\n\n2. 对象字段固定为 elements；elements 必须是数组。\n\n3. elements 每项字段必须包含：sku_id, suggested_qty, reason, reason_tags, priority, action_type。\n\n4. sku_id 只能从候选商品中选择；不得自造 sku_id。\n\n5. action_type 只能使用 add_to_cart / adjust_qty / replace_item。\n\n6. 如果本意是补货、带搭配或组合补充，统一使用 add_to_cart。\n\n7. 若没有合适商品，返回 {\"elements\": []}。\n\n请输出结构化对象 elements。",
+    "response_snapshot": "{\n  \"elements\": [\n    {\n      \"sku_id\": \"cb_chicken_essence_200\",\n      \"suggested_qty\": 10,\n      \"reason\": \"厨邦鸡精 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 1,\n      \"action_type\": \"add_to_cart\"\n    },\n    {\n      \"sku_id\": \"cb_chicken_powder_combo\",\n      \"suggested_qty\": 6,\n      \"reason\": \"厨邦鸡粉组合装 与当前客户画像匹配，建议优先补货。\",\n      \"reason_tags\": [\n        \"规则候选\",\n        \"补货建议\"\n      ],\n      \"priority\": 2,\n      \"action_type\": \"add_to_cart\"\n    }\n  ]\n}",
+    "candidate_sku_ids": [
+      "cb_chicken_essence_200",
+      "cb_chicken_powder_combo"
+    ],
+    "returned_sku_ids": [
+      "cb_chicken_essence_200",
+      "cb_chicken_powder_combo"
+    ],
+    "cart_amount_before": 0,
+    "cart_amount_after": 2568,
+    "model_name": "mock-stage5",
+    "model_latency_ms": 1,
+    "input_tokens": 32,
+    "output_tokens": 85,
+    "status": "generated",
+    "created_at": "2026-04-18T14:28:41.004Z",
+    "updated_at": "2026-04-18T14:28:41.004Z",
+    "items": [
+      {
+        "recommendation_item_id": "reco_item_1dbb4eead1714e6b8a834d9fe4b5149a",
+        "sku_id": "cb_chicken_essence_200",
+        "sku_name": "厨邦鸡精",
+        "suggested_qty": 10,
+        "suggested_rank": 1,
+        "reason": "厨邦鸡精 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "weekly_focus",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.004Z",
+        "updated_at": "2026-04-18T14:28:41.004Z"
+      },
+      {
+        "recommendation_item_id": "reco_item_925f87f6bb404bd099a9ac69d0568e59",
+        "sku_id": "cb_chicken_powder_combo",
+        "sku_name": "厨邦鸡粉组合装",
+        "suggested_qty": 6,
+        "suggested_rank": 2,
+        "reason": "厨邦鸡粉组合装 与当前客户画像匹配，建议优先补货。",
+        "reason_tags": [
+          "规则候选",
+          "补货建议"
+        ],
+        "action_type": "add_to_cart",
+        "effect_type": "weekly_focus",
+        "was_viewed": false,
+        "was_explained": false,
+        "was_applied": false,
+        "applied_by": "unknown",
+        "final_status": "pending",
+        "created_at": "2026-04-18T14:28:41.004Z",
+        "updated_at": "2026-04-18T14:28:41.004Z"
+      }
+    ]
+  }
+]

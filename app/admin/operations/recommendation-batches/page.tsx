@@ -59,7 +59,6 @@ const INITIAL_QUERY: QueryState = {
 const BATCH_TYPE_LABELS: Record<RecommendationBatchRecord["batch_type"], string> = {
   scheduled_generation: "定时生成",
   sample_generation: "抽样试生成",
-  frontstage_realtime: "前台实时",
   manual_replay: "人工补跑",
 };
 
@@ -135,8 +134,7 @@ export default function RecommendationBatchesPage() {
 
   return (
     <AdminPageFrame
-      title="生成批次"
-      description="先按批次看生成结果，再继续查看门店建议和执行过程。"
+      title="采购建议预处理批次"
       action={
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void loadBatches()} disabled={loading}>
@@ -145,13 +143,13 @@ export default function RecommendationBatchesPage() {
           </Button>
           <Button asChild variant="outline">
             <Link href="/admin/operations/generation-jobs" className="gap-2">
-              查看生成任务
+              查看预处理任务
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/analytics/recommendation-records" className="gap-2">
-              查看门店建议
+            <Link href="/admin/analytics/recommendation-records?view=purchase" className="gap-2">
+              查看采购建议记录
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -219,10 +217,9 @@ export default function RecommendationBatchesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">全部场景</SelectItem>
-                <SelectItem value="daily_recommendation">日常补货</SelectItem>
-                <SelectItem value="weekly_focus">周活动备货</SelectItem>
-                <SelectItem value="threshold_topup">门槛补差</SelectItem>
-                <SelectItem value="box_pair_optimization">箱规与搭配优化</SelectItem>
+                <SelectItem value="hot_sale_restock">热销补货</SelectItem>
+                <SelectItem value="stockout_restock">缺货补货</SelectItem>
+                <SelectItem value="campaign_stockup">活动备货</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -419,24 +416,24 @@ export default function RecommendationBatchesPage() {
                   {selected.customer_id ? (
                     <Button asChild variant="outline">
                       <Link
-                        href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
+                        href={`/admin/analytics/recommendation-records?view=purchase&batchId=${encodeURIComponent(
                           selected.batch_id,
                         )}&customerId=${encodeURIComponent(selected.customer_id)}`}
                         className="gap-2"
                       >
-                        查看该经销商记录
+                        查看该经销商采购记录
                         <ArrowRight className="h-4 w-4" />
                       </Link>
                     </Button>
                   ) : null}
                   <Button asChild variant="outline">
                     <Link
-                      href={`/admin/analytics/recommendation-records?batchId=${encodeURIComponent(
+                      href={`/admin/analytics/recommendation-records?view=purchase&batchId=${encodeURIComponent(
                         selected.batch_id,
                       )}`}
                       className="gap-2"
                     >
-                      查看门店建议
+                      查看采购建议记录
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>

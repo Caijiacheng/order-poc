@@ -16,8 +16,14 @@ type CreateRunInput = {
   customer_id: string;
   customer_name: string;
   scene: SuggestionScene;
+  surface?: RecommendationRunRecord["surface"];
+  generation_mode?: RecommendationRunRecord["generation_mode"];
+  business_date?: RecommendationRunRecord["business_date"];
+  snapshot_version?: RecommendationRunRecord["snapshot_version"];
+  stale_reason?: RecommendationRunRecord["stale_reason"];
   page_name: FrontstagePageName;
   trigger_source: "auto" | "manual" | "assistant";
+  campaign_id?: string;
   strategy_id?: string;
   expression_template_id?: string;
   prompt_version?: string;

@@ -287,7 +287,6 @@ export default function CampaignsPage() {
   return (
     <AdminPageFrame
       title="安排活动"
-      description="设置活动档期、活动商品和适用门店。"
       action={
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadCampaigns} disabled={loading}>
@@ -456,7 +455,6 @@ export default function CampaignsPage() {
           }
         }}
         title={editingId ? `编辑活动安排: ${editingId}` : "创建活动安排"}
-        description="设置活动商品和适用门店范围。"
       >
         <div className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2">
