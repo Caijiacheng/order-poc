@@ -32,7 +32,12 @@ import { BusinessError } from "@/lib/domain/errors";
 import { selectDailyRecommendationCandidates } from "@/lib/domain/recommendation-rules";
 import { getMemoryStore, nowIso } from "@/lib/memory/store";
 import type { CampaignEntity, DealerEntity, ProductEntity } from "@/lib/memory/types";
-import { buildTelemetrySettings, withChildSpan, withSpan } from "@/lib/tracing/telemetry";
+import {
+  buildTelemetrySettings,
+  recordLangfuseGenerationDiagnostic,
+  withChildSpan,
+  withSpan,
+} from "@/lib/tracing/telemetry";
 
 type AutofillInput = {
   session_id: string;
@@ -96,6 +101,56 @@ function buildMockSummaryOutput(input: {
       `活动差额预计 ${Math.max(0, Math.round(input.selectedCombo.projected_campaign_gap))}`,
     ],
   };
+}
+
+function extractLlmFailureDiagnostic(error: unknown) {
+  const record = error as Record<string, unknown>;
+  const cause =
+    record.cause && typeof record.cause === "object"
+      ? (record.cause as Record<string, unknown>)
+      : undefined;
+  const response =
+    record.response && typeof record.response === "object"
+      ? (record.response as Record<string, unknown>)
+      : undefined;
+  const responseBody = response?.body;
+
+  return {
+    error_name: typeof record.name === "string" ? record.name : "UnknownError",
+    error_message:
+      typeof record.message === "string" ? record.message : String(error ?? "unknown error"),
+    error_code: typeof record.code === "string" ? record.code : undefined,
+    finish_reason:
+      typeof record.finishReason === "string" ? record.finishReason : undefined,
+    cause_name: typeof cause?.name === "string" ? cause.name : undefined,
+    cause_message: typeof cause?.message === "string" ? cause.message : undefined,
+    raw_text: typeof record.text === "string" ? record.text : undefined,
+    parsed_value: cause?.value,
+    response_body: responseBody,
+  };
+}
+
+async function recordCopilotModelFailureDiagnostic(input: {
+  traceId?: string;
+  functionId: string;
+  modelName: string;
+  prompt: string;
+  metadata?: Record<string, unknown>;
+  error: unknown;
+}) {
+  await recordLangfuseGenerationDiagnostic({
+    traceId: input.traceId,
+    name: `${input.functionId}.failure-diagnostic`,
+    model: input.modelName,
+    input: {
+      prompt: input.prompt,
+    },
+    output: extractLlmFailureDiagnostic(input.error),
+    metadata: input.metadata,
+    statusMessage:
+      input.error instanceof Error ? input.error.message : "unknown generation error",
+    level: "ERROR",
+  });
 }
 
 function createRun(input: {
@@ -403,29 +458,43 @@ async function parseIntentWithModel(input: {
     dealer: input.dealer,
   });
   const startedAt = Date.now();
-
-  const result = await generateText({
-    model: factory.getModel(),
-    prompt,
-    output: Output.object({
-      schema: copilotIntentSchema,
-      name: "copilot_intent",
-      description: "Structured copilot intent.",
-    }),
-    experimental_telemetry: buildTelemetrySettings("copilot.parse-intent", {
-      trace_id: input.traceId,
-      customer_id: input.dealer.customer_id,
-    }),
-    providerOptions: factory.isMockMode
-      ? {
-          orderPocMock: {
-            response_json: JSON.stringify(mockOutput),
-          },
-        }
-      : undefined,
-    temperature: 0.1,
-    maxOutputTokens: 500,
-  });
+  let result;
+  try {
+    result = await generateText({
+      model: factory.getModel(),
+      prompt,
+      output: Output.object({
+        schema: copilotIntentSchema,
+        name: "copilot_intent",
+        description: "Structured copilot intent.",
+      }),
+      experimental_telemetry: buildTelemetrySettings("copilot.parse-intent", {
+        trace_id: input.traceId,
+        customer_id: input.dealer.customer_id,
+      }),
+      providerOptions: factory.isMockMode
+        ? {
+            orderPocMock: {
+              response_json: JSON.stringify(mockOutput),
+            },
+          }
+        : undefined,
+      temperature: 0.1,
+      maxOutputTokens: 500,
+    });
+  } catch (error) {
+    await recordCopilotModelFailureDiagnostic({
+      traceId: input.traceId,
+      functionId: "copilot.parse-intent",
+      modelName: factory.modelName,
+      prompt,
+      metadata: {
+        customer_id: input.dealer.customer_id,
+      },
+      error,
+    });
+    throw error;
+  }
 
   const parsedIntent = copilotIntentSchema.safeParse(result.output);
   if (!parsedIntent.success) {
@@ -684,29 +753,43 @@ async function selectBestComboWithModel(input: {
     combos: input.combos,
   });
   const startedAt = Date.now();
-
-  const result = await generateText({
-    model: factory.getModel(),
-    prompt,
-    output: Output.object({
-      schema: copilotSelectBestComboSchema,
-      name: "copilot_select_best_combo",
-      description: "Pick one combo from legal candidates or block.",
-    }),
-    experimental_telemetry: buildTelemetrySettings("copilot.select-best-combo", {
-      trace_id: input.traceId,
-      combo_count: input.combos.length,
-    }),
-    providerOptions: factory.isMockMode
-      ? {
-          orderPocMock: {
-            response_json: JSON.stringify(mockOutput),
-          },
-        }
-      : undefined,
-    temperature: 0.2,
-    maxOutputTokens: 500,
-  });
+  let result;
+  try {
+    result = await generateText({
+      model: factory.getModel(),
+      prompt,
+      output: Output.object({
+        schema: copilotSelectBestComboSchema,
+        name: "copilot_select_best_combo",
+        description: "Pick one combo from legal candidates or block.",
+      }),
+      experimental_telemetry: buildTelemetrySettings("copilot.select-best-combo", {
+        trace_id: input.traceId,
+        combo_count: input.combos.length,
+      }),
+      providerOptions: factory.isMockMode
+        ? {
+            orderPocMock: {
+              response_json: JSON.stringify(mockOutput),
+            },
+          }
+        : undefined,
+      temperature: 0.2,
+      maxOutputTokens: 500,
+    });
+  } catch (error) {
+    await recordCopilotModelFailureDiagnostic({
+      traceId: input.traceId,
+      functionId: "copilot.select-best-combo",
+      modelName: factory.modelName,
+      prompt,
+      metadata: {
+        combo_count: input.combos.length,
+      },
+      error,
+    });
+    throw error;
+  }
 
   const parsed = copilotSelectBestComboSchema.safeParse(result.output);
   if (!parsed.success) {
@@ -762,28 +845,39 @@ async function summarizeResultWithModel(input: {
     blockedReason: input.blockedReason,
   });
   const startedAt = Date.now();
-
-  const result = await generateText({
-    model: factory.getModel(),
-    prompt,
-    output: Output.object({
-      schema: copilotSummarizeResultSchema,
-      name: "copilot_summarize_result",
-      description: "Summarize copilot execution result in business language.",
-    }),
-    experimental_telemetry: buildTelemetrySettings("copilot.summarize-result", {
-      trace_id: input.traceId,
-    }),
-    providerOptions: factory.isMockMode
-      ? {
-          orderPocMock: {
-            response_json: JSON.stringify(mockOutput),
-          },
-        }
-      : undefined,
-    temperature: 0.2,
-    maxOutputTokens: 400,
-  });
+  let result;
+  try {
+    result = await generateText({
+      model: factory.getModel(),
+      prompt,
+      output: Output.object({
+        schema: copilotSummarizeResultSchema,
+        name: "copilot_summarize_result",
+        description: "Summarize copilot execution result in business language.",
+      }),
+      experimental_telemetry: buildTelemetrySettings("copilot.summarize-result", {
+        trace_id: input.traceId,
+      }),
+      providerOptions: factory.isMockMode
+        ? {
+            orderPocMock: {
+              response_json: JSON.stringify(mockOutput),
+            },
+          }
+        : undefined,
+      temperature: 0.2,
+      maxOutputTokens: 400,
+    });
+  } catch (error) {
+    await recordCopilotModelFailureDiagnostic({
+      traceId: input.traceId,
+      functionId: "copilot.summarize-result",
+      modelName: factory.modelName,
+      prompt,
+      error,
+    });
+    throw error;
+  }
 
   const output = copilotSummarizeResultSchema.safeParse(result.output);
   if (!output.success) {

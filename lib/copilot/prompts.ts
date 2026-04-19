@@ -38,6 +38,8 @@ export function buildParseIntentPrompt(input: {
     [
       "输出字段：intent_type, budget_target, prefer_campaign, prefer_frequent_items, avoid_new_products, risk_mode, must_have_keywords, exclude_keywords。",
       "intent_type 只能取以下值之一：start_order、topup_campaign、explain_order、adjust_order、mixed。",
+      "risk_mode 只能取以下值之一：conservative、balanced、aggressive。",
+      "如果用户强调预算控制、稳妥、控制风险，risk_mode 返回 conservative，不要返回 budget_control、budget_constraint 等别名。",
       "当用户同时包含做单与活动补齐/解释等混合诉求时，返回 mixed。",
     ].join(" "),
   ].join("\n\n");
@@ -83,7 +85,11 @@ export function buildSelectBestComboPrompt(input: {
         rationale: combo.rationale,
       })),
     ),
-    "输出字段：status, combo_id, explanation, blocked_reason。",
+    [
+      "输出字段：status, combo_id, explanation, blocked_reason。",
+      "status 只能取以下值之一：selected、blocked。",
+      "如果成功选中组合，status 返回 selected，不要返回 success 等别名。",
+    ].join(" "),
   ].join("\n\n");
 }
 

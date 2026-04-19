@@ -97,6 +97,42 @@ function serializeTraceContent(value: unknown) {
   }
 }
 
+export async function recordLangfuseGenerationDiagnostic(input: {
+  traceId?: string;
+  name: string;
+  model?: string;
+  input?: unknown;
+  output?: unknown;
+  metadata?: Record<string, unknown>;
+  statusMessage?: string;
+  level?: "DEFAULT" | "ERROR";
+}) {
+  if (!input.traceId) {
+    return;
+  }
+
+  const client = getLangfuseClient();
+  if (!client) {
+    return;
+  }
+
+  const timestamp = new Date();
+  client.generation({
+    traceId: input.traceId,
+    name: input.name,
+    startTime: timestamp,
+    endTime: timestamp,
+    model: input.model,
+    input: serializeTraceContent(input.input),
+    output: serializeTraceContent(input.output),
+    metadata: serializeTraceContent(input.metadata),
+    statusMessage: input.statusMessage,
+    level: input.level ?? "ERROR",
+  });
+
+  await client.flushAsync();
+}
+
 async function upsertLangfuseTrace(input: {
   traceId: string;
   name: string;

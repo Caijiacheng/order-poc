@@ -203,6 +203,46 @@ describe("copilot orchestrator Stage 1", () => {
     expect(result.draft.blocked_reason).toBe("manual_review_required");
   });
 
+  it("normalizes budget_control risk mode from live intent output to conservative", async () => {
+    setPromptRoutingFactory((prompt) => {
+      if (prompt.includes("任务：提取采购意图")) {
+        return {
+          intent_type: "start_order",
+          budget_target: 6000,
+          prefer_campaign: true,
+          prefer_frequent_items: true,
+          avoid_new_products: true,
+          risk_mode: "budget_control",
+          must_have_keywords: ["常购", "活动", "预算"],
+          exclude_keywords: ["新品", "cb_small_shengchou_250"],
+        };
+      }
+      if (prompt.includes("任务：只能从候选组合中选择最合适的一个。")) {
+        return {
+          status: "blocked",
+          explanation: "先只验证风险模式归一化。",
+          blocked_reason: "manual_review_required",
+        };
+      }
+      return {
+        summary: "当前先保留为人工确认草案。",
+        should_go_checkout: false,
+        key_points: ["risk_mode normalized"],
+      };
+    });
+
+    const result = await runCopilotAutofill({
+      session_id: "sess_copilot_stage1_budget_control_alias",
+      customer_id: "dealer_cd_pf",
+      user_message: "按常购和活动做一单，预算控制在 6000 左右。",
+      page_name: "/purchase",
+    });
+
+    expect(result.run.intent?.risk_mode).toBe("conservative");
+    expect(result.run.intent?.intent_type).toBe("start_order");
+    expect(result.draft.blocked_reason).toBe("manual_review_required");
+  });
+
   it("normalizes empty blocked_reason from a selected live model output instead of rejecting the response", async () => {
     setPromptRoutingFactory((prompt) => {
       if (prompt.includes("任务：提取采购意图")) {
@@ -285,6 +325,48 @@ describe("copilot orchestrator Stage 1", () => {
     expect(result.draft.status).toBe("preview");
     expect(result.draft.blocked_reason).toBeUndefined();
     expect(result.draft.selected_combo_id).toBe("combo_replenishment_core");
+  });
+
+  it("normalizes success status from a live combo selection output to selected", async () => {
+    setPromptRoutingFactory((prompt) => {
+      if (prompt.includes("任务：提取采购意图")) {
+        return {
+          intent_type: "start_order",
+          budget_target: 6000,
+          prefer_campaign: true,
+          prefer_frequent_items: true,
+          avoid_new_products: true,
+          risk_mode: "conservative",
+          must_have_keywords: ["常购", "活动", "预算"],
+          exclude_keywords: [],
+        };
+      }
+      if (prompt.includes("任务：只能从候选组合中选择最合适的一个。")) {
+        return {
+          status: "success",
+          combo_id: "combo_replenishment_core",
+          explanation: "命中常购商品偏好，符合保守风控模式。",
+          blocked_reason: null,
+        };
+      }
+      return {
+        summary: "已生成稳健预览草案。",
+        should_go_checkout: false,
+        key_points: ["status success normalized"],
+      };
+    });
+
+    const result = await runCopilotAutofill({
+      session_id: "sess_copilot_stage1_success_status_alias",
+      customer_id: "dealer_cd_pf",
+      user_message: "按常购和活动做一单，预算控制在 6000 左右。",
+      page_name: "/purchase",
+    });
+
+    expect(result.run.status).toBe("succeeded");
+    expect(result.draft.status).toBe("preview");
+    expect(result.draft.selected_combo_id).toBe("combo_replenishment_core");
+    expect(result.draft.blocked_reason).toBeUndefined();
   });
 
   it("rejects draft apply when session does not match preview session", async () => {

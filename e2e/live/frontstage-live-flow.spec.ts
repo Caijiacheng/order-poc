@@ -208,7 +208,7 @@ test.describe.configure({ mode: "serial" });
 test("live serial cross-role story keeps canonical purchase/order-submit flow and drill-down aligned", async ({
   page,
 }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(720_000);
 
   const skipReason = getLiveSkipReason();
   test.skip(!hasRequiredLiveEnv(), skipReason);
@@ -420,6 +420,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/cart-optimize"),
+    { timeout: 300_000 },
   );
   await page
     .getByTestId("purchase-bundle-templates")
@@ -464,6 +465,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/cart/submit"),
+    { timeout: 120_000 },
   );
   await page.getByRole("button", { name: "提交订单" }).click();
   const submitPayload = await expectEnvelope<SubmitCartResponse>(await submitResponsePromise);
@@ -519,7 +521,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   if (await sameBatchTraceLink.count()) {
     await sameBatchTraceLink.click();
   } else {
-    await page.getByRole("button", { name: "关闭" }).click();
+    await page.getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("main").getByRole("link", { name: "查看执行过程" }).click();
   }
   await expect(page).toHaveURL(/\/admin\/observability\/traces/);
@@ -553,7 +555,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
 test("live copilot flow keeps preview/apply discipline and validates copilot Langfuse traces", async ({
   page,
 }) => {
-  test.setTimeout(420_000);
+  test.setTimeout(600_000);
 
   const skipReason = getLiveSkipReason();
   test.skip(!hasRequiredLiveEnv(), skipReason);
@@ -595,7 +597,7 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/copilot/autofill"),
-    { timeout: 180_000 },
+    { timeout: 300_000 },
   );
   await page.getByRole("button", { name: "一键做单" }).click();
   const purchaseAutofillPayload = await expectEnvelope<CopilotAutofillResponse>(

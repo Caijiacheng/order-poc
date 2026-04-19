@@ -459,7 +459,7 @@ test("IT story：批次/记录/trace/recovery 可钻取", async ({ page }) => {
   if (await sameBatchTraceLink.count()) {
     await sameBatchTraceLink.click();
   } else {
-    await page.getByRole("button", { name: "关闭" }).click();
+    await page.getByRole("button", { name: "关闭", exact: true }).click();
     await page.getByRole("main").getByRole("link", { name: "查看执行过程" }).click();
   }
   await expect(page).toHaveURL(/\/admin\/observability\/traces/);

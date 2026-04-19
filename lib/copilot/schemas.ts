@@ -11,6 +11,44 @@ const optionalNonEmptyStringSchema = z.preprocess((value) => {
   return normalized.length > 0 ? normalized : undefined;
 }, z.string().min(1).optional());
 
+const copilotRiskModeSchema = z.preprocess((value) => {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "budget_control" || normalized === "budget_constraint") {
+    return "conservative";
+  }
+
+  return normalized;
+}, z.enum(["conservative", "balanced", "aggressive"]).nullable());
+
+const copilotSelectStatusSchema = z.preprocess((value) => {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return value;
+  }
+  if (normalized === "success") {
+    return "selected";
+  }
+
+  return normalized;
+}, z.enum(["selected", "blocked"]));
+
 export const copilotIntentSchema = z.object({
   intent_type: z.enum([
     "start_order",
@@ -23,13 +61,13 @@ export const copilotIntentSchema = z.object({
   prefer_campaign: z.boolean().nullable(),
   prefer_frequent_items: z.boolean().nullable(),
   avoid_new_products: z.boolean().nullable(),
-  risk_mode: z.enum(["conservative", "balanced", "aggressive"]).nullable(),
+  risk_mode: copilotRiskModeSchema,
   must_have_keywords: z.array(z.string().min(1)).default([]),
   exclude_keywords: z.array(z.string().min(1)).default([]),
 });
 
 export const copilotSelectBestComboSchema = z.object({
-  status: z.enum(["selected", "blocked"]),
+  status: copilotSelectStatusSchema,
   combo_id: optionalNonEmptyStringSchema,
   explanation: z.string().min(1),
   blocked_reason: optionalNonEmptyStringSchema,
