@@ -4,6 +4,40 @@ export type CopilotPageName = "/purchase" | "/order-submit";
 
 export type CopilotRunType = "autofill_order" | "explain_order";
 
+export type CopilotInputMode = "text" | "image" | "mixed";
+
+export type CopilotImageInput = {
+  id: string;
+  mimeType: string;
+  fileName: string;
+  dataUrl: string;
+};
+
+export type CopilotImageExtractLineMatchStatus = "matched" | "pending_confirm" | "unmatched";
+
+export type CopilotImageExtractLineConfidence = "high" | "medium" | "low";
+
+export type CopilotImageExtractLine = {
+  line_id: string;
+  original_text: string;
+  qty_hint: number | null;
+  confidence: CopilotImageExtractLineConfidence;
+  match_status: CopilotImageExtractLineMatchStatus;
+  matched_sku_id?: string;
+  matched_sku_name?: string;
+  pending_reason?: string;
+};
+
+export type CopilotImageExtractSummary = {
+  parsed_line_count: number;
+  matched_line_count: number;
+  pending_confirm_line_count: number;
+  unmatched_line_count: number;
+  low_confidence_line_count: number;
+  summary_text: string;
+  blocked_reason?: string;
+};
+
 export type CopilotRunStatus = "running" | "succeeded" | "blocked" | "failed";
 
 export type CopilotJobStatus =
@@ -15,6 +49,7 @@ export type CopilotJobStatus =
 
 export type CopilotStepName =
   | "load_context"
+  | "image_extract"
   | "parse_intent"
   | "detect_campaign_state"
   | "build_legal_candidates"
@@ -113,6 +148,16 @@ export type CopilotRun = {
   customer_id: string;
   page_name: CopilotPageName;
   user_message: string;
+  input_mode: CopilotInputMode;
+  image_count: number;
+  image_parsed_line_count: number;
+  image_matched_line_count: number;
+  image_pending_confirm_line_count: number;
+  image_unmatched_line_count: number;
+  image_low_confidence_line_count: number;
+  image_extract_summary_text?: string;
+  image_extract_blocked_reason?: string;
+  image_extract_lines?: CopilotImageExtractLine[];
   status: CopilotRunStatus;
   intent?: CopilotIntent;
   job_id?: string;

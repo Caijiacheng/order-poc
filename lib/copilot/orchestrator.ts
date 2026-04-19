@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { generateText, Output } from "ai";
 
+import { extractCopilotImageLines } from "@/lib/ai/ocr-service";
 import { getLlmFactory } from "@/lib/ai/model-factory";
 import { addCartItem, getCartBySession, patchCartItem, setCartCustomer } from "@/lib/cart/service";
 import {
@@ -12,6 +13,7 @@ import { excludeProductsByKeywords, matchProductsByKeywords } from "@/lib/copilo
 import {
   copilotIntentSchema,
   copilotSelectBestComboSchema,
+  type CopilotImageExtractOutput,
   type CopilotSummarizeResultOutput,
   copilotSummarizeResultSchema,
 } from "@/lib/copilot/schemas";
@@ -20,6 +22,10 @@ import type {
   CopilotCampaignState,
   CopilotDraft,
   CopilotDraftItem,
+  CopilotImageExtractLine,
+  CopilotImageExtractSummary,
+  CopilotImageInput,
+  CopilotInputMode,
   CopilotIntent,
   CopilotJob,
   CopilotLegalCombo,
@@ -43,6 +49,7 @@ type AutofillInput = {
   session_id: string;
   customer_id: string;
   user_message: string;
+  images?: CopilotImageInput[];
   page_name?: "/purchase" | "/order-submit";
 };
 
@@ -162,6 +169,8 @@ function createRun(input: {
   customer_id: string;
   page_name: CopilotRun["page_name"];
   user_message: string;
+  input_mode: CopilotInputMode;
+  image_count: number;
 }) {
   const timestamp = nowIso();
   const run: CopilotRun = {
@@ -173,6 +182,13 @@ function createRun(input: {
     customer_id: input.customer_id,
     page_name: input.page_name,
     user_message: input.user_message,
+    input_mode: input.input_mode,
+    image_count: input.image_count,
+    image_parsed_line_count: 0,
+    image_matched_line_count: 0,
+    image_pending_confirm_line_count: 0,
+    image_unmatched_line_count: 0,
+    image_low_confidence_line_count: 0,
     status: "running",
     cart_write_succeeded: false,
     reached_checkout: false,
@@ -305,6 +321,239 @@ function pickPrimaryCampaign(campaigns: CampaignEntity[]) {
 
 function buildProductMap(products: ProductEntity[]) {
   return new Map(products.map((item) => [item.sku_id, item]));
+}
+
+function resolveInputMode(input: { message: string; images: CopilotImageInput[] }): CopilotInputMode {
+  const hasText = input.message.trim().length > 0;
+  const hasImages = input.images.length > 0;
+  if (hasText && hasImages) {
+    return "mixed";
+  }
+  if (hasImages) {
+    return "image";
+  }
+  return "text";
+}
+
+function normalizeSearchToken(value: string) {
+  return value.toLowerCase().replace(/\s+/g, "").trim();
+}
+
+function getProductMatchTokens(product: ProductEntity) {
+  const values = [
+    product.sku_name,
+    product.sku_id,
+    ...(product.alias_names ?? []),
+    ...(product.search_terms ?? []),
+  ];
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizeSearchToken(value))
+        .filter((value) => value.length >= 2),
+    ),
+  );
+}
+
+function matchOcrLineToProduct(lineText: string, products: ProductEntity[]) {
+  const normalizedLine = normalizeSearchToken(lineText);
+  if (!normalizedLine) {
+    return {
+      status: "unmatched" as const,
+      reason: "line_text_empty",
+    };
+  }
+
+  let bestScore = 0;
+  let bestCandidates: ProductEntity[] = [];
+
+  for (const product of products) {
+    const tokens = getProductMatchTokens(product);
+    let productScore = 0;
+    for (const token of tokens) {
+      if (normalizedLine.includes(token) || token.includes(normalizedLine)) {
+        productScore = Math.max(productScore, Math.min(token.length, normalizedLine.length));
+      }
+    }
+
+    if (productScore <= 0) {
+      continue;
+    }
+    if (productScore > bestScore) {
+      bestScore = productScore;
+      bestCandidates = [product];
+      continue;
+    }
+    if (productScore === bestScore) {
+      bestCandidates.push(product);
+    }
+  }
+
+  if (bestCandidates.length === 0) {
+    return {
+      status: "unmatched" as const,
+      reason: "sku_not_found",
+    };
+  }
+
+  if (bestCandidates.length > 1) {
+    return {
+      status: "pending_confirm" as const,
+      reason: "sku_ambiguous",
+    };
+  }
+
+  return {
+    status: "matched" as const,
+    product: bestCandidates[0],
+  };
+}
+
+function summarizeImageExtract(input: {
+  raw: CopilotImageExtractOutput;
+  products: ProductEntity[];
+}): { lines: CopilotImageExtractLine[]; summary: CopilotImageExtractSummary } {
+  const normalizedLines: CopilotImageExtractLine[] = input.raw.lines.map((line, index) => {
+    const confidence = line.confidence;
+    const match = matchOcrLineToProduct(line.original_text, input.products);
+
+    if (confidence === "low") {
+      return {
+        line_id: line.line_id || `line_${index + 1}`,
+        original_text: line.original_text,
+        qty_hint: line.qty_hint,
+        confidence,
+        match_status: "pending_confirm",
+        pending_reason: "low_confidence",
+      };
+    }
+
+    if (match.status === "matched") {
+      return {
+        line_id: line.line_id || `line_${index + 1}`,
+        original_text: line.original_text,
+        qty_hint: line.qty_hint,
+        confidence,
+        match_status: "matched",
+        matched_sku_id: match.product.sku_id,
+        matched_sku_name: match.product.sku_name,
+      };
+    }
+
+    if (match.status === "pending_confirm") {
+      return {
+        line_id: line.line_id || `line_${index + 1}`,
+        original_text: line.original_text,
+        qty_hint: line.qty_hint,
+        confidence,
+        match_status: "pending_confirm",
+        pending_reason: match.reason,
+      };
+    }
+
+    return {
+      line_id: line.line_id || `line_${index + 1}`,
+      original_text: line.original_text,
+      qty_hint: line.qty_hint,
+      confidence,
+      match_status: "unmatched",
+      pending_reason: match.reason,
+    };
+  });
+
+  const parsedLineCount = normalizedLines.length;
+  const matchedLineCount = normalizedLines.filter((line) => line.match_status === "matched").length;
+  const pendingConfirmLineCount = normalizedLines.filter(
+    (line) => line.match_status === "pending_confirm",
+  ).length;
+  const unmatchedLineCount = normalizedLines.filter((line) => line.match_status === "unmatched").length;
+  const lowConfidenceLineCount = normalizedLines.filter((line) => line.confidence === "low").length;
+
+  let blockedReason: string | undefined;
+  if (parsedLineCount === 0) {
+    blockedReason = "image_extract_empty";
+  } else if (lowConfidenceLineCount > 0) {
+    blockedReason = "image_low_confidence";
+  } else if (unmatchedLineCount > 0 || matchedLineCount === 0) {
+    blockedReason = "image_unmatched_items";
+  } else if (pendingConfirmLineCount > 0) {
+    blockedReason = "image_pending_confirmation";
+  }
+
+  const summaryText =
+    parsedLineCount === 0
+      ? "未从图片识别到可用采购条目，请补充更清晰图片或改用文字输入。"
+      : [
+          `已识别 ${parsedLineCount} 行条目`,
+          `匹配 ${matchedLineCount} 行`,
+          `待确认 ${pendingConfirmLineCount} 行`,
+          `未匹配 ${unmatchedLineCount} 行`,
+        ].join("，");
+
+  return {
+    lines: normalizedLines,
+    summary: {
+      parsed_line_count: parsedLineCount,
+      matched_line_count: matchedLineCount,
+      pending_confirm_line_count: pendingConfirmLineCount,
+      unmatched_line_count: unmatchedLineCount,
+      low_confidence_line_count: lowConfidenceLineCount,
+      summary_text: summaryText,
+      blocked_reason: blockedReason,
+    },
+  };
+}
+
+async function extractImageWithFallback(input: {
+  images: CopilotImageInput[];
+  customerId: string;
+  traceId?: string;
+}) {
+  try {
+    const result = await extractCopilotImageLines(input);
+    return {
+      ...result,
+      blocked_reason: undefined as string | undefined,
+      blocked_summary: undefined as string | undefined,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "图片识别失败，请稍后重试或改用文字输入。";
+    return {
+      output: { lines: [] },
+      meta: {
+        model_name: "ocr-unavailable",
+        model_latency_ms: 0,
+      },
+      blocked_reason: "image_extract_failed",
+      blocked_summary: `图片识别失败：${message}`,
+    };
+  }
+}
+
+function buildIntentMessage(input: {
+  userMessage: string;
+  imageSummary?: CopilotImageExtractSummary;
+  imageLines?: CopilotImageExtractLine[];
+}) {
+  const text = input.userMessage.trim();
+  const summary = input.imageSummary?.summary_text;
+  const matchedLines = (input.imageLines ?? [])
+    .filter((line) => line.match_status === "matched")
+    .slice(0, 8)
+    .map((line) =>
+      `${line.matched_sku_name ?? line.original_text}${line.qty_hint ? ` x${line.qty_hint}` : ""}`,
+    );
+
+  const sections = [text];
+  if (summary) {
+    sections.push(`图片识别摘要：${summary}`);
+  }
+  if (matchedLines.length > 0) {
+    sections.push(`图片匹配条目：${matchedLines.join("；")}`);
+  }
+
+  return sections.filter((value) => value.trim().length > 0).join("\n");
 }
 
 function detectCampaignState(input: {
@@ -945,6 +1194,11 @@ async function runCopilotStep<T>(input: {
 
 export async function runCopilotAutofill(input: AutofillInput) {
   const startedAt = Date.now();
+  const images = input.images ?? [];
+  const inputMode = resolveInputMode({
+    message: input.user_message,
+    images,
+  });
   const run = createRun({
     run_type: "autofill_order",
     top_level_trace_name: "copilot.autofill-order",
@@ -952,6 +1206,8 @@ export async function runCopilotAutofill(input: AutofillInput) {
     customer_id: input.customer_id,
     page_name: input.page_name ?? "/purchase",
     user_message: input.user_message,
+    input_mode: inputMode,
+    image_count: images.length,
   });
   const job = createJob({ run_id: run.run_id });
   updateRun(run.run_id, (item) => {
@@ -977,6 +1233,8 @@ export async function runCopilotAutofill(input: AutofillInput) {
       "session.id": input.session_id,
       "copilot.run_id": run.run_id,
       "copilot.job_id": job.job_id,
+      "copilot.input_mode": inputMode,
+      "copilot.image_count": images.length,
     },
     async (traceId) => {
       updateRun(run.run_id, (item) => {
@@ -989,6 +1247,7 @@ export async function runCopilotAutofill(input: AutofillInput) {
       let stepOrder = 0;
       let totalModelLatency = 0;
       let currentIntent: CopilotIntent = extractHeuristicIntent(input.user_message);
+      let intentMessage = input.user_message;
       let campaignState: CopilotCampaignState = {
         campaign_id: null,
         campaign_name: null,
@@ -997,6 +1256,8 @@ export async function runCopilotAutofill(input: AutofillInput) {
         gap_amount: 0,
         is_hit: false,
       };
+      let imageExtractSummary: CopilotImageExtractSummary | undefined;
+      let imageExtractLines: CopilotImageExtractLine[] = [];
       let selectedCombo: CopilotLegalCombo | undefined;
       let draft: CopilotDraft | undefined;
 
@@ -1028,25 +1289,48 @@ export async function runCopilotAutofill(input: AutofillInput) {
           }),
         });
 
-        const parsedIntent = await runCopilotStep({
-          run_id: run.run_id,
-          job_id: job.job_id,
-          trace_id: traceId,
-          step_name: "parse_intent",
-          step_order: ++stepOrder,
-          action: async () =>
-            parseIntentWithModel({
-              message: input.user_message,
-              dealer: context.dealer,
-              traceId,
+        if (images.length > 0) {
+          const imageExtract = await runCopilotStep({
+            run_id: run.run_id,
+            job_id: job.job_id,
+            trace_id: traceId,
+            step_name: "image_extract",
+            step_order: ++stepOrder,
+            action: async () =>
+              extractImageWithFallback({
+                images,
+                customerId: input.customer_id,
+                traceId,
+              }),
+            onSuccessPayload: (result) => ({
+              model_name: result.meta.model_name,
+              line_count: result.output.lines.length,
+              blocked_reason: result.blocked_reason ?? null,
             }),
-          onSuccessPayload: (result) => ({
-            intent_type: result.intent.intent_type,
-            risk_mode: result.intent.risk_mode,
-          }),
-        });
-        currentIntent = parsedIntent.intent;
-        totalModelLatency += parsedIntent.meta.model_latency_ms;
+            resolveStatus: (result) => (result.blocked_reason ? "blocked" : "completed"),
+          });
+          totalModelLatency += imageExtract.meta.model_latency_ms;
+          const imageExtractResult = summarizeImageExtract({
+            raw: imageExtract.output,
+            products: context.products,
+          });
+          if (imageExtract.blocked_reason) {
+            imageExtractResult.summary.blocked_reason = imageExtract.blocked_reason;
+            imageExtractResult.summary.summary_text =
+              imageExtract.blocked_summary ?? imageExtractResult.summary.summary_text;
+          }
+          imageExtractLines = imageExtractResult.lines;
+          imageExtractSummary = imageExtractResult.summary;
+
+          run.image_parsed_line_count = imageExtractSummary.parsed_line_count;
+          run.image_matched_line_count = imageExtractSummary.matched_line_count;
+          run.image_pending_confirm_line_count = imageExtractSummary.pending_confirm_line_count;
+          run.image_unmatched_line_count = imageExtractSummary.unmatched_line_count;
+          run.image_low_confidence_line_count = imageExtractSummary.low_confidence_line_count;
+          run.image_extract_summary_text = imageExtractSummary.summary_text;
+          run.image_extract_blocked_reason = imageExtractSummary.blocked_reason;
+          run.image_extract_lines = imageExtractLines;
+        }
 
         campaignState = await runCopilotStep({
           run_id: run.run_id,
@@ -1069,6 +1353,109 @@ export async function runCopilotAutofill(input: AutofillInput) {
             is_hit: result.is_hit,
           }),
         });
+
+        if (imageExtractSummary?.blocked_reason) {
+          const blockedImageSummary = imageExtractSummary;
+          draft = await runCopilotStep({
+            run_id: run.run_id,
+            job_id: job.job_id,
+            trace_id: traceId,
+            step_name: "apply_draft",
+            step_order: ++stepOrder,
+            action: async () =>
+              createDraft({
+                run_id: run.run_id,
+                job_id: job.job_id,
+                trace_id: traceId,
+                session_id: input.session_id,
+                customer_id: input.customer_id,
+                status: "blocked",
+                blocked_reason: blockedImageSummary.blocked_reason ?? "image_extract_blocked",
+                items: [],
+                campaign_state: campaignState,
+                cart_amount_before: context.cart.summary.total_amount,
+                cart_amount_after_preview: context.cart.summary.total_amount,
+                should_go_checkout: false,
+                summary_text: blockedImageSummary.summary_text,
+              }),
+            onSuccessPayload: (result) => ({
+              draft_id: result.draft_id,
+              status: result.status,
+            }),
+            resolveStatus: () => "blocked",
+          });
+
+          if (!draft) {
+            throw new BusinessError("INTERNAL_ERROR", "Copilot 草案创建失败", 500);
+          }
+
+          job.draft_id = draft.draft_id;
+          job.status = "blocked";
+          job.blocked_reason = draft.blocked_reason;
+          job.finished_at = nowIso();
+          job.updated_at = nowIso();
+
+          run.status = "blocked";
+          run.intent = currentIntent;
+          run.campaign_hit = campaignState.is_hit;
+          run.campaign_gap_amount = campaignState.gap_amount;
+          run.model_name = getLlmFactory().modelName;
+          run.model_latency_ms = totalModelLatency;
+          run.total_latency_ms = Date.now() - startedAt;
+          run.blocked_reason = draft.blocked_reason;
+          run.finished_at = nowIso();
+          run.updated_at = nowIso();
+
+          recordCopilotMetricEvent({
+            run_id: run.run_id,
+            job_id: job.job_id,
+            customer_id: input.customer_id,
+            event_type: "copilot_run_completed",
+            latency_ms: run.total_latency_ms,
+            payload: { status: run.status },
+          });
+
+          return {
+            run,
+            job,
+            draft,
+            steps: listStepsForRun(run.run_id),
+            summary: {
+              summary: blockedImageSummary.summary_text,
+              should_go_checkout: false,
+              key_points: [
+                "图片识别存在阻塞项，需人工确认后再做单。",
+                `阻塞原因：${blockedImageSummary.blocked_reason}`,
+              ],
+            },
+          };
+        }
+
+        intentMessage = buildIntentMessage({
+          userMessage: input.user_message,
+          imageSummary: imageExtractSummary,
+          imageLines: imageExtractLines,
+        });
+
+        const parsedIntent = await runCopilotStep({
+          run_id: run.run_id,
+          job_id: job.job_id,
+          trace_id: traceId,
+          step_name: "parse_intent",
+          step_order: ++stepOrder,
+          action: async () =>
+            parseIntentWithModel({
+              message: intentMessage,
+              dealer: context.dealer,
+              traceId,
+            }),
+          onSuccessPayload: (result) => ({
+            intent_type: result.intent.intent_type,
+            risk_mode: result.intent.risk_mode,
+          }),
+        });
+        currentIntent = parsedIntent.intent;
+        totalModelLatency += parsedIntent.meta.model_latency_ms;
 
         if (campaignState.gap_amount > 0) {
           recordCopilotMetricEvent({
@@ -1205,7 +1592,7 @@ export async function runCopilotAutofill(input: AutofillInput) {
           step_order: ++stepOrder,
           action: async () =>
             summarizeResultWithModel({
-              userMessage: input.user_message,
+              userMessage: intentMessage,
               intent: currentIntent,
               campaignState: activeDraft.campaign_state,
               selectedCombo,
@@ -1303,6 +1690,11 @@ export async function runCopilotAutofill(input: AutofillInput) {
 
 export async function runCopilotChat(input: ChatInput) {
   const startedAt = Date.now();
+  const images = input.images ?? [];
+  const inputMode = resolveInputMode({
+    message: input.user_message,
+    images,
+  });
   const run = createRun({
     run_type: "explain_order",
     top_level_trace_name: "copilot.explain-order",
@@ -1310,6 +1702,8 @@ export async function runCopilotChat(input: ChatInput) {
     customer_id: input.customer_id,
     page_name: input.page_name ?? "/purchase",
     user_message: input.user_message,
+    input_mode: inputMode,
+    image_count: images.length,
   });
 
   recordCopilotMetricEvent({
@@ -1324,11 +1718,16 @@ export async function runCopilotChat(input: ChatInput) {
       "customer.id": input.customer_id,
       "session.id": input.session_id,
       "copilot.run_id": run.run_id,
+      "copilot.input_mode": inputMode,
+      "copilot.image_count": images.length,
     },
     async (traceId) => {
       run.trace_id = traceId;
       let stepOrder = 0;
       let totalModelLatency = 0;
+      let intentMessage = input.user_message;
+      let imageExtractSummary: CopilotImageExtractSummary | undefined;
+      let imageExtractLines: CopilotImageExtractLine[] = [];
 
       try {
         const context = await runCopilotStep({
@@ -1351,19 +1750,47 @@ export async function runCopilotChat(input: ChatInput) {
           },
         });
 
-        const parsedIntent = await runCopilotStep({
-          run_id: run.run_id,
-          trace_id: traceId,
-          step_name: "parse_intent",
-          step_order: ++stepOrder,
-          action: async () =>
-            parseIntentWithModel({
-              message: input.user_message,
-              dealer: context.dealer,
-              traceId,
+        if (images.length > 0) {
+          const imageExtract = await runCopilotStep({
+            run_id: run.run_id,
+            trace_id: traceId,
+            step_name: "image_extract",
+            step_order: ++stepOrder,
+            action: async () =>
+              extractImageWithFallback({
+                images,
+                customerId: input.customer_id,
+                traceId,
+              }),
+            onSuccessPayload: (result) => ({
+              model_name: result.meta.model_name,
+              line_count: result.output.lines.length,
+              blocked_reason: result.blocked_reason ?? null,
             }),
-        });
-        totalModelLatency += parsedIntent.meta.model_latency_ms;
+            resolveStatus: (result) => (result.blocked_reason ? "blocked" : "completed"),
+          });
+          totalModelLatency += imageExtract.meta.model_latency_ms;
+          const imageExtractResult = summarizeImageExtract({
+            raw: imageExtract.output,
+            products: context.products,
+          });
+          if (imageExtract.blocked_reason) {
+            imageExtractResult.summary.blocked_reason = imageExtract.blocked_reason;
+            imageExtractResult.summary.summary_text =
+              imageExtract.blocked_summary ?? imageExtractResult.summary.summary_text;
+          }
+          imageExtractLines = imageExtractResult.lines;
+          imageExtractSummary = imageExtractResult.summary;
+
+          run.image_parsed_line_count = imageExtractSummary.parsed_line_count;
+          run.image_matched_line_count = imageExtractSummary.matched_line_count;
+          run.image_pending_confirm_line_count = imageExtractSummary.pending_confirm_line_count;
+          run.image_unmatched_line_count = imageExtractSummary.unmatched_line_count;
+          run.image_low_confidence_line_count = imageExtractSummary.low_confidence_line_count;
+          run.image_extract_summary_text = imageExtractSummary.summary_text;
+          run.image_extract_blocked_reason = imageExtractSummary.blocked_reason;
+          run.image_extract_lines = imageExtractLines;
+        }
 
         const campaignState = await runCopilotStep({
           run_id: run.run_id,
@@ -1381,6 +1808,64 @@ export async function runCopilotChat(input: ChatInput) {
             }),
         });
 
+        if (imageExtractSummary?.blocked_reason) {
+          const blockedIntent = extractHeuristicIntent(input.user_message);
+          run.status = "blocked";
+          run.intent = blockedIntent;
+          run.campaign_hit = campaignState.is_hit;
+          run.campaign_gap_amount = campaignState.gap_amount;
+          run.model_name = getLlmFactory().modelName;
+          run.model_latency_ms = totalModelLatency;
+          run.total_latency_ms = Date.now() - startedAt;
+          run.blocked_reason = imageExtractSummary.blocked_reason;
+          run.finished_at = nowIso();
+          run.updated_at = nowIso();
+
+          recordCopilotMetricEvent({
+            run_id: run.run_id,
+            customer_id: input.customer_id,
+            event_type: "copilot_run_completed",
+            latency_ms: run.total_latency_ms,
+            payload: { status: "blocked" },
+          });
+
+          const blockedSummary = {
+            summary: imageExtractSummary.summary_text,
+            should_go_checkout: false,
+            key_points: [
+              "图片识别存在阻塞项，需人工确认后再继续。",
+              `阻塞原因：${imageExtractSummary.blocked_reason}`,
+            ],
+          };
+
+          return {
+            run,
+            reply: blockedSummary.summary,
+            summary: blockedSummary,
+            steps: listStepsForRun(run.run_id),
+          };
+        }
+
+        intentMessage = buildIntentMessage({
+          userMessage: input.user_message,
+          imageSummary: imageExtractSummary,
+          imageLines: imageExtractLines,
+        });
+
+        const parsedIntent = await runCopilotStep({
+          run_id: run.run_id,
+          trace_id: traceId,
+          step_name: "parse_intent",
+          step_order: ++stepOrder,
+          action: async () =>
+            parseIntentWithModel({
+              message: intentMessage,
+              dealer: context.dealer,
+              traceId,
+            }),
+        });
+        totalModelLatency += parsedIntent.meta.model_latency_ms;
+
         const summary = await runCopilotStep({
           run_id: run.run_id,
           trace_id: traceId,
@@ -1388,7 +1873,7 @@ export async function runCopilotChat(input: ChatInput) {
           step_order: ++stepOrder,
           action: async () =>
             summarizeResultWithModel({
-              userMessage: input.user_message,
+              userMessage: intentMessage,
               intent: parsedIntent.intent,
               campaignState,
               traceId,

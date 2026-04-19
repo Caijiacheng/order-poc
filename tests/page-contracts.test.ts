@@ -81,6 +81,43 @@ describe("frontstage canonical source contract", () => {
     expect(orderSubmitSource).not.toMatch(/一键应用全部/);
   });
 
+  it("locks AI assistant wording and purchase/order-submit copilot interaction contract", () => {
+    const purchaseCopilotSource = readSource(
+      "components/frontstage/copilot/purchase-copilot-panel.tsx",
+    );
+    expect(purchaseCopilotSource).toMatch(/打开 AI 下单助手/);
+    expect(purchaseCopilotSource).toMatch(/查看模板/);
+    expect(purchaseCopilotSource).toMatch(/查看活动/);
+    expect(purchaseCopilotSource).toMatch(/一键做单/);
+    expect(purchaseCopilotSource).toMatch(/活动补齐/);
+    expect(purchaseCopilotSource).toMatch(/解释这单/);
+    expect(purchaseCopilotSource).toMatch(/上传图片/);
+    expect(purchaseCopilotSource).toMatch(/粘贴截图/);
+    expect(purchaseCopilotSource).toMatch(/查看识别内容/);
+    expect(purchaseCopilotSource).toMatch(/停止/);
+    expect(purchaseCopilotSource).toMatch(/发送/);
+    expect(purchaseCopilotSource).toMatch(/加入采购清单/);
+    expect(purchaseCopilotSource).toMatch(/继续调整/);
+    expect(purchaseCopilotSource).toMatch(/去结算/);
+    expect(purchaseCopilotSource).not.toMatch(/打开 Copilot 助手/);
+    expect(purchaseCopilotSource).not.toMatch(/AutofillProgressCard/);
+    expect(purchaseCopilotSource).not.toMatch(/AutofillResultCard/);
+
+    const orderSubmitCopilotSource = readSource(
+      "components/frontstage/copilot/order-submit-copilot-panel.tsx",
+    );
+    expect(orderSubmitCopilotSource).toMatch(/打开 AI 下单助手/);
+    expect(orderSubmitCopilotSource).toMatch(/解释当前优化/);
+    expect(orderSubmitCopilotSource).toMatch(/继续安全补齐/);
+    expect(orderSubmitCopilotSource).toMatch(/去提交/);
+    expect(orderSubmitCopilotSource).not.toMatch(/上传图片/);
+    expect(orderSubmitCopilotSource).not.toMatch(/粘贴截图/);
+    expect(orderSubmitCopilotSource).not.toMatch(/查看识别内容/);
+    expect(orderSubmitCopilotSource).not.toMatch(/图片预览/);
+    expect(orderSubmitCopilotSource).not.toMatch(/AutofillProgressCard/);
+    expect(orderSubmitCopilotSource).not.toMatch(/AutofillResultCard/);
+  });
+
 });
 
 describe("admin canonical source contract", () => {
@@ -184,6 +221,32 @@ describe("admin canonical migration source contract", () => {
     expect(analyticsOverviewSource).toMatch(/\/api\/admin\/recommendation-batches/);
     expect(analyticsOverviewSource).toMatch(/\/api\/admin\/recommendation-records/);
     expect(analyticsOverviewSource).not.toMatch(/\/api\/admin\/reports\//);
+  });
+
+  it("locks admin AI assistant wording and input-mode filters", () => {
+    const analyticsOverviewSource = readSource("app/admin/analytics/overview/page.tsx");
+    expect(analyticsOverviewSource).toMatch(/AI 下单助手核心指标（最小集）/);
+    expect(analyticsOverviewSource).toMatch(/AI 助手触发次数/);
+    expect(analyticsOverviewSource).toMatch(/一键做单发起数/);
+    expect(analyticsOverviewSource).not.toMatch(/Copilot 核心指标（最小集）/);
+
+    const recordsSource = readSource("app/admin/analytics/recommendation-records/page.tsx");
+    expect(recordsSource).toMatch(/AI 下单助手运行视角/);
+    expect(recordsSource).toMatch(/刷新 AI 助手视图/);
+    expect(recordsSource).toMatch(/inputMode:\s*nextFilter\.inputMode === "all" \? "" : nextFilter\.inputMode/);
+    expect(recordsSource).not.toMatch(/Copilot 运行视角/);
+    expect(recordsSource).not.toMatch(/刷新 Copilot 视图/);
+
+    const tracesSource = readSource("app/admin/observability/traces/page.tsx");
+    expect(tracesSource).toMatch(/AI 下单助手链路/);
+    expect(tracesSource).toMatch(/刷新 AI 助手/);
+    expect(tracesSource).toMatch(/inputMode:\s*copilotInputModeFilter === "all" \? "" : copilotInputModeFilter/);
+    expect(tracesSource).not.toMatch(/Copilot 链路/);
+    expect(tracesSource).not.toMatch(/刷新 Copilot/);
+
+    const copilotOverviewRouteSource = readSource("app/api/admin/copilot/overview/route.ts");
+    expect(copilotOverviewRouteSource).toMatch(/const inputMode = searchParams\.get\("inputMode"\) \?\? ""/);
+    expect(copilotOverviewRouteSource).toMatch(/run\.input_mode === inputMode/);
   });
 
   it("ensures migrated admin pages are not CanonicalRouteShell placeholders", () => {

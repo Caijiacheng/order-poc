@@ -362,12 +362,12 @@ export default function AnalyticsOverviewPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Copilot 核心指标（最小集）</CardTitle>
+          <CardTitle className="text-lg">AI 下单助手核心指标（最小集）</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm text-slate-500">Copilot 使用次数</p>
+              <p className="text-sm text-slate-500">AI 助手触发次数</p>
               <p className="kpi-value mt-1 text-xl">{copilotData.metrics.copilot_usage_count}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -377,13 +377,13 @@ export default function AnalyticsOverviewPage() {
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm text-slate-500">预览成功率</p>
+              <p className="text-sm text-slate-500">采购预览生成成功率</p>
               <p className="kpi-value mt-1 text-xl">
                 {formatRate(copilotData.metrics.copilot_preview_success_rate)}
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm text-slate-500">应用成功率</p>
+              <p className="text-sm text-slate-500">加入采购清单成功率</p>
               <p className="kpi-value mt-1 text-xl">
                 {formatRate(copilotData.metrics.copilot_apply_to_cart_success_rate)}
               </p>
@@ -407,12 +407,12 @@ export default function AnalyticsOverviewPage() {
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm text-slate-500">Copilot 运行数</p>
+              <p className="text-sm text-slate-500">AI 助手运行数</p>
               <p className="kpi-value mt-1 text-xl">{copilotData.total}</p>
             </div>
           </section>
           <p className="text-xs text-slate-500">
-            指标来自内存态 Copilot 事件汇总，用于当前 POC 运行监控与演示复盘。
+            指标来自内存态 Copilot 事件汇总，用于当前 POC 的采购预览监控与演示复盘。
           </p>
         </CardContent>
       </Card>

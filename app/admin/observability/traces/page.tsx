@@ -30,7 +30,12 @@ import {
 import { buildLangfuseTraceUrl } from "@/lib/frontstage/api";
 import { requestJsonWithMeta } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
-import type { CopilotDraft, CopilotJob, CopilotRun } from "@/lib/copilot/types";
+import type {
+  CopilotDraft,
+  CopilotInputMode,
+  CopilotJob,
+  CopilotRun,
+} from "@/lib/copilot/types";
 import type { RecommendationItemRecord, RecommendationRunRecord } from "@/lib/memory/types";
 
 type TraceDetail = {
@@ -101,6 +106,12 @@ const COPILOT_STATUS_LABELS: Record<string, string> = {
   failed: "失败",
 };
 
+const COPILOT_INPUT_MODE_LABELS: Record<CopilotInputMode, string> = {
+  text: "文字",
+  image: "图片",
+  mixed: "混合",
+};
+
 function toSearchParams(query: QueryState) {
   const params = new URLSearchParams({
     page: String(query.page),
@@ -143,6 +154,9 @@ export default function TraceObservabilityPage() {
   const [copilotStatusFilter, setCopilotStatusFilter] = useState<
     "all" | "running" | "succeeded" | "blocked" | "failed"
   >("all");
+  const [copilotInputModeFilter, setCopilotInputModeFilter] = useState<"all" | CopilotInputMode>(
+    "all",
+  );
   const [loadingCopilot, setLoadingCopilot] = useState(false);
   const [langfuseBaseUrl, setLangfuseBaseUrl] = useState("");
   const [loading, setLoading] = useState(true);
@@ -202,6 +216,7 @@ export default function TraceObservabilityPage() {
           dateTo: nextQuery.dateTo ? new Date(nextQuery.dateTo).toISOString() : "",
           pageName: copilotPageFilter === "all" ? "" : copilotPageFilter,
           status: copilotStatusFilter === "all" ? "" : copilotStatusFilter,
+          inputMode: copilotInputModeFilter === "all" ? "" : copilotInputModeFilter,
         }).toString()}`,
       );
       setCopilotRows(result.data.rows);
@@ -538,8 +553,8 @@ export default function TraceObservabilityPage() {
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <CardHeader className="space-y-3">
-            <CardTitle className="text-lg">Copilot 链路</CardTitle>
-            <div className="grid gap-2 md:grid-cols-3">
+            <CardTitle className="text-lg">AI 下单助手链路</CardTitle>
+            <div className="grid gap-2 md:grid-cols-4">
               <Select
                 value={copilotPageFilter}
                 onValueChange={(value) =>
@@ -572,13 +587,29 @@ export default function TraceObservabilityPage() {
                   <SelectItem value="failed">失败</SelectItem>
                 </SelectContent>
               </Select>
+              <Select
+                value={copilotInputModeFilter}
+                onValueChange={(value) =>
+                  setCopilotInputModeFilter(value as typeof copilotInputModeFilter)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部输入方式</SelectItem>
+                  <SelectItem value="text">文字</SelectItem>
+                  <SelectItem value="image">图片</SelectItem>
+                  <SelectItem value="mixed">混合</SelectItem>
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 onClick={() => void loadCopilotTraces(query)}
                 disabled={loadingCopilot}
               >
                 {loadingCopilot ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Filter className="h-4 w-4" />}
-                刷新 Copilot
+                刷新 AI 助手
               </Button>
             </div>
           </CardHeader>
@@ -590,6 +621,7 @@ export default function TraceObservabilityPage() {
                   <TableHead>Run</TableHead>
                   <TableHead>页面</TableHead>
                   <TableHead>类型</TableHead>
+                  <TableHead>输入</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">Langfuse</TableHead>
                 </TableRow>
@@ -597,14 +629,14 @@ export default function TraceObservabilityPage() {
               <TableBody>
                 {loadingCopilot ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-slate-500">
+                    <TableCell colSpan={7} className="text-center text-slate-500">
                       加载中...
                     </TableCell>
                   </TableRow>
                 ) : copilotRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-slate-500">
-                      暂无 Copilot 链路
+                    <TableCell colSpan={7} className="text-center text-slate-500">
+                      暂无 AI 助手链路
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -622,6 +654,11 @@ export default function TraceObservabilityPage() {
                         <TableCell className="font-mono text-xs">{row.run.run_id}</TableCell>
                         <TableCell>{row.run.page_name}</TableCell>
                         <TableCell className="font-mono text-xs">{row.run.run_type}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {COPILOT_INPUT_MODE_LABELS[row.run.input_mode] ?? row.run.input_mode}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline">
                             {COPILOT_STATUS_LABELS[row.run.status] ?? row.run.status}
@@ -654,11 +691,11 @@ export default function TraceObservabilityPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Copilot 链路详情</CardTitle>
+            <CardTitle className="text-lg">AI 下单助手链路详情</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {!copilotDetail ? (
-              <p className="text-sm text-slate-500">点击左侧 Copilot 链路查看详情。</p>
+              <p className="text-sm text-slate-500">点击左侧 AI 助手链路查看详情。</p>
             ) : (
               <>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -673,11 +710,20 @@ export default function TraceObservabilityPage() {
                     customer={copilotDetail.run.customer_id} · session={copilotDetail.run.session_id}
                   </p>
                   <p className="text-xs text-slate-500">
+                    输入方式：{COPILOT_INPUT_MODE_LABELS[copilotDetail.run.input_mode] ?? copilotDetail.run.input_mode} ·
+                    图片数={copilotDetail.run.image_count}
+                  </p>
+                  <p className="text-xs text-slate-500">
                     trace={copilotDetail.run.trace_id ?? "暂无"} · latency={copilotDetail.run.total_latency_ms ?? 0}ms
                   </p>
                   <p className="text-xs text-slate-500">
                     job={copilotDetail.job?.status ?? "-"} · draft={copilotDetail.draft?.status ?? "-"}
                   </p>
+                  {copilotDetail.run.image_extract_summary_text ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      识别摘要：{copilotDetail.run.image_extract_summary_text}
+                    </p>
+                  ) : null}
                   {copilotDetail.run.blocked_reason ? (
                     <p className="mt-1 text-xs text-amber-700">
                       blocked_reason: {copilotDetail.run.blocked_reason}
@@ -703,7 +749,7 @@ export default function TraceObservabilityPage() {
                 </div>
               </>
             )}
-            <p className="text-xs text-slate-500">当前 Copilot 链路总数：{copilotTotal}</p>
+            <p className="text-xs text-slate-500">当前 AI 助手链路总数：{copilotTotal}</p>
           </CardContent>
         </Card>
       </section>

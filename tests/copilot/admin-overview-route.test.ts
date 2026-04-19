@@ -23,6 +23,7 @@ type CopilotOverviewPayload = {
         page_name: "/purchase" | "/order-submit";
         status: "running" | "succeeded" | "blocked" | "failed";
         run_type: "autofill_order" | "explain_order";
+        input_mode: "text" | "image" | "mixed";
         customer_id: string;
       };
       job: {
@@ -157,5 +158,75 @@ describe.sequential("copilot admin overview route", () => {
     expect(succeeded.data.metrics.copilot_preview_success_rate).toBe(1);
     expect(succeeded.data.metrics.copilot_apply_to_cart_success_rate).toBe(1);
     expect(succeeded.data.metrics.copilot_checkout_conversion_rate).toBe(1);
+  });
+
+  it("supports inputMode filter for text/image/mixed slices", async () => {
+    const image = {
+      id: "img_seed_mode_1",
+      fileName: "purchase-proof-1.png",
+      mimeType: "image/png",
+      dataUrl:
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAukB9VE3d2kAAAAASUVORK5CYII=",
+    };
+
+    const textRun = await runCopilotAutofill({
+      session_id: "sess_copilot_overview_text_mode",
+      customer_id: "dealer_xm_sm",
+      user_message: "按常购做单，预算 6000",
+      page_name: "/purchase",
+    });
+    const imageRun = await runCopilotAutofill({
+      session_id: "sess_copilot_overview_image_mode",
+      customer_id: "dealer_xm_sm",
+      user_message: "",
+      images: [image],
+      page_name: "/purchase",
+    });
+    const mixedRun = await runCopilotAutofill({
+      session_id: "sess_copilot_overview_mixed_mode",
+      customer_id: "dealer_xm_sm",
+      user_message: "参考图片补齐活动",
+      images: [image],
+      page_name: "/purchase",
+    });
+
+    const imageOnly = await fetchCopilotOverview(
+      new URLSearchParams({
+        pageName: "/purchase",
+        runType: "autofill_order",
+        inputMode: "image",
+        limit: "20",
+      }),
+    );
+    expect(imageOnly.data.total).toBeGreaterThanOrEqual(1);
+    expect(imageOnly.data.rows.length).toBeGreaterThanOrEqual(1);
+    expect(imageOnly.data.rows.every((row) => row.run.input_mode === "image")).toBe(true);
+    expect(imageOnly.data.rows.map((row) => row.run.run_id)).toContain(imageRun.run.run_id);
+
+    const mixedOnly = await fetchCopilotOverview(
+      new URLSearchParams({
+        pageName: "/purchase",
+        runType: "autofill_order",
+        inputMode: "mixed",
+        limit: "20",
+      }),
+    );
+    expect(mixedOnly.data.total).toBeGreaterThanOrEqual(1);
+    expect(mixedOnly.data.rows.length).toBeGreaterThanOrEqual(1);
+    expect(mixedOnly.data.rows.every((row) => row.run.input_mode === "mixed")).toBe(true);
+    expect(mixedOnly.data.rows.map((row) => row.run.run_id)).toContain(mixedRun.run.run_id);
+
+    const textOnly = await fetchCopilotOverview(
+      new URLSearchParams({
+        pageName: "/purchase",
+        runType: "autofill_order",
+        inputMode: "text",
+        limit: "20",
+      }),
+    );
+    expect(textOnly.data.total).toBeGreaterThanOrEqual(1);
+    expect(textOnly.data.rows.length).toBeGreaterThanOrEqual(1);
+    expect(textOnly.data.rows.every((row) => row.run.input_mode === "text")).toBe(true);
+    expect(textOnly.data.rows.map((row) => row.run.run_id)).toContain(textRun.run.run_id);
   });
 });

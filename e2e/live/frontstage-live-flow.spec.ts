@@ -583,14 +583,14 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
   );
   const cartBeforePreviewCount = cartBeforePreviewPayload.data.items.length;
 
-  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
+  await page.getByRole("button", { name: "打开 AI 下单助手" }).click();
   await expect(page.getByRole("button", { name: "一键做单" })).toBeVisible({
     timeout: 90_000,
   });
   await expect(page.getByRole("button", { name: "活动补齐" })).toBeVisible();
   await expect(page.getByRole("button", { name: "解释这单" })).toBeVisible();
   await page
-    .getByPlaceholder("例如：预算 6000，优先活动，不要新品")
+    .getByPlaceholder("比如：预算 6000，优先活动，不要新品")
     .fill("按常购和活动做一单，预算控制在 6000 左右。");
 
   const purchaseAutofillResponsePromise = page.waitForResponse(
@@ -611,7 +611,7 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
 
   expect(purchaseAutofillPayload.data.run.page_name).toBe("/purchase");
   expect(purchaseAutofillPayload.data.draft.status).toBe("preview");
-  await expect(page.getByRole("button", { name: "确认应用到采购清单" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "加入采购清单" })).toBeVisible({
     timeout: 90_000,
   });
 
@@ -626,7 +626,7 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
       /\/api\/copilot\/drafts\/[^/]+\/apply/.test(response.url()),
     { timeout: 120_000 },
   );
-  await page.getByRole("button", { name: "确认应用到采购清单" }).click();
+  await page.getByRole("button", { name: "加入采购清单" }).click();
   const applyDraftPayload = await expectEnvelope<CopilotApplyDraftResponse>(
     await applyDraftResponsePromise,
   );
@@ -646,7 +646,7 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
   await expect(page).toHaveURL(/\/order-submit$/);
   await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
 
-  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
+  await page.getByRole("button", { name: "打开 AI 下单助手" }).click();
   await expect(page.getByRole("button", { name: "解释当前优化" })).toBeVisible({
     timeout: 90_000,
   });
@@ -689,9 +689,9 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
   await page.goto("/admin/observability/traces");
   await expect(page).toHaveURL(/\/admin\/observability\/traces$/);
   await expect(
-    page.locator('[data-slot="card-title"]', { hasText: /^Copilot 链路$/ }).first(),
+    page.locator('[data-slot="card-title"]', { hasText: /^AI 下单助手链路$/ }).first(),
   ).toBeVisible({ timeout: 90_000 });
-  await page.getByRole("button", { name: "刷新 Copilot" }).click();
+  await page.getByRole("button", { name: "刷新 AI 助手" }).click();
 
   const copilotRow = page.locator("tbody tr", { hasText: purchaseAutofillRunId }).first();
   await expect(copilotRow).toBeVisible({ timeout: 90_000 });
