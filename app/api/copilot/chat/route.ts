@@ -2,23 +2,69 @@ import { apiError, apiSuccess } from "@/lib/admin/api-response";
 import { assertLlmAvailable } from "@/lib/ai/model-factory";
 import { copilotChatRequestSchema } from "@/lib/copilot/schemas";
 import { runCopilotChat } from "@/lib/copilot/service";
+import type { CopilotImageInput } from "@/lib/copilot/types";
 import { SESSION_COOKIE_NAME } from "@/lib/cart/session";
 import { getOrCreateSessionId, setSessionCookie } from "@/lib/cart/session";
 import { handleBusinessRouteError } from "@/lib/domain/route-errors";
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
 import { randomUUID } from "node:crypto";
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeImageInput(raw: unknown, index: number): CopilotImageInput | null {
+  const record = asRecord(raw);
+  if (!record) {
+    return null;
+  }
+
+  const id = typeof record.id === "string" && record.id.trim().length > 0 ? record.id.trim() : "";
+  const mimeType =
+    typeof record.mimeType === "string" && record.mimeType.trim().length > 0
+      ? record.mimeType.trim()
+      : typeof record.mediaType === "string" && record.mediaType.trim().length > 0
+        ? record.mediaType.trim()
+        : "";
+  const fileName =
+    typeof record.fileName === "string" && record.fileName.trim().length > 0
+      ? record.fileName.trim()
+      : typeof record.filename === "string" && record.filename.trim().length > 0
+        ? record.filename.trim()
+        : `image_${index + 1}`;
+  const dataUrl =
+    typeof record.dataUrl === "string" && record.dataUrl.startsWith("data:")
+      ? record.dataUrl
+      : typeof record.image === "string" && record.image.startsWith("data:")
+        ? record.image
+        : typeof record.url === "string" && record.url.startsWith("data:")
+          ? record.url
+          : typeof record.data === "string" && record.data.startsWith("data:")
+            ? record.data
+            : "";
+
+  if (!mimeType || !dataUrl) {
+    return null;
+  }
+
+  return {
+    id: id || `img_${index + 1}`,
+    mimeType,
+    fileName,
+    dataUrl,
+  };
+}
+
 function getUserMessageText(raw: unknown) {
   if (!Array.isArray(raw)) {
     return "";
   }
   for (let index = raw.length - 1; index >= 0; index -= 1) {
-    const item = raw[index];
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-    const message = item as Record<string, unknown>;
-    if (message.role !== "user") {
+    const message = asRecord(raw[index]);
+    if (!message || message.role !== "user") {
       continue;
     }
 
@@ -26,46 +72,57 @@ function getUserMessageText(raw: unknown) {
       return message.content.trim();
     }
 
-    if (Array.isArray(message.parts)) {
-      const text = message.parts
-        .map((part) => {
-          if (!part || typeof part !== "object") {
-            return "";
-          }
-          const current = part as Record<string, unknown>;
-          if (current.type === "text" && typeof current.text === "string") {
-            return current.text;
-          }
+    const contentParts = Array.isArray(message.parts)
+      ? message.parts
+      : Array.isArray(message.content)
+        ? message.content
+        : [];
+    const text = contentParts
+      .map((part) => {
+        const current = asRecord(part);
+        if (!current) {
           return "";
-        })
-        .join("")
-        .trim();
-      if (text) {
-        return text;
-      }
-    }
-
-    if (Array.isArray(message.content)) {
-      const text = message.content
-        .map((part) => {
-          if (!part || typeof part !== "object") {
-            return "";
-          }
-          const current = part as Record<string, unknown>;
-          if (current.type === "text" && typeof current.text === "string") {
-            return current.text;
-          }
-          return "";
-        })
-        .join("")
-        .trim();
-      if (text) {
-        return text;
-      }
+        }
+        if (current.type === "text" && typeof current.text === "string") {
+          return current.text;
+        }
+        return "";
+      })
+      .join("")
+      .trim();
+    if (text) {
+      return text;
     }
   }
 
   return "";
+}
+
+function getUserMessageImages(raw: unknown) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  for (let index = raw.length - 1; index >= 0; index -= 1) {
+    const message = asRecord(raw[index]);
+    if (!message || message.role !== "user") {
+      continue;
+    }
+
+    const contentParts = Array.isArray(message.parts)
+      ? message.parts
+      : Array.isArray(message.content)
+        ? message.content
+        : [];
+    const images = contentParts
+      .map((part, partIndex) => normalizeImageInput(part, partIndex))
+      .filter((item): item is CopilotImageInput => Boolean(item));
+    if (images.length > 0) {
+      return images;
+    }
+  }
+
+  return [];
 }
 
 function buildSessionCookieHeader(sessionId: string) {
@@ -89,10 +146,16 @@ async function handleStreamChat(rawBody: Record<string, unknown>) {
   const pageName =
     rawBody.pageName === "/order-submit" ? "/order-submit" : "/purchase";
   const message = getUserMessageText(rawBody.messages);
+  const rawImages = Array.isArray(rawBody.images) ? rawBody.images : [];
+  const imagesFromPayload = rawImages
+    .map((image, index) => normalizeImageInput(image, index))
+    .filter((item): item is CopilotImageInput => Boolean(item));
+  const imagesFromMessages = getUserMessageImages(rawBody.messages);
+  const images = imagesFromPayload.length > 0 ? imagesFromPayload : imagesFromMessages;
 
-  if (!customerId || !message) {
+  if (!customerId || (message.length === 0 && images.length === 0)) {
     return apiError("VALIDATION_ERROR", "copilot chat 参数不合法", 400, {
-      payload: !customerId ? "缺少 customerId" : "缺少用户消息",
+      payload: !customerId ? "缺少 customerId" : "message 与 images 不能同时为空",
     });
   }
 
@@ -101,6 +164,7 @@ async function handleStreamChat(rawBody: Record<string, unknown>) {
     session_id: sessionId,
     customer_id: customerId,
     user_message: message,
+    images,
     page_name: pageName,
   });
 
@@ -168,6 +232,7 @@ export async function POST(request: Request) {
       session_id: sessionId,
       customer_id: payload.data.customerId,
       user_message: payload.data.message,
+      images: payload.data.images,
       page_name: payload.data.pageName,
     });
     const response = apiSuccess(result, {

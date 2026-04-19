@@ -1114,6 +1114,7 @@ export default function PurchasePage() {
         customerName={currentDealer?.customer_name}
         cartSummary={displaySummary}
         activityHighlights={activityHighlights}
+        templateCount={bundleTemplates.length}
         onCartReload={reloadCart}
         onApplySuccess={() => {
           setSuccessMessage("Copilot 已应用预览草稿并刷新采购清单。");

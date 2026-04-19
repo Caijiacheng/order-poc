@@ -9,6 +9,7 @@ export async function GET(request: Request) {
     const pageName = searchParams.get("pageName") ?? "";
     const status = searchParams.get("status") ?? "";
     const runType = searchParams.get("runType") ?? "";
+    const inputMode = searchParams.get("inputMode") ?? "";
     const customerId = searchParams.get("customerId") ?? "";
     const dateFrom = searchParams.get("dateFrom") ?? "";
     const dateTo = searchParams.get("dateTo") ?? "";
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
       .filter((run) => (pageName ? run.page_name === pageName : true))
       .filter((run) => (status ? run.status === status : true))
       .filter((run) => (runType ? run.run_type === runType : true))
+      .filter((run) => (inputMode ? run.input_mode === inputMode : true))
       .filter((run) => (customerId ? run.customer_id === customerId : true))
       .filter((run) => (dateFrom ? run.created_at >= dateFrom : true))
       .filter((run) => (dateTo ? run.created_at <= dateTo : true))
@@ -41,7 +43,7 @@ export async function GET(request: Request) {
       if (event.run_id) {
         return filteredRunIdSet.has(event.run_id);
       }
-      if (pageName || status || runType) {
+      if (pageName || status || runType || inputMode) {
         return false;
       }
       return true;

@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       session_id: sessionId,
       customer_id: payload.data.customerId,
       user_message: payload.data.message,
+      images: payload.data.images,
       page_name: payload.data.pageName,
     });
 

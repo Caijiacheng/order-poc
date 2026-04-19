@@ -29,6 +29,7 @@ type CartApiResponse = {
 type CopilotAutofillApiResponse = {
   run: {
     run_id: string;
+    input_mode?: "text" | "image" | "mixed";
   };
   draft: {
     draft_id: string;
@@ -47,6 +48,11 @@ type CopilotOverviewApiResponse = {
     };
   }>;
 };
+
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAukB9VE3d2kAAAAASUVORK5CYII=",
+  "base64",
+);
 
 async function expectEnvelope<TData>(response: APIResponse | Response) {
   expect(response.ok()).toBe(true);
@@ -216,9 +222,44 @@ async function captureCopilotChatCall(
   };
 }
 
+async function captureCopilotAutofillCall(
+  page: Page,
+  trigger: () => Promise<void> | void,
+) {
+  const requestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      request.url().includes("/api/copilot/autofill"),
+  );
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().includes("/api/copilot/autofill"),
+  );
+
+  await trigger();
+
+  const [request, response] = await Promise.all([requestPromise, responsePromise]);
+  const payload = await expectEnvelope<CopilotAutofillApiResponse>(response);
+  return {
+    requestBody: (request.postDataJSON() ?? {}) as Record<string, unknown>,
+    payload: payload.data,
+  };
+}
+
+async function uploadMockImages(page: Page, names: string[]) {
+  await page.locator('input[type="file"]').setInputFiles(
+    names.map((name) => ({
+      name,
+      mimeType: "image/png",
+      buffer: ONE_PIXEL_PNG,
+    })),
+  );
+}
+
 test.describe.configure({ mode: "serial" });
 
-test("Copilot /purchase keeps preview-first apply flow then goes to /order-submit", async ({
+test("/purchase AI assistant clickable surface covers actions, image preview, and apply flow", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -231,27 +272,126 @@ test("Copilot /purchase keeps preview-first apply flow then goes to /order-submi
   await expect(page.getByTestId("purchase-workbench")).toBeVisible();
   await selectDealer(page, dealer.customer_name);
 
+  const openPurchasePanel = async () => {
+    await page.getByRole("button", { name: "打开 AI 下单助手" }).click();
+    const panel = page.locator("aside").last();
+    await expect(panel.getByRole("button", { name: "一键做单" })).toBeVisible();
+    return panel;
+  };
+
   const cartBeforePreview = await fetchCart(page);
 
-  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
-  await expect(page.getByRole("button", { name: "一键做单" })).toBeVisible();
-  await page
-    .getByPlaceholder("例如：预算 6000，优先活动，不要新品")
-    .fill("按常购和活动做一单，预算控制在 6000 左右。");
+  let purchasePanel = await openPurchasePanel();
+  await page.getByRole("button", { name: "关闭 AI 下单助手" }).last().click();
+  await expect(page.getByRole("button", { name: "一键做单" })).toHaveCount(0);
+  purchasePanel = await openPurchasePanel();
 
-  await page.getByRole("button", { name: "一键做单" }).click();
-  await expect(page.getByText("AutofillProgressCard")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("已生成预览草稿，请确认后再写入采购清单。")).toBeVisible({
+  await expect(purchasePanel.getByRole("button", { name: "查看模板" })).toBeVisible();
+  await expect(purchasePanel.getByRole("button", { name: "查看活动" }).first()).toBeVisible();
+  await purchasePanel.getByRole("button", { name: "查看模板" }).click();
+  purchasePanel = await openPurchasePanel();
+  await expect(purchasePanel.getByRole("button", { name: "查看活动" }).first()).toBeVisible();
+  await purchasePanel.getByRole("button", { name: "查看活动" }).first().click();
+  purchasePanel = await openPurchasePanel();
+
+  const quickChips = ["预算 6000 左右", "优先活动", "不要新品", "只补常购", "保守一点"];
+  const purchaseInput = purchasePanel.getByPlaceholder("比如：预算 6000，优先活动，不要新品");
+  for (const chip of quickChips) {
+    await purchasePanel.getByRole("button", { name: chip }).click();
+  }
+  await expect(purchaseInput).toHaveValue(/预算 6000 左右/);
+  await expect(purchaseInput).toHaveValue(/优先活动/);
+  await expect(purchaseInput).toHaveValue(/不要新品/);
+  await expect(purchaseInput).toHaveValue(/只补常购/);
+  await expect(purchaseInput).toHaveValue(/保守一点/);
+
+  await expect(purchasePanel.getByRole("button", { name: "上传图片" })).toBeVisible();
+  await expect(purchasePanel.getByRole("button", { name: "粘贴截图" })).toBeVisible();
+  await purchasePanel.getByRole("button", { name: "粘贴截图" }).click();
+  await expect(page.getByText("请在输入框中使用 Ctrl/Cmd + V 粘贴截图。")).toBeVisible();
+
+  await uploadMockImages(page, ["进货单-A.png", "进货单-B.png"]);
+  await expect(purchasePanel.getByRole("button", { name: "预览图片 进货单-A.png" })).toBeVisible();
+  await expect(purchasePanel.getByRole("button", { name: "预览图片 进货单-B.png" })).toBeVisible();
+
+  await purchasePanel.getByRole("button", { name: "预览图片 进货单-A.png" }).click();
+  await expect(page.getByText("图片预览")).toBeVisible();
+  await expect(page.getByText("进货单-A.png · 1/2")).toBeVisible();
+  await page.getByRole("button", { name: "下一张图片" }).click();
+  await expect(page.getByText("进货单-B.png · 2/2")).toBeVisible();
+  await page.getByRole("button", { name: "上一张图片" }).click();
+  await expect(page.getByText("进货单-A.png · 1/2")).toBeVisible();
+  await page.getByRole("button", { name: "关闭图片预览" }).last().click();
+  await expect(page.getByText("图片预览")).toHaveCount(0);
+
+  await purchasePanel.getByRole("button", { name: "预览图片 进货单-A.png" }).click();
+  await page.getByRole("button", { name: "关闭图片预览" }).first().dispatchEvent("click");
+  if ((await page.getByText("图片预览").count()) > 0) {
+    await page.getByRole("button", { name: "关闭图片预览" }).last().click();
+  }
+  await expect(page.getByText("图片预览")).toHaveCount(0);
+
+  await purchasePanel.getByRole("button", { name: "预览图片 进货单-A.png" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("图片预览")).toHaveCount(0);
+
+  await expect(purchasePanel.getByRole("button", { name: "解释这单" })).toBeVisible();
+  await purchasePanel.getByRole("button", { name: "解释这单" }).click();
+
+  await purchaseInput.fill("按常购和活动做一单，预算控制在 6000 左右。");
+  const topupCall = await captureCopilotAutofillCall(page, async () => {
+    await purchasePanel.getByRole("button", { name: "活动补齐" }).click();
+  });
+  expect(topupCall.requestBody.pageName).toBe("/purchase");
+  expect(Array.isArray(topupCall.requestBody.images)).toBe(true);
+  expect((topupCall.requestBody.images as unknown[]).length).toBe(2);
+  await expect(page.getByText("已生成采购预览，可确认后加入采购清单。")).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByText("预览中（未写车）")).toBeVisible();
+  await expect(purchasePanel.getByRole("button", { name: "查看识别内容" })).toBeVisible();
+  await purchasePanel.getByRole("button", { name: "查看识别内容" }).click();
+  await expect(page.getByRole("button", { name: "关闭识别内容" }).last()).toBeVisible();
+  await page.getByRole("button", { name: "关闭识别内容" }).last().click();
+  await expect(page.getByRole("button", { name: "关闭识别内容" })).toHaveCount(0);
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/purchase$/);
+  await expect(page.getByTestId("purchase-workbench")).toBeVisible();
+  await selectDealer(page, dealer.customer_name);
+  purchasePanel = await openPurchasePanel();
+
+  const cleanPurchaseInput = purchasePanel.getByPlaceholder("比如：预算 6000，优先活动，不要新品");
+  await cleanPurchaseInput.fill("按常购和活动做一单，预算控制在 6000 左右。");
+  const autofillCall = await captureCopilotAutofillCall(page, async () => {
+    await purchasePanel.getByRole("button", { name: "一键做单" }).click();
+  });
+  expect(autofillCall.requestBody.pageName).toBe("/purchase");
+  expect(Array.isArray(autofillCall.requestBody.images)).toBe(true);
+  expect((autofillCall.requestBody.images as unknown[]).length).toBe(0);
+  await expect(page.getByText("已生成采购预览，可确认后加入采购清单。")).toBeVisible({
+    timeout: 30_000,
+  });
+  if ((await purchasePanel.getByRole("button", { name: "加入采购清单" }).count()) === 0) {
+    await cleanPurchaseInput.fill("按常购做一单");
+    await captureCopilotAutofillCall(page, async () => {
+      await purchasePanel.getByRole("button", { name: "一键做单" }).click();
+    });
+    await expect(page.getByText("已生成采购预览，可确认后加入采购清单。")).toBeVisible({
+      timeout: 30_000,
+    });
+  }
+  await expect(purchasePanel.getByRole("button", { name: "继续调整" })).toBeVisible();
+  await purchasePanel.getByRole("button", { name: "继续调整" }).click();
+  await expect(cleanPurchaseInput).toBeFocused();
+  await expect(purchasePanel.getByRole("link", { name: "去结算", exact: true })).toBeVisible();
+  await expect(purchasePanel.getByRole("button", { name: "加入采购清单" })).toBeVisible();
 
   const cartAfterPreview = await fetchCart(page);
   expect(cartAfterPreview.summary.item_count).toBe(cartBeforePreview.summary.item_count);
   expect(cartAfterPreview.summary.total_amount).toBe(cartBeforePreview.summary.total_amount);
 
-  await page.getByRole("button", { name: "确认应用到采购清单" }).click();
-  await expect(page.getByText("已写入采购清单并执行凑单优化，可继续前往结算。")).toBeVisible({
+  await purchasePanel.getByRole("button", { name: "加入采购清单" }).click();
+  await expect(page.getByText("已加入采购清单，可继续调整或去结算。")).toBeVisible({
     timeout: 30_000,
   });
 
@@ -261,11 +401,15 @@ test("Copilot /purchase keeps preview-first apply flow then goes to /order-submi
     cartAfterPreview.summary.total_amount,
   );
 
-  await page.getByRole("link", { name: "去结算页继续提交" }).click();
+  await purchasePanel
+    .locator('a[href="/order-submit"]')
+    .filter({ hasText: /^去结算$/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/order-submit$/);
 });
 
-test("Copilot /order-submit behaves as closeout helper and keeps preview-first semantics", async ({
+test("/order-submit AI assistant keeps closeout actions and excludes image upload/preview", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -278,24 +422,38 @@ test("Copilot /order-submit behaves as closeout helper and keeps preview-first s
   await expect(page).toHaveURL(/\/order-submit$/);
   await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
 
-  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
-  await expect(page.getByText("仅支持解释优化、继续安全补齐和去提交。")).toBeVisible();
+  await page.getByRole("button", { name: "打开 AI 下单助手" }).click();
+  await expect(page.getByText("仅支持解释当前优化、继续安全补齐和去提交。")).toBeVisible();
   await expect(page.getByRole("button", { name: "一键做单" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "活动补齐" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "解释当前优化" })).toBeVisible();
   await expect(page.getByRole("button", { name: "继续安全补齐" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "去提交" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "上传图片" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "粘贴截图" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "查看识别内容" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "上一张图片" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "下一张图片" })).toHaveCount(0);
+
+  await page
+    .getByPlaceholder("例如：解释当前推荐，或继续安全补齐活动门槛")
+    .fill("解释当前优化建议对门槛、箱规和提交风险的影响。");
+  await page.getByRole("button", { name: "解释当前优化" }).click();
+
   await page
     .getByPlaceholder("例如：解释当前推荐，或继续安全补齐活动门槛")
     .fill("继续安全补齐活动门槛，控制风险，不要激进扩单。");
 
   const cartBeforePreview = await fetchCart(page);
-  await page.getByRole("button", { name: "继续安全补齐" }).click();
-  await expect(page.getByText("AutofillProgressCard")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("已生成补齐预览，确认后才会写入购物车。")).toBeVisible({
+  const safeTopup = await captureCopilotAutofillCall(page, async () => {
+    await page.getByRole("button", { name: "继续安全补齐" }).click();
+  });
+  expect(safeTopup.requestBody.pageName).toBe("/order-submit");
+  await expect(page.getByText("已生成补齐预览，确认后才会加入当前清单。")).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByText("预览中（未写车）")).toBeVisible();
-  await expect(page.getByRole("button", { name: "确认应用到购物车" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "加入当前清单" })).toBeVisible();
 
   const cartAfterPreview = await fetchCart(page);
   expect(cartAfterPreview.summary.item_count).toBe(cartBeforePreview.summary.item_count);
@@ -309,13 +467,18 @@ test("Copilot /order-submit behaves as closeout helper and keeps preview-first s
   };
   page.on("request", requestListener);
 
-  await page.getByRole("button", { name: "确认应用到购物车" }).click();
-  await expect(page.getByText("已写入购物车并同步最新结算优化，可继续提交订单。")).toBeVisible({
+  await page.getByRole("button", { name: "加入当前清单" }).click();
+  await expect(page.getByText("已加入当前清单并同步最新结算优化，可继续提交订单。")).toBeVisible({
     timeout: 30_000,
   });
   await page.waitForTimeout(500);
   page.off("request", requestListener);
   expect(optimizeAfterApplyCount).toBe(0);
+
+  await page.getByRole("button", { name: "关闭 Copilot 面板" }).last().click();
+  await expect(page.getByRole("button", { name: "解释当前优化" })).toHaveCount(0);
+  await page.getByRole("button", { name: "打开 AI 下单助手" }).click();
+  await expect(page.getByRole("button", { name: "解释当前优化" })).toBeVisible();
 });
 
 test("Copilot /purchase chat covers quick explain and manual composer send with only LLM mocked", async ({
@@ -331,11 +494,11 @@ test("Copilot /purchase chat covers quick explain and manual composer send with 
   await expect(page.getByTestId("purchase-workbench")).toBeVisible();
   await selectDealer(page, dealer.customer_name);
 
-  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
+  await page.getByRole("button", { name: "打开 AI 下单助手" }).click();
   await expect(page.getByRole("button", { name: "解释这单" })).toBeVisible();
   const quickQuestion = "解释这单当前门槛状态和推荐依据。";
   await page
-    .getByPlaceholder("例如：预算 6000，优先活动，不要新品")
+    .getByPlaceholder("比如：预算 6000，优先活动，不要新品")
     .fill(quickQuestion);
 
   const quickExplain = await captureCopilotChatCall(page, async () => {
@@ -358,7 +521,7 @@ test("Copilot /purchase chat covers quick explain and manual composer send with 
 
   const manualMessage = "预算 6000，优先活动，解释为什么这样推荐。";
   await page
-    .getByPlaceholder("例如：预算 6000，优先活动，不要新品")
+    .getByPlaceholder("比如：预算 6000，优先活动，不要新品")
     .fill(manualMessage);
 
   const manualExplain = await captureCopilotChatCall(page, async () => {
@@ -400,7 +563,7 @@ test("Copilot /order-submit chat covers quick explain and manual composer send w
   await expect(page).toHaveURL(/\/order-submit$/);
   await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
 
-  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
+  await page.getByRole("button", { name: "打开 AI 下单助手" }).click();
   await expect(page.getByRole("button", { name: "解释当前优化" })).toBeVisible();
   const quickQuestion = "解释当前优化建议对门槛、箱规和提交风险的影响。";
   await page
@@ -456,7 +619,7 @@ test("Copilot /order-submit chat covers quick explain and manual composer send w
   );
 });
 
-test("Admin pages expose Copilot KPI, visibility slices, and traces affordance", async ({
+test("Admin pages expose AI assistant KPI, visibility slices, and traces affordance", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -467,16 +630,16 @@ test("Admin pages expose Copilot KPI, visibility slices, and traces affordance",
 
   await page.goto("/admin/analytics/overview");
   await expect(page).toHaveURL(/\/admin\/analytics\/overview$/);
-  await expect(page.getByText("Copilot 核心指标（最小集）")).toBeVisible();
-  await expect(page.getByText("Copilot 使用次数")).toBeVisible();
+  await expect(page.getByText("AI 下单助手核心指标（最小集）")).toBeVisible();
+  await expect(page.getByText("AI 助手触发次数")).toBeVisible();
   await expect(page.getByText("一键做单发起数")).toBeVisible();
 
   await page.goto("/admin/analytics/recommendation-records");
   await expect(page).toHaveURL(/\/admin\/analytics\/recommendation-records$/);
-  await expect(page.getByText("Copilot 运行视角")).toBeVisible();
-  await page.getByRole("button", { name: "刷新 Copilot 视图" }).click();
+  await expect(page.getByText("AI 下单助手运行视角")).toBeVisible();
+  await page.getByRole("button", { name: "刷新 AI 助手视图" }).click();
 
-  const copilotEmptyHint = page.getByText("当前筛选下暂无 Copilot 运行记录。");
+  const copilotEmptyHint = page.getByText("当前筛选下暂无 AI 助手运行记录。");
   if ((await copilotEmptyHint.count()) > 0) {
     await expect(copilotEmptyHint).toBeVisible();
   } else {
@@ -486,11 +649,11 @@ test("Admin pages expose Copilot KPI, visibility slices, and traces affordance",
   await page.goto("/admin/observability/traces");
   await expect(page).toHaveURL(/\/admin\/observability\/traces$/);
   await expect(
-    page.locator('[data-slot="card-title"]', { hasText: /^Copilot 链路$/ }).first(),
+    page.locator('[data-slot="card-title"]', { hasText: /^AI 下单助手链路$/ }).first(),
   ).toBeVisible();
-  await page.getByRole("button", { name: "刷新 Copilot" }).click();
+  await page.getByRole("button", { name: "刷新 AI 助手" }).click();
 
-  const copilotTraceEmpty = page.getByText("暂无 Copilot 链路");
+  const copilotTraceEmpty = page.getByText("暂无 AI 助手链路");
   if ((await copilotTraceEmpty.count()) > 0) {
     await expect(copilotTraceEmpty).toBeVisible();
     return;

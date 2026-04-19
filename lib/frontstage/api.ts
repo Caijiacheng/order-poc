@@ -2,7 +2,13 @@
 
 import { requestJson, requestJsonWithMeta } from "@/lib/admin/client";
 import type { CopilotSummarizeResultOutput } from "@/lib/copilot/schemas";
-import type { CopilotDraft, CopilotJob, CopilotRun, CopilotStep } from "@/lib/copilot/types";
+import type {
+  CopilotDraft,
+  CopilotImageInput,
+  CopilotJob,
+  CopilotRun,
+  CopilotStep,
+} from "@/lib/copilot/types";
 import type { ListResult } from "@/lib/admin/types";
 import type {
   ActivityHighlight,
@@ -335,6 +341,7 @@ export async function fetchRecommendationRunDetail(id: string) {
 export async function requestCopilotAutofill(input: {
   customerId: string;
   message: string;
+  images?: CopilotImageInput[];
   pageName?: FrontstagePageName;
 }) {
   const result = await requestJsonWithMeta<CopilotAutofillResponse>("/api/copilot/autofill", {
@@ -350,6 +357,7 @@ export async function requestCopilotAutofill(input: {
 export async function requestCopilotChat(input: {
   customerId: string;
   message: string;
+  images?: CopilotImageInput[];
   pageName?: FrontstagePageName;
 }) {
   const result = await requestJsonWithMeta<CopilotChatResponse>("/api/copilot/chat", {

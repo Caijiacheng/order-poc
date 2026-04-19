@@ -41,16 +41,46 @@ export const copilotSummarizeResultSchema = z.object({
   key_points: z.array(z.string().min(1)).default([]),
 });
 
-export const copilotAutofillRequestSchema = z.object({
-  customerId: z.string().min(1),
-  message: z.string().min(1),
-  pageName: z.enum(["/purchase", "/order-submit"]).optional(),
+export const copilotImageInputSchema = z.object({
+  id: z.string().min(1),
+  mimeType: z.string().min(1),
+  fileName: z.string().min(1),
+  dataUrl: z.string().min(1),
 });
 
-export const copilotChatRequestSchema = z.object({
-  customerId: z.string().min(1),
-  message: z.string().min(1),
-  pageName: z.enum(["/purchase", "/order-submit"]).optional(),
+const copilotInputRequestSchema = z
+  .object({
+    customerId: z.string().min(1),
+    message: z.string(),
+    images: z.array(copilotImageInputSchema).default([]),
+    pageName: z.enum(["/purchase", "/order-submit"]).optional(),
+  })
+  .superRefine((value, context) => {
+    const hasText = value.message.trim().length > 0;
+    const hasImages = value.images.length > 0;
+    if (hasText || hasImages) {
+      return;
+    }
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["message"],
+      message: "message 与 images 不能同时为空",
+    });
+  });
+
+export const copilotAutofillRequestSchema = copilotInputRequestSchema;
+
+export const copilotChatRequestSchema = copilotInputRequestSchema;
+
+export const copilotImageExtractLineSchema = z.object({
+  line_id: z.string().min(1),
+  original_text: z.string().min(1),
+  qty_hint: z.number().int().positive().nullable(),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+
+export const copilotImageExtractSchema = z.object({
+  lines: z.array(copilotImageExtractLineSchema).default([]),
 });
 
 export const copilotApplyDraftRequestSchema = z.object({
@@ -63,3 +93,4 @@ export type CopilotSummarizeResultOutput = z.infer<typeof copilotSummarizeResult
 export type CopilotAutofillRequest = z.infer<typeof copilotAutofillRequestSchema>;
 export type CopilotChatRequest = z.infer<typeof copilotChatRequestSchema>;
 export type CopilotApplyDraftRequest = z.infer<typeof copilotApplyDraftRequestSchema>;
+export type CopilotImageExtractOutput = z.infer<typeof copilotImageExtractSchema>;

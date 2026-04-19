@@ -31,7 +31,12 @@ import {
 import { requestJson, requestJsonWithMeta } from "@/lib/admin/client";
 import type { ListResult } from "@/lib/admin/types";
 import { buildLangfuseTraceUrl } from "@/lib/frontstage/api";
-import type { CopilotDraft, CopilotJob, CopilotRun } from "@/lib/copilot/types";
+import type {
+  CopilotDraft,
+  CopilotInputMode,
+  CopilotJob,
+  CopilotRun,
+} from "@/lib/copilot/types";
 import type {
   DealerEntity,
   RecommendationItemRecord,
@@ -65,6 +70,7 @@ type CopilotFilterState = {
   pageName: "all" | "/purchase" | "/order-submit";
   status: "all" | "running" | "succeeded" | "blocked" | "failed";
   runType: "all" | "autofill_order" | "explain_order";
+  inputMode: "all" | CopilotInputMode;
 };
 
 type QueryState = {
@@ -158,6 +164,12 @@ const COPILOT_STATUS_LABELS: Record<string, string> = {
   failed: "失败",
 };
 
+const COPILOT_INPUT_MODE_LABELS: Record<CopilotInputMode, string> = {
+  text: "文字",
+  image: "图片",
+  mixed: "混合",
+};
+
 function toSearchParams(query: QueryState, view: RecordsView) {
   const params = new URLSearchParams();
   params.set("page", String(query.page));
@@ -224,6 +236,7 @@ export default function RecommendationRecordsPage() {
     pageName: "all",
     status: "all",
     runType: "all",
+    inputMode: "all",
   });
   const [copilotData, setCopilotData] = useState<CopilotOverviewData>({
     total: 0,
@@ -245,6 +258,7 @@ export default function RecommendationRecordsPage() {
           pageName: nextFilter.pageName === "all" ? "" : nextFilter.pageName,
           status: nextFilter.status === "all" ? "" : nextFilter.status,
           runType: nextFilter.runType === "all" ? "" : nextFilter.runType,
+          inputMode: nextFilter.inputMode === "all" ? "" : nextFilter.inputMode,
         }).toString()}`,
       );
       setCopilotData(result.data);
@@ -562,12 +576,12 @@ export default function RecommendationRecordsPage() {
       <Card>
         <CardContent className="space-y-3 p-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-900">Copilot 运行视角</p>
+            <p className="text-sm font-semibold text-slate-900">AI 下单助手运行视角</p>
             <Button asChild size="sm" variant="outline">
-              <Link href="/admin/observability/traces">查看 Copilot 链路页</Link>
+              <Link href="/admin/observability/traces">查看 AI 助手链路页</Link>
             </Button>
           </div>
-          <div className="grid gap-2 md:grid-cols-4">
+          <div className="grid gap-2 md:grid-cols-5">
             <Select
               value={copilotFilter.pageName}
               onValueChange={(value) =>
@@ -624,6 +638,25 @@ export default function RecommendationRecordsPage() {
                 <SelectItem value="explain_order">explain_order</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={copilotFilter.inputMode}
+              onValueChange={(value) =>
+                setCopilotFilter((prev) => ({
+                  ...prev,
+                  inputMode: value as CopilotFilterState["inputMode"],
+                }))
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部输入方式</SelectItem>
+                <SelectItem value="text">文字</SelectItem>
+                <SelectItem value="image">图片</SelectItem>
+                <SelectItem value="mixed">混合</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               onClick={() => void loadCopilotRuns(query, copilotFilter)}
@@ -634,13 +667,13 @@ export default function RecommendationRecordsPage() {
               ) : (
                 <Filter className="h-4 w-4" />
               )}
-              刷新 Copilot 视图
+              刷新 AI 助手视图
             </Button>
           </div>
           <div className="space-y-2">
             {copilotData.rows.length === 0 ? (
               <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">
-                当前筛选下暂无 Copilot 运行记录。
+                当前筛选下暂无 AI 助手运行记录。
               </p>
             ) : (
               copilotData.rows.slice(0, 6).map((row) => {
@@ -661,6 +694,7 @@ export default function RecommendationRecordsPage() {
                       {new Date(row.run.created_at).toLocaleString("zh-CN")}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
+                      输入：{COPILOT_INPUT_MODE_LABELS[row.run.input_mode] ?? row.run.input_mode} ·{" "}
                       {row.job?.status ? `job=${row.job.status}` : "job=-"} ·{" "}
                       {row.draft?.status ? `draft=${row.draft.status}` : "draft=-"}
                     </p>

@@ -214,7 +214,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
       });
       setAutofillResult(result);
       setJobDetail(null);
-      setPanelSuccess("已生成补齐预览，确认后才会写入购物车。");
+      setPanelSuccess("已生成补齐预览，确认后才会加入当前清单。");
     } catch (error) {
       setPanelError(error instanceof Error ? error.message : "补齐预览生成失败");
     } finally {
@@ -264,7 +264,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
         steps: applied.steps,
       });
       await props.onApplySuccess?.(applied);
-      setPanelSuccess("已写入购物车并同步最新结算优化，可继续提交订单。");
+      setPanelSuccess("已加入当前清单并同步最新结算优化，可继续提交订单。");
     } catch (error) {
       setPanelError(error instanceof Error ? error.message : "应用草稿失败");
     } finally {
@@ -283,7 +283,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
     <>
       <button
         type="button"
-        aria-label="打开 Copilot 助手"
+        aria-label="打开 AI 下单助手"
         onClick={() => setOpen(true)}
         className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-900 shadow-xl transition hover:scale-[1.02] hover:bg-slate-50"
       >
@@ -301,15 +301,15 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
           <aside className="absolute right-0 top-0 h-full w-full max-w-[420px] border-l border-slate-200 bg-white shadow-2xl">
             <header className="flex items-start justify-between border-b border-slate-200 px-4 py-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.14em] text-slate-500">Copilot 结算助手</p>
+                <p className="text-xs uppercase tracking-[0.14em] text-slate-500">AI 下单助手</p>
                 <h2 className="mt-1 text-base font-semibold text-slate-900">
-                  {props.customerName || "当前经销商"} · 交单收口
+                  {props.customerName || "当前经销商"} · 当前结算辅助
                 </h2>
                 <p className="mt-1 text-xs text-slate-600">
                   当前金额 {formatMoney(cartSummary?.total_amount ?? 0)} · 推荐条 {recommendationBarCount}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  仅支持解释优化、继续安全补齐和去提交。
+                  仅支持解释当前优化、继续安全补齐和去提交。
                 </p>
               </div>
               <Button
@@ -327,7 +327,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
               <div className="space-y-3">
                 <Card className="border-slate-200">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm text-slate-900">快捷动作</CardTitle>
+                    <CardTitle className="text-sm text-slate-900">你可以这样操作</CardTitle>
                   </CardHeader>
                   <CardContent className="grid gap-2">
                     <Button
@@ -377,7 +377,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
                 {currentSteps.length > 0 ? (
                   <Card className="border-slate-200">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-slate-900">AutofillProgressCard</CardTitle>
+                      <CardTitle className="text-sm text-slate-900">正在整理这单</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {currentSteps.map((step) => (
@@ -412,7 +412,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
                 {currentDraft && currentDraft.status !== "blocked" ? (
                   <Card className="border-slate-200">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-slate-900">AutofillResultCard</CardTitle>
+                      <CardTitle className="text-sm text-slate-900">本次建议</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2 text-sm">
                       <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -459,12 +459,12 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
                           ) : (
                             <ShoppingCart className="h-4 w-4" />
                           )}
-                          确认应用到购物车
+                          加入当前清单
                         </Button>
                       ) : (
                         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-sm text-emerald-900">
                           <CheckCircle2 className="h-4 w-4" />
-                          草稿已应用到购物车
+                          已加入当前清单
                         </div>
                       )}
                     </CardContent>
@@ -473,7 +473,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
 
                 <Card className="border-slate-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-slate-900">解释与补充约束</CardTitle>
+                    <CardTitle className="text-sm text-slate-900">补充说明</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <AssistantRuntimeProvider runtime={runtime}>
@@ -481,7 +481,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
                         <ThreadPrimitive.Viewport className="flex-1 space-y-2 overflow-y-auto p-2">
                           <ThreadPrimitive.Empty>
                             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-3 text-xs leading-5 text-slate-500">
-                              先输入具体问题或补齐要求，再发送或触发快捷动作。
+                              先输入需要解释的问题，或补充安全补齐要求。
                             </div>
                           </ThreadPrimitive.Empty>
                           <ThreadPrimitive.Messages>
