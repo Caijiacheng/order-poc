@@ -438,7 +438,10 @@ test("/order-submit AI assistant keeps closeout actions and excludes image uploa
   await page
     .getByPlaceholder("例如：解释当前推荐，或继续安全补齐活动门槛")
     .fill("解释当前优化建议对门槛、箱规和提交风险的影响。");
-  await page.getByRole("button", { name: "解释当前优化" }).click();
+  const explainCurrentOptimization = await captureCopilotChatCall(page, async () => {
+    await page.getByRole("button", { name: "解释当前优化" }).click();
+  });
+  expect(explainCurrentOptimization.requestBody.pageName).toBe("/order-submit");
 
   await page
     .getByPlaceholder("例如：解释当前推荐，或继续安全补齐活动门槛")
