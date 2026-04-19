@@ -163,6 +163,130 @@ describe("copilot orchestrator Stage 1", () => {
     expect(result.draft.items).toEqual([]);
   });
 
+  it("accepts mixed intent output from the live model contract instead of failing schema validation", async () => {
+    setPromptRoutingFactory((prompt) => {
+      if (prompt.includes("任务：提取采购意图")) {
+        return {
+          intent_type: "mixed",
+          budget_target: 6000,
+          prefer_campaign: true,
+          prefer_frequent_items: true,
+          avoid_new_products: true,
+          risk_mode: "conservative",
+          must_have_keywords: [],
+          exclude_keywords: ["cb_small_shengchou_250"],
+        };
+      }
+      if (prompt.includes("任务：只能从候选组合中选择最合适的一个。")) {
+        return {
+          status: "blocked",
+          explanation: "当前先保留为人工确认草案，不直接选择组合。",
+          blocked_reason: "manual_review_required",
+        };
+      }
+      return {
+        summary: "当前先保留为人工确认草案。",
+        should_go_checkout: false,
+        key_points: ["意图为 mixed"],
+      };
+    });
+
+    const result = await runCopilotAutofill({
+      session_id: "sess_copilot_stage1_mixed_intent_contract",
+      customer_id: "dealer_cd_pf",
+      user_message: "按常购和活动做一单，预算控制在 6000 左右，不要新品。",
+      page_name: "/purchase",
+    });
+
+    expect(result.run.status).toBe("blocked");
+    expect(result.run.intent?.intent_type).toBe("mixed");
+    expect(result.draft.blocked_reason).toBe("manual_review_required");
+  });
+
+  it("normalizes empty blocked_reason from a selected live model output instead of rejecting the response", async () => {
+    setPromptRoutingFactory((prompt) => {
+      if (prompt.includes("任务：提取采购意图")) {
+        return {
+          intent_type: "mixed",
+          budget_target: 6000,
+          prefer_campaign: true,
+          prefer_frequent_items: true,
+          avoid_new_products: false,
+          risk_mode: "conservative",
+          must_have_keywords: [],
+          exclude_keywords: [],
+        };
+      }
+      if (prompt.includes("任务：只能从候选组合中选择最合适的一个。")) {
+        return {
+          status: "selected",
+          combo_id: "combo_replenishment_core",
+          explanation: "当前先选稳健补货组合。",
+          blocked_reason: "",
+        };
+      }
+      return {
+        summary: "已生成稳健预览草案。",
+        should_go_checkout: false,
+        key_points: ["blocked_reason empty string normalized"],
+      };
+    });
+
+    const result = await runCopilotAutofill({
+      session_id: "sess_copilot_stage1_selected_empty_blocked_reason",
+      customer_id: "dealer_cd_pf",
+      user_message: "按常购和活动做一单，预算控制在 6000 左右。",
+      page_name: "/purchase",
+    });
+
+    expect(result.run.status).toBe("succeeded");
+    expect(result.draft.status).toBe("preview");
+    expect(result.draft.blocked_reason).toBeUndefined();
+    expect(result.draft.selected_combo_id).toBe("combo_replenishment_core");
+  });
+
+  it("normalizes null blocked_reason from a selected live model output instead of rejecting the response", async () => {
+    setPromptRoutingFactory((prompt) => {
+      if (prompt.includes("任务：提取采购意图")) {
+        return {
+          intent_type: "mixed",
+          budget_target: 6000,
+          prefer_campaign: true,
+          prefer_frequent_items: true,
+          avoid_new_products: false,
+          risk_mode: "conservative",
+          must_have_keywords: [],
+          exclude_keywords: [],
+        };
+      }
+      if (prompt.includes("任务：只能从候选组合中选择最合适的一个。")) {
+        return {
+          status: "selected",
+          combo_id: "combo_replenishment_core",
+          explanation: "当前先选稳健补货组合。",
+          blocked_reason: null,
+        };
+      }
+      return {
+        summary: "已生成稳健预览草案。",
+        should_go_checkout: false,
+        key_points: ["blocked_reason null normalized"],
+      };
+    });
+
+    const result = await runCopilotAutofill({
+      session_id: "sess_copilot_stage1_selected_null_blocked_reason",
+      customer_id: "dealer_cd_pf",
+      user_message: "按常购和活动做一单，预算控制在 6000 左右。",
+      page_name: "/purchase",
+    });
+
+    expect(result.run.status).toBe("succeeded");
+    expect(result.draft.status).toBe("preview");
+    expect(result.draft.blocked_reason).toBeUndefined();
+    expect(result.draft.selected_combo_id).toBe("combo_replenishment_core");
+  });
+
   it("rejects draft apply when session does not match preview session", async () => {
     const previewSessionId = "sess_copilot_stage1_session_truth_preview";
     const otherSessionId = "sess_copilot_stage1_session_truth_other";

@@ -35,7 +35,11 @@ export function buildParseIntentPrompt(input: {
       forbidden_items: input.dealer.forbidden_items,
     }),
     `用户输入：${input.userMessage}`,
-    "输出字段：intent_type, budget_target, prefer_campaign, prefer_frequent_items, avoid_new_products, risk_mode, must_have_keywords, exclude_keywords。",
+    [
+      "输出字段：intent_type, budget_target, prefer_campaign, prefer_frequent_items, avoid_new_products, risk_mode, must_have_keywords, exclude_keywords。",
+      "intent_type 只能取以下值之一：start_order、topup_campaign、explain_order、adjust_order、mixed。",
+      "当用户同时包含做单与活动补齐/解释等混合诉求时，返回 mixed。",
+    ].join(" "),
   ].join("\n\n");
 }
 

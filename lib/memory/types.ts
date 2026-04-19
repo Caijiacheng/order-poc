@@ -105,7 +105,7 @@ export type BundleTemplate = {
   template_type: BundleTemplateType;
   template_name: "热销补货" | "缺货补货" | "活动备货";
   template_subtitle: string;
-  source: "published_recommendation" | "fallback_catalog";
+  source: "published_recommendation";
   estimated_amount: number;
   items: BundleTemplateItem[];
 };

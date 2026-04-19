@@ -87,6 +87,16 @@ function toBlockedReasonText(reason?: string) {
   return `当前流程被阻塞：${reason}`;
 }
 
+function sendComposerText(
+  runtime: ReturnType<typeof useChatRuntime>,
+  message: string,
+) {
+  runtime.thread.composer.setText(message);
+  window.requestAnimationFrame(() => {
+    runtime.thread.composer.send();
+  });
+}
+
 function StepStatusPill(input: { status: string }) {
   if (input.status === "completed") {
     return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">已完成</Badge>;
@@ -125,14 +135,29 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
     () =>
       new AssistantChatTransport({
         api: "/api/copilot/chat",
-        prepareSendMessagesRequest: ({ body, ...request }) => ({
-          ...request,
-          body: {
-            ...body,
-            customerId: props.customerId,
-            pageName: "/order-submit",
-          },
-        }),
+        prepareSendMessagesRequest: ({
+          body,
+          id,
+          messages,
+          messageId,
+          requestMetadata,
+          trigger,
+          ...request
+        }) => {
+          return {
+            ...request,
+            body: {
+              ...body,
+              id,
+              messages,
+              trigger,
+              messageId,
+              metadata: requestMetadata,
+              customerId: props.customerId,
+              pageName: "/order-submit",
+            },
+          };
+        },
       }),
     [props.customerId],
   );
@@ -173,8 +198,10 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
     }
 
     const composerText = runtime.thread.composer.getState().text.trim();
-    const fallbackMessage =
-      "基于当前结算单继续安全补齐，优先活动门槛与低风险补货，不要激进扩单。";
+    if (!composerText) {
+      setPanelError("请先输入补齐要求，再继续安全补齐。");
+      return;
+    }
 
     setRunningAction("topup");
     setPanelError("");
@@ -182,7 +209,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
     try {
       const result = await requestCopilotAutofill({
         customerId: props.customerId,
-        message: composerText || fallbackMessage,
+        message: composerText,
         pageName: "/order-submit",
       });
       setAutofillResult(result);
@@ -202,10 +229,11 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
     }
 
     const composerText = runtime.thread.composer.getState().text.trim();
-    const fallbackMessage =
-      "解释当前优化建议对门槛、箱规和提交风险的影响。";
-    runtime.thread.composer.setText(composerText || fallbackMessage);
-    runtime.thread.composer.send();
+    if (!composerText) {
+      setPanelError("请先输入要解释的具体问题。");
+      return;
+    }
+    sendComposerText(runtime, composerText);
   };
 
   const handleGoSubmit = () => {
@@ -453,7 +481,7 @@ export function OrderSubmitCopilotPanel(props: OrderSubmitCopilotPanelProps) {
                         <ThreadPrimitive.Viewport className="flex-1 space-y-2 overflow-y-auto p-2">
                           <ThreadPrimitive.Empty>
                             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-3 text-xs leading-5 text-slate-500">
-                              可输入“这单为什么这样优化”或“继续补齐但保持保守”后发送。
+                              先输入具体问题或补齐要求，再发送或触发快捷动作。
                             </div>
                           </ThreadPrimitive.Empty>
                           <ThreadPrimitive.Messages>

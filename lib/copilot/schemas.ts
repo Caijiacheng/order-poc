@@ -1,7 +1,24 @@
 import { z } from "zod";
 
+const optionalNonEmptyStringSchema = z.preprocess((value) => {
+  if (value === null) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    return value;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}, z.string().min(1).optional());
+
 export const copilotIntentSchema = z.object({
-  intent_type: z.enum(["start_order", "topup_campaign", "explain_order", "adjust_order"]),
+  intent_type: z.enum([
+    "start_order",
+    "topup_campaign",
+    "explain_order",
+    "adjust_order",
+    "mixed",
+  ]),
   budget_target: z.number().positive().nullable(),
   prefer_campaign: z.boolean().nullable(),
   prefer_frequent_items: z.boolean().nullable(),
@@ -13,9 +30,9 @@ export const copilotIntentSchema = z.object({
 
 export const copilotSelectBestComboSchema = z.object({
   status: z.enum(["selected", "blocked"]),
-  combo_id: z.string().min(1).optional(),
+  combo_id: optionalNonEmptyStringSchema,
   explanation: z.string().min(1),
-  blocked_reason: z.string().min(1).optional(),
+  blocked_reason: optionalNonEmptyStringSchema,
 });
 
 export const copilotSummarizeResultSchema = z.object({

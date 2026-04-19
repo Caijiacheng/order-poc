@@ -36,6 +36,18 @@ type CopilotAutofillApiResponse = {
   };
 };
 
+type CopilotOverviewApiResponse = {
+  total: number;
+  rows: Array<{
+    run: {
+      run_id: string;
+      run_type: "autofill_order" | "explain_order";
+      page_name: "/purchase" | "/order-submit";
+      customer_id: string;
+    };
+  }>;
+};
+
 async function expectEnvelope<TData>(response: APIResponse | Response) {
   expect(response.ok()).toBe(true);
   const payload = (await response.json()) as ApiEnvelope<TData>;
@@ -59,6 +71,13 @@ async function fetchActiveDealer(page: Page) {
 async function fetchCart(page: Page) {
   const cartPayload = await expectEnvelope<CartApiResponse>(await page.request.get("/api/cart"));
   return cartPayload.data;
+}
+
+async function fetchCopilotOverview(page: Page, searchParams: URLSearchParams) {
+  const overviewPayload = await expectEnvelope<CopilotOverviewApiResponse>(
+    await page.request.get(`/api/admin/copilot/overview?${searchParams.toString()}`),
+  );
+  return overviewPayload.data;
 }
 
 async function clearCart(page: Page) {
@@ -115,6 +134,88 @@ async function seedCopilotRunViaApi(page: Page, customerId: string) {
   return autofillPayload.data.run.run_id;
 }
 
+function getLastUserMessageText(raw: unknown) {
+  if (!Array.isArray(raw)) {
+    return "";
+  }
+
+  for (let index = raw.length - 1; index >= 0; index -= 1) {
+    const item = raw[index];
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const message = item as Record<string, unknown>;
+    if (message.role !== "user") {
+      continue;
+    }
+
+    if (typeof message.content === "string") {
+      return message.content.trim();
+    }
+
+    if (Array.isArray(message.parts)) {
+      const text = message.parts
+        .map((part) => {
+          if (!part || typeof part !== "object") {
+            return "";
+          }
+          const current = part as Record<string, unknown>;
+          return current.type === "text" && typeof current.text === "string" ? current.text : "";
+        })
+        .join("")
+        .trim();
+      if (text) {
+        return text;
+      }
+    }
+
+    if (Array.isArray(message.content)) {
+      const text = message.content
+        .map((part) => {
+          if (!part || typeof part !== "object") {
+            return "";
+          }
+          const current = part as Record<string, unknown>;
+          return current.type === "text" && typeof current.text === "string" ? current.text : "";
+        })
+        .join("")
+        .trim();
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  return "";
+}
+
+async function captureCopilotChatCall(
+  page: Page,
+  trigger: () => Promise<void> | void,
+) {
+  const requestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      request.url().includes("/api/copilot/chat"),
+  );
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().includes("/api/copilot/chat"),
+  );
+
+  await trigger();
+
+  const [request, response] = await Promise.all([requestPromise, responsePromise]);
+  expect(response.ok()).toBe(true);
+
+  return {
+    requestBody: (request.postDataJSON() ?? {}) as Record<string, unknown>,
+    response,
+  };
+}
+
 test.describe.configure({ mode: "serial" });
 
 test("Copilot /purchase keeps preview-first apply flow then goes to /order-submit", async ({
@@ -134,6 +235,9 @@ test("Copilot /purchase keeps preview-first apply flow then goes to /order-submi
 
   await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
   await expect(page.getByRole("button", { name: "一键做单" })).toBeVisible();
+  await page
+    .getByPlaceholder("例如：预算 6000，优先活动，不要新品")
+    .fill("按常购和活动做一单，预算控制在 6000 左右。");
 
   await page.getByRole("button", { name: "一键做单" }).click();
   await expect(page.getByText("AutofillProgressCard")).toBeVisible({ timeout: 30_000 });
@@ -180,6 +284,9 @@ test("Copilot /order-submit behaves as closeout helper and keeps preview-first s
   await expect(page.getByRole("button", { name: "活动补齐" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "解释当前优化" })).toBeVisible();
   await expect(page.getByRole("button", { name: "继续安全补齐" })).toBeVisible();
+  await page
+    .getByPlaceholder("例如：解释当前推荐，或继续安全补齐活动门槛")
+    .fill("继续安全补齐活动门槛，控制风险，不要激进扩单。");
 
   const cartBeforePreview = await fetchCart(page);
   await page.getByRole("button", { name: "继续安全补齐" }).click();
@@ -209,6 +316,144 @@ test("Copilot /order-submit behaves as closeout helper and keeps preview-first s
   await page.waitForTimeout(500);
   page.off("request", requestListener);
   expect(optimizeAfterApplyCount).toBe(0);
+});
+
+test("Copilot /purchase chat covers quick explain and manual composer send with only LLM mocked", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  const dealer = await fetchActiveDealer(page);
+  await clearCart(page);
+
+  await page.goto("/purchase");
+  await expect(page).toHaveURL(/\/purchase$/);
+  await expect(page.getByTestId("purchase-workbench")).toBeVisible();
+  await selectDealer(page, dealer.customer_name);
+
+  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
+  await expect(page.getByRole("button", { name: "解释这单" })).toBeVisible();
+  const quickQuestion = "解释这单当前门槛状态和推荐依据。";
+  await page
+    .getByPlaceholder("例如：预算 6000，优先活动，不要新品")
+    .fill(quickQuestion);
+
+  const quickExplain = await captureCopilotChatCall(page, async () => {
+    await page.getByRole("button", { name: "解释这单" }).click();
+  });
+  expect(quickExplain.requestBody.customerId).toBe(dealer.customer_id);
+  expect(quickExplain.requestBody.pageName).toBe("/purchase");
+  expect(getLastUserMessageText(quickExplain.requestBody.messages)).toBe(quickQuestion);
+  expect(quickExplain.requestBody.message).toBeUndefined();
+
+  const quickExplainRunId = (await quickExplain.response.headerValue("x-copilot-run-id")) ?? "";
+  expect(quickExplainRunId).not.toBe("");
+
+  await expect(page.getByText(quickQuestion)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText("当前没有可直接应用的安全组合，请调整约束后重试。")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const manualMessage = "预算 6000，优先活动，解释为什么这样推荐。";
+  await page
+    .getByPlaceholder("例如：预算 6000，优先活动，不要新品")
+    .fill(manualMessage);
+
+  const manualExplain = await captureCopilotChatCall(page, async () => {
+    await page.getByRole("button", { name: "发送" }).click();
+  });
+  expect(manualExplain.requestBody.customerId).toBe(dealer.customer_id);
+  expect(manualExplain.requestBody.pageName).toBe("/purchase");
+  expect(getLastUserMessageText(manualExplain.requestBody.messages)).toBe(manualMessage);
+
+  const manualExplainRunId = (await manualExplain.response.headerValue("x-copilot-run-id")) ?? "";
+  expect(manualExplainRunId).not.toBe("");
+
+  await expect(page.getByText(manualMessage)).toBeVisible({ timeout: 30_000 });
+
+  const overview = await fetchCopilotOverview(
+    page,
+    new URLSearchParams({
+      customerId: dealer.customer_id,
+      pageName: "/purchase",
+      runType: "explain_order",
+      limit: "20",
+    }),
+  );
+  expect(overview.rows.map((row) => row.run.run_id)).toEqual(
+    expect.arrayContaining([quickExplainRunId, manualExplainRunId]),
+  );
+});
+
+test("Copilot /order-submit chat covers quick explain and manual composer send with only LLM mocked", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  const dealer = await fetchActiveDealer(page);
+  await clearCart(page);
+  await seedCartForOrderSubmit(page, dealer.customer_id);
+
+  await page.goto("/order-submit");
+  await expect(page).toHaveURL(/\/order-submit$/);
+  await expect(page.getByTestId("order-submit-workbench")).toBeVisible();
+
+  await page.getByRole("button", { name: "打开 Copilot 助手" }).click();
+  await expect(page.getByRole("button", { name: "解释当前优化" })).toBeVisible();
+  const quickQuestion = "解释当前优化建议对门槛、箱规和提交风险的影响。";
+  await page
+    .getByPlaceholder("例如：解释当前推荐，或继续安全补齐活动门槛")
+    .fill(quickQuestion);
+
+  const quickExplain = await captureCopilotChatCall(page, async () => {
+    await page.getByRole("button", { name: "解释当前优化" }).click();
+  });
+  expect(quickExplain.requestBody.customerId).toBe(dealer.customer_id);
+  expect(quickExplain.requestBody.pageName).toBe("/order-submit");
+  expect(getLastUserMessageText(quickExplain.requestBody.messages)).toBe(quickQuestion);
+  expect(quickExplain.requestBody.message).toBeUndefined();
+
+  const quickExplainRunId = (await quickExplain.response.headerValue("x-copilot-run-id")) ?? "";
+  expect(quickExplainRunId).not.toBe("");
+
+  await expect(page.getByText(quickQuestion)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText("当前没有可直接应用的安全组合，请调整约束后重试。")).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const manualMessage = "解释当前推荐，并保持补齐策略保守。";
+  await page
+    .getByPlaceholder("例如：解释当前推荐，或继续安全补齐活动门槛")
+    .fill(manualMessage);
+
+  const manualExplain = await captureCopilotChatCall(page, async () => {
+    await page.getByRole("button", { name: "发送" }).click();
+  });
+  expect(manualExplain.requestBody.customerId).toBe(dealer.customer_id);
+  expect(manualExplain.requestBody.pageName).toBe("/order-submit");
+  expect(getLastUserMessageText(manualExplain.requestBody.messages)).toBe(manualMessage);
+
+  const manualExplainRunId = (await manualExplain.response.headerValue("x-copilot-run-id")) ?? "";
+  expect(manualExplainRunId).not.toBe("");
+
+  await expect(page.getByText(manualMessage)).toBeVisible({ timeout: 30_000 });
+
+  const overview = await fetchCopilotOverview(
+    page,
+    new URLSearchParams({
+      customerId: dealer.customer_id,
+      pageName: "/order-submit",
+      runType: "explain_order",
+      limit: "20",
+    }),
+  );
+  expect(overview.rows.map((row) => row.run.run_id)).toEqual(
+    expect.arrayContaining([quickExplainRunId, manualExplainRunId]),
+  );
 });
 
 test("Admin pages expose Copilot KPI, visibility slices, and traces affordance", async ({

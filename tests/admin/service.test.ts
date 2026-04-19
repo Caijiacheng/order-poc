@@ -1036,6 +1036,54 @@ describe("admin service Stage 2 contracts", () => {
     expect(activityIds).toEqual(expectedOrder.slice(0, activityIds.length));
   });
 
+  it("filters matched campaigns with no published weekly items instead of fabricating fallback activity cards", () => {
+    const store = getMemoryStore();
+    const dealer = store.dealers.find((item) => item.customer_id === "dealer_xm_sm");
+    expect(dealer).toBeTruthy();
+
+    const seededPayload = getPublishedSuggestionsForCustomer("dealer_xm_sm");
+    const seededActivitySkuIds = new Set(
+      seededPayload.activityHighlights.flatMap((item) => item.sku_ids),
+    );
+    const inactiveSkuId = store.products.find(
+      (item) => item.status === "active" && !seededActivitySkuIds.has(item.sku_id),
+    )?.sku_id;
+    expect(inactiveSkuId).toBeTruthy();
+
+    store.campaigns.unshift({
+      campaign_id: "camp_stage3_unpublished_activity_gap",
+      campaign_name: "Stage3 已命中但未发布活动",
+      week_id: "2026-W16",
+      promo_type: "threshold_rebate",
+      promo_threshold: 1200,
+      target_dealer_ids: [dealer?.customer_id ?? ""],
+      target_segment_ids: [],
+      target_customer_types: [],
+      weekly_focus_items: [inactiveSkuId ?? ""],
+      activity_notes: ["matched but missing published weekly items"],
+      status: "active",
+      created_at: "2026-04-16T00:00:00.000Z",
+      updated_at: "2026-04-16T00:00:00.000Z",
+    });
+
+    const matched = matchCampaignsForDealer({
+      campaigns: store.campaigns,
+      dealer: dealer!,
+      dealerSegments: store.dealerSegments,
+      products: store.products,
+    });
+    expect(
+      matched.some((item) => item.campaign.campaign_id === "camp_stage3_unpublished_activity_gap"),
+    ).toBe(true);
+
+    const payload = getPublishedSuggestionsForCustomer("dealer_xm_sm");
+    expect(
+      payload.activityHighlights.some(
+        (item) => item.activity_id === "camp_stage3_unpublished_activity_gap",
+      ),
+    ).toBe(false);
+  });
+
   it("campaign_stockup returns empty items when no campaign matches and does not fall back to global campaign pool", async () => {
     const envSnapshot = captureLlmEnv();
     setMockLlmEnv("mock-stage3-no-campaign");

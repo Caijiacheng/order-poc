@@ -50,6 +50,54 @@ function usageFromResult(result: { usage?: { inputTokens?: number; outputTokens?
   };
 }
 
+function ensureCopilotLlmConfigured() {
+  const factory = getLlmFactory();
+  if (!factory.isConfigured) {
+    throw new BusinessError(
+      "LLM_UNAVAILABLE",
+      "LLM 未配置。请设置 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL，或启用 LLM_MOCK_MODE=true。",
+      503,
+    );
+  }
+  return factory;
+}
+
+function buildMockIntentOutput(message: string) {
+  return extractHeuristicIntent(message);
+}
+
+function buildMockComboSelection(input: { combos: CopilotLegalCombo[] }) {
+  return {
+    status: "selected" as const,
+    combo_id: input.combos[0]?.combo_id ?? "",
+    explanation: "Mock 模式下返回确定性评分最高的候选组合作为预览。",
+  };
+}
+
+function buildMockSummaryOutput(input: {
+  blockedReason?: string;
+  selectedCombo?: CopilotLegalCombo;
+  campaignState: CopilotCampaignState;
+}): CopilotSummarizeResultOutput {
+  if (input.blockedReason || !input.selectedCombo) {
+    return {
+      summary: "当前没有可直接应用的安全组合，请调整约束后重试。",
+      should_go_checkout: false,
+      key_points: ["候选组合不足", "需要人工确认约束"],
+    };
+  }
+
+  return {
+    summary: `已生成预览草案，共 ${input.selectedCombo.items.length} 个 SKU，可先查看后再应用到购物车。`,
+    should_go_checkout:
+      input.campaignState.gap_amount === 0 || input.selectedCombo.projected_campaign_gap === 0,
+    key_points: [
+      `预计新增金额 ¥${Math.round(input.selectedCombo.estimated_additional_amount)}`,
+      `活动差额预计 ${Math.max(0, Math.round(input.selectedCombo.projected_campaign_gap))}`,
+    ],
+  };
+}
+
 function createRun(input: {
   run_id?: string;
   run_type: CopilotRun["run_type"];
@@ -280,13 +328,22 @@ function projectCampaignStateForPreview(input: {
 function extractHeuristicIntent(message: string): CopilotIntent {
   const text = message.trim();
   const lower = text.toLowerCase();
+  const explainSignal = /解释|为什么|说明|原因|依据/.test(text);
+  const campaignSignal = /活动|门槛|补齐|凑满/.test(text);
+  const adjustSignal = /调整|改一下|优化/.test(text);
+  const orderSignal = /做单|下单|补货|进货|来一单|配一单/.test(text);
 
   let intentType: CopilotIntent["intent_type"] = "start_order";
-  if (/解释|为什么|说明/.test(text)) {
+  if (
+    (orderSignal && (campaignSignal || adjustSignal)) ||
+    (campaignSignal && adjustSignal)
+  ) {
+    intentType = "mixed";
+  } else if (explainSignal) {
     intentType = "explain_order";
-  } else if (/活动|门槛|补齐|凑满/.test(text)) {
+  } else if (campaignSignal) {
     intentType = "topup_campaign";
-  } else if (/调整|改一下|优化/.test(text)) {
+  } else if (adjustSignal) {
     intentType = "adjust_order";
   }
 
@@ -338,17 +395,8 @@ async function parseIntentWithModel(input: {
   dealer: DealerEntity;
   traceId?: string;
 }) {
-  const factory = getLlmFactory();
-  const fallbackIntent = extractHeuristicIntent(input.message);
-  if (!factory.isConfigured) {
-    return {
-      intent: fallbackIntent,
-      meta: {
-        model_name: "deterministic-fallback",
-        model_latency_ms: 0,
-      },
-    };
-  }
+  const factory = ensureCopilotLlmConfigured();
+  const mockOutput = buildMockIntentOutput(input.message);
 
   const prompt = buildParseIntentPrompt({
     userMessage: input.message,
@@ -356,48 +404,44 @@ async function parseIntentWithModel(input: {
   });
   const startedAt = Date.now();
 
-  try {
-    const result = await generateText({
-      model: factory.getModel(),
-      prompt,
-      output: Output.object({
-        schema: copilotIntentSchema,
-        name: "copilot_intent",
-        description: "Structured copilot intent.",
-      }),
-      experimental_telemetry: buildTelemetrySettings("copilot.parse-intent", {
-        trace_id: input.traceId,
-        customer_id: input.dealer.customer_id,
-      }),
-      providerOptions: factory.isMockMode
-        ? {
-            orderPocMock: {
-              response_json: JSON.stringify(fallbackIntent),
-            },
-          }
-        : undefined,
-      temperature: 0.1,
-      maxOutputTokens: 500,
-    });
+  const result = await generateText({
+    model: factory.getModel(),
+    prompt,
+    output: Output.object({
+      schema: copilotIntentSchema,
+      name: "copilot_intent",
+      description: "Structured copilot intent.",
+    }),
+    experimental_telemetry: buildTelemetrySettings("copilot.parse-intent", {
+      trace_id: input.traceId,
+      customer_id: input.dealer.customer_id,
+    }),
+    providerOptions: factory.isMockMode
+      ? {
+          orderPocMock: {
+            response_json: JSON.stringify(mockOutput),
+          },
+        }
+      : undefined,
+    temperature: 0.1,
+    maxOutputTokens: 500,
+  });
 
-    const intent = copilotIntentSchema.parse(result.output ?? fallbackIntent);
-    return {
-      intent,
-      meta: {
-        model_name: factory.modelName,
-        model_latency_ms: Date.now() - startedAt,
-        ...usageFromResult(result),
-      },
-    };
-  } catch {
-    return {
-      intent: fallbackIntent,
-      meta: {
-        model_name: factory.modelName,
-        model_latency_ms: Date.now() - startedAt,
-      },
-    };
+  const parsedIntent = copilotIntentSchema.safeParse(result.output);
+  if (!parsedIntent.success) {
+    throw new BusinessError("LLM_INVALID_OUTPUT", "Copilot 意图解析输出不合法。", 502, {
+      payload: parsedIntent.error.issues[0]?.message ?? "模型输出缺少有效意图结构",
+    });
   }
+
+  return {
+    intent: parsedIntent.data,
+    meta: {
+      model_name: factory.modelName,
+      model_latency_ms: Date.now() - startedAt,
+      ...usageFromResult(result),
+    },
+  };
 }
 
 function buildDraftItem(input: {
@@ -616,29 +660,22 @@ async function selectBestComboWithModel(input: {
   combos: CopilotLegalCombo[];
   traceId?: string;
 }) {
-  const fallbackOutput =
-    input.combos.length === 0
-      ? {
-          status: "blocked" as const,
-          explanation: "当前没有满足约束的安全候选组合。",
-          blocked_reason: "no_legal_combo",
-        }
-      : {
-          status: "selected" as const,
-          combo_id: input.combos[0].combo_id,
-          explanation: "选择确定性评分最高的候选组合作为预览。",
-        };
-
-  const factory = getLlmFactory();
-  if (!factory.isConfigured) {
+  if (input.combos.length === 0) {
     return {
-      output: fallbackOutput,
+      output: {
+        status: "blocked" as const,
+        explanation: "当前没有满足约束的安全候选组合。",
+        blocked_reason: "no_legal_combo",
+      },
       meta: {
-        model_name: "deterministic-fallback",
+        model_name: "deterministic-rule",
         model_latency_ms: 0,
       },
     };
   }
+
+  const factory = ensureCopilotLlmConfigured();
+  const mockOutput = buildMockComboSelection({ combos: input.combos });
 
   const prompt = buildSelectBestComboPrompt({
     dealer: input.dealer,
@@ -648,84 +685,61 @@ async function selectBestComboWithModel(input: {
   });
   const startedAt = Date.now();
 
-  try {
-    const result = await generateText({
-      model: factory.getModel(),
-      prompt,
-      output: Output.object({
-        schema: copilotSelectBestComboSchema,
-        name: "copilot_select_best_combo",
-        description: "Pick one combo from legal candidates or block.",
-      }),
-      experimental_telemetry: buildTelemetrySettings("copilot.select-best-combo", {
-        trace_id: input.traceId,
-        combo_count: input.combos.length,
-      }),
-      providerOptions: factory.isMockMode
-        ? {
-            orderPocMock: {
-              response_json: JSON.stringify(fallbackOutput),
-            },
-          }
-        : undefined,
-      temperature: 0.2,
-      maxOutputTokens: 500,
+  const result = await generateText({
+    model: factory.getModel(),
+    prompt,
+    output: Output.object({
+      schema: copilotSelectBestComboSchema,
+      name: "copilot_select_best_combo",
+      description: "Pick one combo from legal candidates or block.",
+    }),
+    experimental_telemetry: buildTelemetrySettings("copilot.select-best-combo", {
+      trace_id: input.traceId,
+      combo_count: input.combos.length,
+    }),
+    providerOptions: factory.isMockMode
+      ? {
+          orderPocMock: {
+            response_json: JSON.stringify(mockOutput),
+          },
+        }
+      : undefined,
+    temperature: 0.2,
+    maxOutputTokens: 500,
+  });
+
+  const parsed = copilotSelectBestComboSchema.safeParse(result.output);
+  if (!parsed.success) {
+    throw new BusinessError("LLM_INVALID_OUTPUT", "Copilot 组合选择输出不合法。", 502, {
+      payload: parsed.error.issues[0]?.message ?? "模型未返回有效的组合选择结构",
     });
-
-    const parsed = copilotSelectBestComboSchema.parse(result.output ?? fallbackOutput);
-    const validCombo =
-      parsed.combo_id && input.combos.some((combo) => combo.combo_id === parsed.combo_id);
-    const normalizedOutput =
-      parsed.status === "blocked"
-        ? {
-            status: "blocked" as const,
-            explanation: parsed.explanation,
-            blocked_reason: parsed.blocked_reason ?? "model_blocked",
-          }
-        : parsed.status === "selected" && validCombo
-          ? parsed
-          : fallbackOutput;
-
-    return {
-      output: normalizedOutput,
-      meta: {
-        model_name: factory.modelName,
-        model_latency_ms: Date.now() - startedAt,
-        ...usageFromResult(result),
-      },
-    };
-  } catch {
-    return {
-      output: fallbackOutput,
-      meta: {
-        model_name: factory.modelName,
-        model_latency_ms: Date.now() - startedAt,
-      },
-    };
   }
-}
 
-function buildFallbackSummary(input: {
-  blockedReason?: string;
-  selectedCombo?: CopilotLegalCombo;
-  campaignState: CopilotCampaignState;
-}): CopilotSummarizeResultOutput {
-  if (input.blockedReason || !input.selectedCombo) {
-    return {
-      summary: "当前没有可直接应用的安全组合，建议先确认预算或放宽限制后再试。",
-      should_go_checkout: false,
-      key_points: ["候选组合不足", "需要人工确认约束"],
-    };
+  if (
+    parsed.data.status === "selected" &&
+    !input.combos.some((combo) => combo.combo_id === parsed.data.combo_id)
+  ) {
+    throw new BusinessError("LLM_INVALID_OUTPUT", "Copilot 选择了不存在的候选组合。", 502, {
+      combo_id: parsed.data.combo_id ?? "missing",
+    });
   }
+
+  const normalizedOutput =
+    parsed.data.status === "blocked"
+      ? {
+          status: "blocked" as const,
+          explanation: parsed.data.explanation,
+          blocked_reason: parsed.data.blocked_reason ?? "model_blocked",
+        }
+      : parsed.data;
 
   return {
-    summary: `已生成预览草案，共 ${input.selectedCombo.items.length} 个 SKU，可先查看后再应用到购物车。`,
-    should_go_checkout:
-      input.campaignState.gap_amount === 0 || input.selectedCombo.projected_campaign_gap === 0,
-    key_points: [
-      `预计新增金额 ¥${Math.round(input.selectedCombo.estimated_additional_amount)}`,
-      `活动差额预计 ${Math.max(0, Math.round(input.selectedCombo.projected_campaign_gap))}`,
-    ],
+    output: normalizedOutput,
+    meta: {
+      model_name: factory.modelName,
+      model_latency_ms: Date.now() - startedAt,
+      ...usageFromResult(result),
+    },
   };
 }
 
@@ -737,17 +751,8 @@ async function summarizeResultWithModel(input: {
   blockedReason?: string;
   traceId?: string;
 }) {
-  const fallbackOutput = buildFallbackSummary(input);
-  const factory = getLlmFactory();
-  if (!factory.isConfigured) {
-    return {
-      output: fallbackOutput,
-      meta: {
-        model_name: "deterministic-fallback",
-        model_latency_ms: 0,
-      },
-    };
-  }
+  const mockOutput = buildMockSummaryOutput(input);
+  const factory = ensureCopilotLlmConfigured();
 
   const prompt = buildSummarizeResultPrompt({
     userMessage: input.userMessage,
@@ -758,47 +763,43 @@ async function summarizeResultWithModel(input: {
   });
   const startedAt = Date.now();
 
-  try {
-    const result = await generateText({
-      model: factory.getModel(),
-      prompt,
-      output: Output.object({
-        schema: copilotSummarizeResultSchema,
-        name: "copilot_summarize_result",
-        description: "Summarize copilot execution result in business language.",
-      }),
-      experimental_telemetry: buildTelemetrySettings("copilot.summarize-result", {
-        trace_id: input.traceId,
-      }),
-      providerOptions: factory.isMockMode
-        ? {
-            orderPocMock: {
-              response_json: JSON.stringify(fallbackOutput),
-            },
-          }
-        : undefined,
-      temperature: 0.2,
-      maxOutputTokens: 400,
-    });
+  const result = await generateText({
+    model: factory.getModel(),
+    prompt,
+    output: Output.object({
+      schema: copilotSummarizeResultSchema,
+      name: "copilot_summarize_result",
+      description: "Summarize copilot execution result in business language.",
+    }),
+    experimental_telemetry: buildTelemetrySettings("copilot.summarize-result", {
+      trace_id: input.traceId,
+    }),
+    providerOptions: factory.isMockMode
+      ? {
+          orderPocMock: {
+            response_json: JSON.stringify(mockOutput),
+          },
+        }
+      : undefined,
+    temperature: 0.2,
+    maxOutputTokens: 400,
+  });
 
-    const output = copilotSummarizeResultSchema.parse(result.output ?? fallbackOutput);
-    return {
-      output,
-      meta: {
-        model_name: factory.modelName,
-        model_latency_ms: Date.now() - startedAt,
-        ...usageFromResult(result),
-      },
-    };
-  } catch {
-    return {
-      output: fallbackOutput,
-      meta: {
-        model_name: factory.modelName,
-        model_latency_ms: Date.now() - startedAt,
-      },
-    };
+  const output = copilotSummarizeResultSchema.safeParse(result.output);
+  if (!output.success) {
+    throw new BusinessError("LLM_INVALID_OUTPUT", "Copilot 结果摘要输出不合法。", 502, {
+      payload: output.error.issues[0]?.message ?? "模型未返回有效的摘要结构",
+    });
   }
+
+  return {
+    output: output.data,
+    meta: {
+      model_name: factory.modelName,
+      model_latency_ms: Date.now() - startedAt,
+      ...usageFromResult(result),
+    },
+  };
 }
 
 async function runCopilotStep<T>(input: {
@@ -1028,13 +1029,17 @@ export async function runCopilotAutofill(input: AutofillInput) {
             }),
           onSuccessPayload: (result) => ({
             status: result.output.status,
-            combo_id: result.output.combo_id ?? null,
+            combo_id: result.output.status === "selected" ? result.output.combo_id : null,
           }),
           resolveStatus: (result) =>
             result.output.status === "blocked" ? "blocked" : "completed",
         });
         totalModelLatency += selected.meta.model_latency_ms;
-        selectedCombo = combos.find((combo) => combo.combo_id === selected.output.combo_id);
+        const selectedComboId =
+          selected.output.status === "selected" ? selected.output.combo_id : undefined;
+        selectedCombo = selectedComboId
+          ? combos.find((combo) => combo.combo_id === selectedComboId)
+          : undefined;
 
         draft = await runCopilotStep({
           run_id: run.run_id,

@@ -91,6 +91,16 @@ function toBlockedReasonText(reason?: string) {
   return `当前流程被阻塞：${reason}`;
 }
 
+function sendComposerText(
+  runtime: ReturnType<typeof useChatRuntime>,
+  message: string,
+) {
+  runtime.thread.composer.setText(message);
+  window.requestAnimationFrame(() => {
+    runtime.thread.composer.send();
+  });
+}
+
 function StepStatusPill(input: { status: string }) {
   if (input.status === "completed") {
     return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">已完成</Badge>;
@@ -130,14 +140,29 @@ export function PurchaseCopilotPanel(props: PurchaseCopilotPanelProps) {
     () =>
       new AssistantChatTransport({
         api: "/api/copilot/chat",
-        prepareSendMessagesRequest: ({ body, ...request }) => ({
-          ...request,
-          body: {
-            ...body,
-            customerId: props.customerId,
-            pageName: "/purchase",
-          },
-        }),
+        prepareSendMessagesRequest: ({
+          body,
+          id,
+          messages,
+          messageId,
+          requestMetadata,
+          trigger,
+          ...request
+        }) => {
+          return {
+            ...request,
+            body: {
+              ...body,
+              id,
+              messages,
+              trigger,
+              messageId,
+              metadata: requestMetadata,
+              customerId: props.customerId,
+              pageName: "/purchase",
+            },
+          };
+        },
       }),
     [props.customerId],
   );
@@ -179,10 +204,14 @@ export function PurchaseCopilotPanel(props: PurchaseCopilotPanelProps) {
     }
 
     const composerText = runtime.thread.composer.getState().text.trim();
-    const fallbackMessage =
-      mode === "topup"
-        ? "帮我优先补齐活动门槛，尽量用活动相关 SKU。"
-        : "帮我按常购和活动做一单，偏保守，不要激进扩单。";
+    if (!composerText) {
+      setPanelError(
+        mode === "topup"
+          ? "请先输入补齐要求，再发起活动补齐。"
+          : "请先输入这次做单要求，再发起一键做单。",
+      );
+      return;
+    }
 
     setRunningAction(mode);
     setPanelError("");
@@ -191,7 +220,7 @@ export function PurchaseCopilotPanel(props: PurchaseCopilotPanelProps) {
     try {
       const result = await requestCopilotAutofill({
         customerId: props.customerId,
-        message: composerText || fallbackMessage,
+        message: composerText,
         pageName: "/purchase",
       });
       setAutofillResult(result);
@@ -210,9 +239,11 @@ export function PurchaseCopilotPanel(props: PurchaseCopilotPanelProps) {
       return;
     }
     const composerText = runtime.thread.composer.getState().text.trim();
-    const message = composerText || "解释这单当前门槛状态和推荐依据。";
-    runtime.thread.composer.setText(message);
-    runtime.thread.composer.send();
+    if (!composerText) {
+      setPanelError("请先输入要解释的具体问题。");
+      return;
+    }
+    sendComposerText(runtime, composerText);
   };
 
   const applyDraft = async () => {
@@ -474,7 +505,7 @@ export function PurchaseCopilotPanel(props: PurchaseCopilotPanelProps) {
                         <ThreadPrimitive.Viewport className="flex-1 space-y-2 overflow-y-auto p-2">
                           <ThreadPrimitive.Empty>
                             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-3 text-xs leading-5 text-slate-500">
-                              可输入预算、是否优先活动、是否避免新品，然后点击快捷动作；或直接点击“解释这单”。
+                              先输入预算、是否优先活动、是否避免新品，再点击快捷动作或发送解释问题。
                             </div>
                           </ThreadPrimitive.Empty>
                           <ThreadPrimitive.Messages>

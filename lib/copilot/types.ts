@@ -35,7 +35,8 @@ export type CopilotIntentType =
   | "start_order"
   | "topup_campaign"
   | "explain_order"
-  | "adjust_order";
+  | "adjust_order"
+  | "mixed";
 
 export type CopilotRiskMode = "conservative" | "balanced" | "aggressive";
 

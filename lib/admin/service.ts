@@ -1801,27 +1801,6 @@ function asBundleTemplateItem(
   };
 }
 
-function toFallbackBundleItem(input: {
-  product: ProductEntity;
-  reason: string;
-  reasonTags: string[];
-  priority: number;
-  qty?: number;
-}): BundleTemplateItem {
-  const suggestedQty = Math.max(1, input.qty ?? input.product.box_multiple);
-  return {
-    recommendation_item_id: undefined,
-    sku_id: input.product.sku_id,
-    sku_name: input.product.sku_name,
-    suggested_qty: suggestedQty,
-    reason: input.reason,
-    reason_tags: input.reasonTags,
-    priority: input.priority,
-    unit_price: input.product.price_per_case,
-    line_amount: input.product.price_per_case * suggestedQty,
-  };
-}
-
 function dedupeBundleItems(items: BundleTemplateItem[]) {
   const map = new Map<string, BundleTemplateItem>();
   for (const item of items) {
@@ -1852,7 +1831,6 @@ function pickOpenItemsForRun(
 function createBundleTemplate(input: {
   templateType: BundleTemplate["template_type"];
   recommendationItems: BundleTemplateItem[];
-  fallbackItems: BundleTemplateItem[];
 }): BundleTemplate {
   const definition = BUNDLE_TEMPLATE_DEFINITIONS.find(
     (item) => item.template_type === input.templateType,
@@ -1862,16 +1840,12 @@ function createBundleTemplate(input: {
   }
 
   const recommended = dedupeBundleItems(input.recommendationItems).slice(0, 5);
-  const source: BundleTemplate["source"] =
-    recommended.length > 0 ? "published_recommendation" : "fallback_catalog";
-  const base = recommended.length > 0 ? recommended : dedupeBundleItems(input.fallbackItems);
-  const items = base.slice(0, 5);
 
   return {
     ...definition,
-    source,
-    estimated_amount: sumBundleAmount(items),
-    items,
+    source: "published_recommendation",
+    estimated_amount: sumBundleAmount(recommended),
+    items: recommended,
   };
 }
 
@@ -1936,21 +1910,13 @@ function resolveActivityHighlights(input: {
 
   return scopedCampaigns.map((campaign) => {
     const items = campaign.weekly_focus_items
-      .map((skuId, index) => {
+      .map((skuId) => {
         const product = input.productMap.get(skuId);
         if (!product || product.status !== "active") {
           return null;
         }
         const weekly = weeklyItemMap.get(skuId);
-        if (weekly) {
-          return asBundleTemplateItem(weekly, product);
-        }
-        return toFallbackBundleItem({
-          product,
-          reason: "活动档期备货，建议提前补齐活动货。",
-          reasonTags: ["活动备货"],
-          priority: index + 1,
-        });
+        return weekly ? asBundleTemplateItem(weekly, product) : null;
       })
       .filter((item): item is BundleTemplateItem => Boolean(item))
       .slice(0, 5);
@@ -1966,7 +1932,7 @@ function resolveActivityHighlights(input: {
       estimated_amount: sumBundleAmount(items),
       items,
     };
-  });
+  }).filter((item) => item.items.length > 0);
 }
 
 function pickLatestRunByScene(input: {
@@ -2099,42 +2065,6 @@ export function getPublishedSuggestionsForCustomer(
       return product ? asBundleTemplateItem(item, product) : null;
     })
     .filter((item): item is BundleTemplateItem => Boolean(item));
-
-  const frequentProducts = (dealer?.frequent_items ?? [])
-    .map((skuId) => productMap.get(skuId))
-    .filter((item): item is ProductEntity => Boolean(item));
-
-  const hotSaleFallbackItems = [
-    ...store.products
-      .filter(
-        (item) =>
-          item.status === "active" &&
-          item.tags.some((tag) => tag.includes("高频动销") || tag.includes("高客单")),
-      )
-      .sort((left, right) => left.display_order - right.display_order)
-      .slice(0, 5)
-      .map((item, index) =>
-        toFallbackBundleItem({
-          product: item,
-          reason: "热销动销稳定，建议优先补齐。",
-          reasonTags: ["热销补货"],
-          priority: index + 1,
-        }),
-      ),
-  ];
-
-  const stockoutFallbackItems = [
-    ...frequentProducts
-      .slice(0, 5)
-      .map((item, index) =>
-        toFallbackBundleItem({
-          product: item,
-          reason: "经销商常购基础货，建议按箱规补齐。",
-          reasonTags: ["常购补货"],
-          priority: index + 1,
-        }),
-      ),
-  ];
   const matchedCampaigns = dealer
     ? matchCampaignsForDealer({
         campaigns: store.campaigns,
@@ -2160,23 +2090,18 @@ export function getPublishedSuggestionsForCustomer(
     weeklyRunItems: campaignOpenItems,
   });
 
-  const campaignFallbackItems = activityHighlights.flatMap((highlight) => highlight.items);
-
   const bundleTemplates: BundleTemplate[] = [
     createBundleTemplate({
       templateType: "hot_sale_restock",
       recommendationItems: hotSaleRecommendationItems,
-      fallbackItems: hotSaleFallbackItems,
     }),
     createBundleTemplate({
       templateType: "stockout_restock",
       recommendationItems: stockoutRecommendationItems,
-      fallbackItems: stockoutFallbackItems,
     }),
     createBundleTemplate({
       templateType: "campaign_stockup",
       recommendationItems: campaignRecommendationItems,
-      fallbackItems: campaignFallbackItems,
     }),
   ];
 

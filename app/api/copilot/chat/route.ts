@@ -144,7 +144,14 @@ export async function POST(request: Request) {
     const rawBody = (await request.json()) as Record<string, unknown>;
 
     // assistant-ui / AI SDK transport mode.
-    if (Array.isArray(rawBody.messages)) {
+    const isAssistantUiTransportRequest =
+      Array.isArray(rawBody.messages) ||
+      "tools" in rawBody ||
+      "trigger" in rawBody ||
+      "config" in rawBody ||
+      "system" in rawBody;
+
+    if (isAssistantUiTransportRequest) {
       return handleStreamChat(rawBody);
     }
 

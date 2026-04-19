@@ -115,7 +115,7 @@ function toDealerCadence(dealer: DealerEntity) {
 }
 
 function toBundleSourceLabel(template: BundleTemplate) {
-  return template.source === "published_recommendation" ? "本周优先" : "门店常带";
+  return template.items.length > 0 ? "本周优先" : "待发布";
 }
 
 function toBundleItemPreview(template: BundleTemplate) {
@@ -341,7 +341,7 @@ export default function PurchasePage() {
         setSuccessMessage(
           result.summary.published
             ? "已加载本周进货建议，可从当前页面直接组货下单。"
-            : "当前先按门店常带商品展示，可直接组货下单。",
+            : "当前暂无已发布进货建议，可先手动选货或等待运营发布。",
         );
       } catch (error) {
         setSuggestions(null);

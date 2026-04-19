@@ -287,6 +287,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes(`/api/admin/generation-jobs/${shared.jobId}/precheck`),
+    { timeout: 90_000 },
   );
   await getJobRow().getByRole("button", { name: "预检" }).click();
   const precheckPayload = await expectEnvelope<GenerationJobActionResponse>(
@@ -294,11 +295,15 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   );
   expect(precheckPayload.data.issues ?? []).toEqual([]);
   await expect(getJobRow()).toContainText("预检通过", { timeout: 90_000 });
+  await expect(getJobRow().getByRole("button", { name: "试生成" })).toBeEnabled({
+    timeout: 15_000,
+  });
 
   const sampleResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes(`/api/admin/generation-jobs/${shared.jobId}/sample-generate`),
+    { timeout: 180_000 },
   );
   await getJobRow().getByRole("button", { name: "试生成" }).click();
   const samplePayload = await expectEnvelope<GenerationJobActionResponse>(
@@ -308,6 +313,9 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   expect(samplePayload.data.batch?.batch_id).toMatch(/^batch_/);
   expect(samplePayload.data.generated_run_ids?.length ?? 0).toBeGreaterThan(0);
   expect(samplePayload.data.sampled_customer_ids?.length ?? 0).toBeGreaterThan(0);
+  await expect(getJobRow().getByRole("button", { name: "发布" })).toBeEnabled({
+    timeout: 15_000,
+  });
 
   shared.batchId = samplePayload.data.batch?.batch_id ?? "";
   shared.runId =
@@ -322,6 +330,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes(`/api/admin/generation-jobs/${shared.jobId}/publish`),
+    { timeout: 120_000 },
   );
   await getJobRow().getByRole("button", { name: "发布" }).click();
   const publishPayload = await expectEnvelope<GenerationJobActionResponse>(
@@ -510,6 +519,7 @@ test("live serial cross-role story keeps canonical purchase/order-submit flow an
   if (await sameBatchTraceLink.count()) {
     await sameBatchTraceLink.click();
   } else {
+    await page.getByRole("button", { name: "关闭" }).click();
     await page.getByRole("main").getByRole("link", { name: "查看执行过程" }).click();
   }
   await expect(page).toHaveURL(/\/admin\/observability\/traces/);
@@ -577,11 +587,15 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
   });
   await expect(page.getByRole("button", { name: "活动补齐" })).toBeVisible();
   await expect(page.getByRole("button", { name: "解释这单" })).toBeVisible();
+  await page
+    .getByPlaceholder("例如：预算 6000，优先活动，不要新品")
+    .fill("按常购和活动做一单，预算控制在 6000 左右。");
 
   const purchaseAutofillResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/copilot/autofill"),
+    { timeout: 180_000 },
   );
   await page.getByRole("button", { name: "一键做单" }).click();
   const purchaseAutofillPayload = await expectEnvelope<CopilotAutofillResponse>(
@@ -608,6 +622,7 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
     (response) =>
       response.request().method() === "POST" &&
       /\/api\/copilot\/drafts\/[^/]+\/apply/.test(response.url()),
+    { timeout: 120_000 },
   );
   await page.getByRole("button", { name: "确认应用到采购清单" }).click();
   const applyDraftPayload = await expectEnvelope<CopilotApplyDraftResponse>(
@@ -637,11 +652,15 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
   await expect(page.getByRole("button", { name: "去提交" })).toBeVisible();
   await expect(page.getByRole("button", { name: "一键做单" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "活动补齐" })).toHaveCount(0);
+  await page
+    .getByPlaceholder("例如：解释当前推荐，或继续安全补齐活动门槛")
+    .fill("解释当前优化建议对门槛、箱规和提交风险的影响。");
 
   const explainChatResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/copilot/chat"),
+    { timeout: 120_000 },
   );
   await page.getByRole("button", { name: "解释当前优化" }).click();
   const explainChatResponse = await explainChatResponsePromise;
@@ -652,10 +671,13 @@ test("live copilot flow keeps preview/apply discipline and validates copilot Lan
   const explainRunId = (await explainChatResponse.headerValue("x-copilot-run-id")) ?? "";
   expect(explainRunId).not.toEqual("");
 
+  await page.getByRole("button", { name: "去提交" }).click();
+
   const submitResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       response.url().includes("/api/cart/submit"),
+    { timeout: 120_000 },
   );
   await page.getByRole("button", { name: "提交订单" }).click();
   const submitPayload = await expectEnvelope<SubmitCartResponse>(await submitResponsePromise);
